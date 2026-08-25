@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { LayoutDashboard, ShoppingCart, Package, Boxes, Users, Truck, Store, BarChart3, Settings, LogOut, ClipboardList, Clock, UserCog, ArrowRightLeft } from "lucide-react";
+import { LayoutDashboard, ShoppingCart, Package, Boxes, Users, Truck, Store, BarChart3, Settings, LogOut, ClipboardList, Clock, UserCog, ArrowRightLeft, Utensils } from "lucide-react";
 import { Toaster } from "sonner";
 
 const LOGO = "https://customer-assets-gfyr7b9c.emergentagent.net/job_inventory-hub-3002/artifacts/agyuw41m_logoSK.png";
@@ -8,6 +8,7 @@ const LOGO = "https://customer-assets-gfyr7b9c.emergentagent.net/job_inventory-h
 const NAV = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, testId: "nav-dashboard" },
   { to: "/pos", label: "Kasir (POS)", icon: ShoppingCart, testId: "nav-pos" },
+  { to: "/tables", label: "Meja (Dine-In)", icon: Utensils, testId: "nav-tables" },
   { to: "/shifts", label: "Shift", icon: Clock, testId: "nav-shifts" },
   { to: "/products", label: "Produk", icon: Package, testId: "nav-products" },
   { to: "/inventory", label: "Inventory", icon: Boxes, testId: "nav-inventory" },

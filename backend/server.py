@@ -221,6 +221,40 @@ class TransferIn(BaseModel):
     items: List[TransferItem]
     note: Optional[str] = ""
 
+class TableIn(BaseModel):
+    name: str
+    capacity: int = 2
+    outlet_id: Optional[str] = ""
+    zone: Optional[str] = "Utama"
+
+class OrderItemIn(BaseModel):
+    product_id: str
+    name: str
+    price: float
+    quantity: int
+    variant_name: Optional[str] = ""
+    note: Optional[str] = ""
+
+class OrderOpenIn(BaseModel):
+    table_id: str
+    outlet_id: Optional[str] = ""
+    guest_count: int = 1
+    items: Optional[List[OrderItemIn]] = []
+
+class OrderUpdateItemsIn(BaseModel):
+    items: List[OrderItemIn]
+
+class OrderCheckoutIn(BaseModel):
+    payment_method: Literal["cash", "card", "qris", "transfer"] = "cash"
+    amount_paid: float
+    discount: float = 0.0
+    tax: float = 0.0
+    customer_id: Optional[str] = ""
+
+class QRISCreateIn(BaseModel):
+    amount: int
+    description: Optional[str] = "POS checkout"
+
 # ============ AUTH ROUTES ============
 @api.post("/auth/register")
 async def register(body: RegisterIn, response: Response):
@@ -443,6 +477,9 @@ async def receive_po(po_id: str, user: dict = Depends(require_role("admin", "man
         raise HTTPException(status_code=400, detail=f"PO status is {po['status']}")
     for item in po["items"]:
         await db.products.update_one({"id": item["product_id"]}, {"$inc": {"stock": item["quantity"]}, "$set": {"updated_at": now_iso()}})
+        main_outlet = await _get_main_outlet_id()
+        if main_outlet:
+            await _adjust_outlet_stock(item["product_id"], main_outlet, item["quantity"])
         await db.stock_movements.insert_one({
             "id": new_id(),
             "product_id": item["product_id"],
@@ -450,6 +487,7 @@ async def receive_po(po_id: str, user: dict = Depends(require_role("admin", "man
             "delta": item["quantity"],
             "reason": "purchase",
             "note": f"PO {po['po_no']}",
+            "outlet_id": main_outlet,
             "user_id": user["id"],
             "created_at": now_iso(),
         })
@@ -572,6 +610,8 @@ async def create_sale(body: SaleIn, user: dict = Depends(get_current_user)):
     # Decrement stock + log movements
     for item in body.items:
         await db.products.update_one({"id": item.product_id}, {"$inc": {"stock": -item.quantity}})
+        if body.outlet_id:
+            await _adjust_outlet_stock(item.product_id, body.outlet_id, -item.quantity)
         await db.stock_movements.insert_one({
             "id": new_id(),
             "product_id": item.product_id,
@@ -579,6 +619,7 @@ async def create_sale(body: SaleIn, user: dict = Depends(get_current_user)):
             "delta": -item.quantity,
             "reason": "sale",
             "note": f"Sale {invoice_no}",
+            "outlet_id": body.outlet_id,
             "user_id": user["id"],
             "created_at": now_iso(),
         })
@@ -759,6 +800,7 @@ async def create_transfer(body: TransferIn, user: dict = Depends(require_role("a
             "user_id": user["id"],
             "created_at": now_iso(),
         })
+        await _adjust_outlet_stock(it.product_id, body.from_outlet_id, -it.quantity)
         await db.stock_movements.insert_one({
             "id": new_id(),
             "product_id": it.product_id,
@@ -770,10 +812,306 @@ async def create_transfer(body: TransferIn, user: dict = Depends(require_role("a
             "user_id": user["id"],
             "created_at": now_iso(),
         })
+        await _adjust_outlet_stock(it.product_id, body.to_outlet_id, it.quantity)
     doc.pop("_id", None)
     return doc
 
 # ============ SEED / STARTUP ============
+async def _get_main_outlet_id():
+    o = await db.outlets.find_one({"is_main": True})
+    if not o:
+        o = await db.outlets.find_one({})
+    return o["id"] if o else None
+
+async def _get_outlet_stock(product_id: str, outlet_id: str) -> int:
+    entry = await db.outlet_stocks.find_one({"product_id": product_id, "outlet_id": outlet_id})
+    if entry is None:
+        # Lazy-init: if this is the main outlet, seed from product.stock; else 0
+        product = await db.products.find_one({"id": product_id}, {"_id": 0, "stock": 1})
+        main_id = await _get_main_outlet_id()
+        qty = product["stock"] if (product and outlet_id == main_id) else 0
+        await db.outlet_stocks.insert_one({"product_id": product_id, "outlet_id": outlet_id, "quantity": qty, "updated_at": now_iso()})
+        return qty
+    return entry["quantity"]
+
+async def _adjust_outlet_stock(product_id: str, outlet_id: str, delta: int):
+    await _get_outlet_stock(product_id, outlet_id)  # ensure exists
+    await db.outlet_stocks.update_one({"product_id": product_id, "outlet_id": outlet_id}, {"$inc": {"quantity": delta}, "$set": {"updated_at": now_iso()}})
+
+# ============ TABLES (F&B) ============
+make_crud_placeholder = None  # avoid unused
+
+@api.get("/tables")
+async def list_tables(user: dict = Depends(get_current_user)):
+    tables = await db.tables.find({}, {"_id": 0}).sort("name", 1).to_list(500)
+    # Attach active order id if any
+    for t in tables:
+        active = await db.orders.find_one({"table_id": t["id"], "status": "open"}, {"_id": 0})
+        t["active_order_id"] = active["id"] if active else None
+        t["active_order_total"] = active["total"] if active else 0
+    return tables
+
+@api.post("/tables")
+async def create_table(body: TableIn, user: dict = Depends(require_role("admin", "manager"))):
+    doc = body.model_dump()
+    doc["id"] = new_id()
+    doc["status"] = "available"
+    doc["created_at"] = now_iso()
+    await db.tables.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+@api.put("/tables/{table_id}")
+async def update_table(table_id: str, body: TableIn, user: dict = Depends(require_role("admin", "manager"))):
+    doc = body.model_dump()
+    doc["updated_at"] = now_iso()
+    result = await db.tables.update_one({"id": table_id}, {"$set": doc})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Meja tidak ditemukan")
+    return await db.tables.find_one({"id": table_id}, {"_id": 0})
+
+@api.delete("/tables/{table_id}")
+async def delete_table(table_id: str, user: dict = Depends(require_role("admin", "manager"))):
+    open_order = await db.orders.find_one({"table_id": table_id, "status": "open"})
+    if open_order:
+        raise HTTPException(status_code=400, detail="Meja masih memiliki order terbuka")
+    result = await db.tables.delete_one({"id": table_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Meja tidak ditemukan")
+    return {"ok": True}
+
+# ============ ORDERS (Dine-in) ============
+def _calc_order_total(items):
+    return sum(i["price"] * i["quantity"] for i in items)
+
+@api.get("/orders")
+async def list_orders(status: Optional[str] = None, user: dict = Depends(get_current_user)):
+    q = {}
+    if status:
+        q["status"] = status
+    items = await db.orders.find(q, {"_id": 0}).sort("opened_at", -1).to_list(500)
+    return items
+
+@api.post("/orders")
+async def open_order(body: OrderOpenIn, user: dict = Depends(get_current_user)):
+    table = await db.tables.find_one({"id": body.table_id}, {"_id": 0})
+    if not table:
+        raise HTTPException(status_code=404, detail="Meja tidak ditemukan")
+    existing = await db.orders.find_one({"table_id": body.table_id, "status": "open"})
+    if existing:
+        raise HTTPException(status_code=400, detail="Meja sudah memiliki order terbuka")
+    items = [i.model_dump() for i in (body.items or [])]
+    doc = {
+        "id": new_id(),
+        "order_no": f"ORD-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}",
+        "table_id": body.table_id,
+        "table_name": table["name"],
+        "outlet_id": body.outlet_id or table.get("outlet_id", ""),
+        "guest_count": body.guest_count,
+        "items": items,
+        "total": _calc_order_total(items),
+        "status": "open",
+        "cashier_id": user["id"],
+        "cashier_name": user.get("name", ""),
+        "opened_at": now_iso(),
+        "closed_at": None,
+    }
+    await db.orders.insert_one(doc)
+    await db.tables.update_one({"id": body.table_id}, {"$set": {"status": "occupied"}})
+    doc.pop("_id", None)
+    return doc
+
+@api.put("/orders/{order_id}/items")
+async def update_order_items(order_id: str, body: OrderUpdateItemsIn, user: dict = Depends(get_current_user)):
+    order = await db.orders.find_one({"id": order_id})
+    if not order or order["status"] != "open":
+        raise HTTPException(status_code=400, detail="Order tidak aktif")
+    items = [i.model_dump() for i in body.items]
+    await db.orders.update_one({"id": order_id}, {"$set": {"items": items, "total": _calc_order_total(items), "updated_at": now_iso()}})
+    return await db.orders.find_one({"id": order_id}, {"_id": 0})
+
+@api.post("/orders/{order_id}/checkout")
+async def checkout_order(order_id: str, body: OrderCheckoutIn, user: dict = Depends(get_current_user)):
+    order = await db.orders.find_one({"id": order_id})
+    if not order or order["status"] != "open":
+        raise HTTPException(status_code=400, detail="Order tidak aktif")
+    if not order["items"]:
+        raise HTTPException(status_code=400, detail="Order kosong")
+    subtotal = _calc_order_total(order["items"])
+    total = subtotal - body.discount + body.tax
+    if body.payment_method == "cash" and body.amount_paid < total:
+        raise HTTPException(status_code=400, detail="Uang bayar kurang")
+    # Validate stock
+    for it in order["items"]:
+        p = await db.products.find_one({"id": it["product_id"]})
+        if not p or p["stock"] < it["quantity"]:
+            raise HTTPException(status_code=400, detail=f"Stok kurang untuk {it['name']}")
+    change = max(0, body.amount_paid - total)
+    sale_id = new_id()
+    invoice_no = f"INV-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{sale_id[:6].upper()}"
+    active_shift_doc = await db.shifts.find_one({"cashier_id": user["id"], "status": "open"})
+    shift_id = active_shift_doc["id"] if active_shift_doc else None
+    outlet_id = order.get("outlet_id") or await _get_main_outlet_id()
+    sale_doc = {
+        "id": sale_id,
+        "invoice_no": invoice_no,
+        "shift_id": shift_id,
+        "outlet_id": outlet_id,
+        "customer_id": body.customer_id or "",
+        "cashier_id": user["id"],
+        "cashier_name": user.get("name", ""),
+        "items": order["items"],
+        "subtotal": subtotal,
+        "discount": body.discount,
+        "tax": body.tax,
+        "total": total,
+        "payment_method": body.payment_method,
+        "amount_paid": body.amount_paid,
+        "change": change,
+        "source": "dine-in",
+        "table_id": order["table_id"],
+        "table_name": order["table_name"],
+        "note": "",
+        "created_at": now_iso(),
+    }
+    await db.sales.insert_one(sale_doc)
+    # Decrement stock + outlet stock + log movements
+    for it in order["items"]:
+        await db.products.update_one({"id": it["product_id"]}, {"$inc": {"stock": -it["quantity"]}})
+        if outlet_id:
+            await _adjust_outlet_stock(it["product_id"], outlet_id, -it["quantity"])
+        await db.stock_movements.insert_one({
+            "id": new_id(), "product_id": it["product_id"], "product_name": it["name"],
+            "delta": -it["quantity"], "reason": "sale", "note": f"Sale {invoice_no}",
+            "outlet_id": outlet_id, "user_id": user["id"], "created_at": now_iso(),
+        })
+    # Close order + free table
+    await db.orders.update_one({"id": order_id}, {"$set": {"status": "closed", "closed_at": now_iso(), "sale_id": sale_id}})
+    await db.tables.update_one({"id": order["table_id"]}, {"$set": {"status": "available"}})
+    sale_doc.pop("_id", None)
+    return sale_doc
+
+@api.delete("/orders/{order_id}")
+async def cancel_order(order_id: str, user: dict = Depends(require_role("admin", "manager", "kasir"))):
+    order = await db.orders.find_one({"id": order_id})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order tidak ditemukan")
+    if order["status"] != "open":
+        raise HTTPException(status_code=400, detail="Order sudah selesai")
+    await db.orders.update_one({"id": order_id}, {"$set": {"status": "cancelled", "closed_at": now_iso()}})
+    await db.tables.update_one({"id": order["table_id"]}, {"$set": {"status": "available"}})
+    return {"ok": True}
+
+# ============ PER-OUTLET STOCK ============
+@api.get("/outlet-stocks/{outlet_id}")
+async def get_outlet_stocks(outlet_id: str, user: dict = Depends(get_current_user)):
+    entries = await db.outlet_stocks.find({"outlet_id": outlet_id}, {"_id": 0}).to_list(5000)
+    return entries
+
+# ============ MIDTRANS QRIS ============
+import base64, hashlib, hmac, io
+try:
+    import httpx as _httpx
+    import qrcode as _qrcode
+    _midtrans_libs_ok = True
+except Exception:
+    _midtrans_libs_ok = False
+
+def _midtrans_auth_header():
+    key = os.environ.get("MIDTRANS_SERVER_KEY", "")
+    if not key:
+        raise HTTPException(status_code=503, detail="Midtrans belum dikonfigurasi. Tambahkan MIDTRANS_SERVER_KEY di .env")
+    token = base64.b64encode(f"{key}:".encode()).decode()
+    return {"Authorization": f"Basic {token}", "Accept": "application/json"}
+
+def _qr_data_uri(qr_string: str) -> str:
+    img = _qrcode.make(qr_string)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+
+@api.post("/payments/qris")
+async def create_qris(body: QRISCreateIn, user: dict = Depends(get_current_user)):
+    if not _midtrans_libs_ok:
+        raise HTTPException(status_code=503, detail="Midtrans libraries not installed")
+    headers = _midtrans_auth_header()
+    base = os.environ.get("MIDTRANS_BASE_URL", "https://api.sandbox.midtrans.com").rstrip("/")
+    order_id = f"POS-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{new_id()[:8]}"
+    payload = {
+        "payment_type": "qris",
+        "transaction_details": {"order_id": order_id, "gross_amount": body.amount},
+        "qris": {"acquirer": "gopay"},
+        "custom_expiry": {"expiry_duration": 15, "unit": "minute"},
+    }
+    async with _httpx.AsyncClient(timeout=15) as http:
+        r = await http.post(f"{base}/v2/charge", json=payload, headers={**headers, "Content-Type": "application/json"})
+    if r.status_code not in (200, 201):
+        raise HTTPException(status_code=r.status_code, detail=r.text)
+    result = r.json()
+    qr_string = result.get("qr_string")
+    if not qr_string:
+        raise HTTPException(status_code=502, detail="Midtrans tidak mengembalikan qr_string")
+    await db.qris_orders.insert_one({
+        "order_id": order_id, "amount": body.amount, "description": body.description,
+        "transaction_id": result.get("transaction_id"),
+        "status": result.get("transaction_status", "pending"),
+        "fraud_status": result.get("fraud_status"),
+        "qr_string": qr_string, "created_at": now_iso(),
+    })
+    return {
+        "order_id": order_id, "transaction_id": result.get("transaction_id"),
+        "amount": body.amount, "status": result.get("transaction_status", "pending"),
+        "qr_image": _qr_data_uri(qr_string),
+    }
+
+@api.get("/payments/{order_id}")
+async def payment_status(order_id: str, user: dict = Depends(get_current_user)):
+    local = await db.qris_orders.find_one({"order_id": order_id}, {"_id": 0})
+    if not local:
+        raise HTTPException(status_code=404, detail="Order tidak ditemukan")
+    try:
+        headers = _midtrans_auth_header()
+        base = os.environ.get("MIDTRANS_BASE_URL", "https://api.sandbox.midtrans.com").rstrip("/")
+        async with _httpx.AsyncClient(timeout=10) as http:
+            r = await http.get(f"{base}/v2/{order_id}/status", headers=headers)
+        if r.status_code == 200:
+            result = r.json()
+            status = result.get("transaction_status", "unknown")
+            fraud = result.get("fraud_status")
+            if local["status"] not in ("settlement", "capture"):
+                await db.qris_orders.update_one({"order_id": order_id}, {"$set": {"status": status, "fraud_status": fraud, "updated_at": now_iso()}})
+                local["status"] = status
+                local["fraud_status"] = fraud
+    except Exception:
+        pass
+    paid = local["status"] in ("settlement", "capture") and (local.get("fraud_status") is None or local.get("fraud_status", "").lower() == "accept")
+    return {"order_id": order_id, "status": local["status"], "paid": paid}
+
+@api.post("/midtrans/webhook")
+async def midtrans_webhook(request: Request):
+    data = await request.json()
+    order_id = str(data.get("order_id", ""))
+    status_code = str(data.get("status_code", ""))
+    gross_amount = str(data.get("gross_amount", ""))
+    received = str(data.get("signature_key", ""))
+    key = os.environ.get("MIDTRANS_SERVER_KEY", "")
+    if not key:
+        raise HTTPException(status_code=503, detail="Midtrans not configured")
+    expected = hashlib.sha512(f"{order_id}{status_code}{gross_amount}{key}".encode()).hexdigest()
+    if not hmac.compare_digest(expected, received):
+        raise HTTPException(status_code=403, detail="Invalid signature")
+    local = await db.qris_orders.find_one({"order_id": order_id})
+    if not local:
+        raise HTTPException(status_code=404, detail="Unknown order")
+    new_status = str(data.get("transaction_status", ""))
+    if local["status"] not in ("settlement", "capture"):
+        await db.qris_orders.update_one({"order_id": order_id}, {"$set": {
+            "status": new_status, "fraud_status": data.get("fraud_status"),
+            "updated_at": now_iso(),
+        }})
+    return {"ok": True}
+
+# ============ SEED / STARTUP (moved) ============
 @app.on_event("startup")
 async def startup_event():
     await db.users.create_index("email", unique=True)
