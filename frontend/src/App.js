@@ -1,8 +1,8 @@
 import "@/index.css";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import Login from "./pages/Login";
-import Layout from "./components/Layout";
+import Layout, { canAccess, defaultLandingFor } from "./components/Layout";
 import Dashboard from "./pages/Dashboard";
 import POS from "./pages/POS";
 import Products from "./pages/Products";
@@ -18,18 +18,31 @@ import Users from "./pages/Users";
 import Transfers from "./pages/Transfers";
 import Tables from "./pages/Tables";
 
-function Protected({ children }) {
+function Protected({ children, path }) {
   const { user, loading } = useAuth();
+  const location = useLocation();
   if (loading || user === null) return <div className="min-h-screen flex items-center justify-center bg-[#050505] text-[#A39B8B]">Memuat...</div>;
   if (!user) return <Navigate to="/login" replace />;
+  // Role check for specific path
+  const targetPath = path || location.pathname;
+  if (targetPath !== "/pos" && !canAccess(user.role, targetPath)) {
+    return <Navigate to={defaultLandingFor(user.role)} replace />;
+  }
   return children;
 }
 
 function Public({ children }) {
   const { user, loading } = useAuth();
   if (loading || user === null) return <div className="min-h-screen flex items-center justify-center bg-[#050505] text-[#A39B8B]">Memuat...</div>;
-  if (user) return <Navigate to="/dashboard" replace />;
+  if (user) return <Navigate to={defaultLandingFor(user.role)} replace />;
   return children;
+}
+
+function RoleAwareLayout() {
+  const { user } = useAuth();
+  // Kasir has no sidebar layout - they only get POS. Redirect any sidebar route to /pos.
+  if (user?.role === "kasir") return <Navigate to="/pos" replace />;
+  return <Layout />;
 }
 
 function App() {
@@ -38,28 +51,35 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Public><Login /></Public>} />
-          <Route element={<Protected><Layout /></Protected>}>
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/shifts" element={<Shifts />} />
-            <Route path="/tables" element={<Tables />} />
-            <Route path="/products" element={<Products />} />
-            <Route path="/inventory" element={<Inventory />} />
-            <Route path="/transfers" element={<Transfers />} />
-            <Route path="/purchase-orders" element={<PurchaseOrders />} />
-            <Route path="/customers" element={<Customers />} />
-            <Route path="/suppliers" element={<Suppliers />} />
-            <Route path="/outlets" element={<Outlets />} />
-            <Route path="/reports" element={<Reports />} />
-            <Route path="/users" element={<Users />} />
-            <Route path="/settings" element={<Settings />} />
+          <Route element={<Protected><RoleAwareLayout /></Protected>}>
+            <Route path="/dashboard" element={<Protected path="/dashboard"><Dashboard /></Protected>} />
+            <Route path="/shifts" element={<Protected path="/shifts"><Shifts /></Protected>} />
+            <Route path="/tables" element={<Protected path="/tables"><Tables /></Protected>} />
+            <Route path="/products" element={<Protected path="/products"><Products /></Protected>} />
+            <Route path="/inventory" element={<Protected path="/inventory"><Inventory /></Protected>} />
+            <Route path="/transfers" element={<Protected path="/transfers"><Transfers /></Protected>} />
+            <Route path="/purchase-orders" element={<Protected path="/purchase-orders"><PurchaseOrders /></Protected>} />
+            <Route path="/customers" element={<Protected path="/customers"><Customers /></Protected>} />
+            <Route path="/suppliers" element={<Protected path="/suppliers"><Suppliers /></Protected>} />
+            <Route path="/outlets" element={<Protected path="/outlets"><Outlets /></Protected>} />
+            <Route path="/reports" element={<Protected path="/reports"><Reports /></Protected>} />
+            <Route path="/users" element={<Protected path="/users"><Users /></Protected>} />
+            <Route path="/settings" element={<Protected path="/settings"><Settings /></Protected>} />
           </Route>
           <Route path="/pos" element={<Protected><POS /></Protected>} />
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/" element={<HomeRedirect />} />
+          <Route path="*" element={<HomeRedirect />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>
   );
+}
+
+function HomeRedirect() {
+  const { user, loading } = useAuth();
+  if (loading || user === null) return <div className="min-h-screen flex items-center justify-center bg-[#050505] text-[#A39B8B]">Memuat...</div>;
+  if (!user) return <Navigate to="/login" replace />;
+  return <Navigate to={defaultLandingFor(user.role)} replace />;
 }
 
 export default App;

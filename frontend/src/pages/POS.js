@@ -2,12 +2,14 @@ import { useEffect, useState, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import api, { formatIDR } from "../lib/api";
 import { toast, Toaster } from "sonner";
-import { Search, Plus, Minus, Trash2, ShoppingCart, Package as PackageIcon, ScanLine, Printer, Clock } from "lucide-react";
+import { Search, Plus, Minus, Trash2, ShoppingCart, Package as PackageIcon, ScanLine, Printer, Clock, LogOut } from "lucide-react";
 import BarcodeScanner from "../components/BarcodeScanner";
 import Receipt, { printReceipt } from "../components/Receipt";
 import QRISPayment from "../components/QRISPayment";
+import { useAuth } from "../context/AuthContext";
 
 export default function POS() {
+  const { user, logout } = useAuth();
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [customers, setCustomers] = useState([]);
@@ -164,13 +166,17 @@ export default function POS() {
   return (
     <div className="min-h-screen flex bg-[#050505]">
       <Toaster theme="dark" position="top-right" toastOptions={{ style: { background: '#111', border: '1px solid rgba(212,175,55,0.3)', color: '#FDFBF7' } }} />
-      <div className="flex-1 p-8 pb-32">
+      <div className="flex-1 p-8 pb-32 mr-96">
         <div className="mb-6 flex items-start justify-between">
           <div>
             <p className="text-xs tracking-[0.3em] text-[#D4AF37] uppercase">Terminal Kasir</p>
             <h1 className="font-serif-luxury text-4xl text-[#FDFBF7]">Point of Sale</h1>
           </div>
           <div className="flex gap-2 items-center flex-wrap justify-end">
+            <div className="flex items-center gap-2 bg-[#111] gold-border rounded-md px-3 py-2 text-xs">
+              <span className="text-[#A39B8B]">{user?.name}</span>
+              <span className="text-[10px] uppercase tracking-widest text-[#D4AF37]">{user?.role}</span>
+            </div>
             <select value={selectedOutlet} onChange={(e) => setSelectedOutlet(e.target.value)} className="bg-[#111] gold-border rounded-md px-3 py-2 text-xs text-[#FDFBF7]" data-testid="pos-outlet-select">
               {outlets.map(o => <option key={o.id} value={o.id}>{o.name}{o.is_main ? " (Utama)" : ""}</option>)}
             </select>
@@ -184,6 +190,9 @@ export default function POS() {
             )}
             <button onClick={() => setShowScanner(true)} data-testid="pos-scan-btn" className="flex items-center gap-2 bg-[#D4AF37] text-[#050505] px-4 py-2 rounded-md text-xs font-semibold uppercase tracking-wider hover:bg-[#FFD700] transition-colors">
               <ScanLine size={14} strokeWidth={2} /> Scan
+            </button>
+            <button onClick={async () => { await logout(); nav("/login"); }} data-testid="pos-logout-btn" className="flex items-center gap-2 bg-[#111] border border-[rgba(212,175,55,0.3)] text-[#A39B8B] hover:text-[#FDFBF7] px-3 py-2 rounded-md text-xs uppercase tracking-wider transition-colors">
+              <LogOut size={14} strokeWidth={1.5} /> Keluar
             </button>
           </div>
         </div>

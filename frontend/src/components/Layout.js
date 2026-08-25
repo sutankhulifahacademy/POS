@@ -5,30 +5,45 @@ import { Toaster } from "sonner";
 
 const LOGO = "https://customer-assets-gfyr7b9c.emergentagent.net/job_inventory-hub-3002/artifacts/agyuw41m_logoSK.png";
 
+// Role capability matrix
+// admin (owner) = full; manager = operational; kasir = POS only (no sidebar)
 const NAV = [
-  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, testId: "nav-dashboard" },
-  { to: "/pos", label: "Kasir (POS)", icon: ShoppingCart, testId: "nav-pos" },
-  { to: "/tables", label: "Meja (Dine-In)", icon: Utensils, testId: "nav-tables" },
-  { to: "/shifts", label: "Shift", icon: Clock, testId: "nav-shifts" },
-  { to: "/products", label: "Produk", icon: Package, testId: "nav-products" },
-  { to: "/inventory", label: "Inventory", icon: Boxes, testId: "nav-inventory" },
-  { to: "/transfers", label: "Transfer Stok", icon: ArrowRightLeft, testId: "nav-transfers" },
-  { to: "/purchase-orders", label: "Purchase Order", icon: ClipboardList, testId: "nav-po" },
-  { to: "/customers", label: "Pelanggan", icon: Users, testId: "nav-customers" },
-  { to: "/suppliers", label: "Supplier", icon: Truck, testId: "nav-suppliers" },
-  { to: "/outlets", label: "Outlet", icon: Store, testId: "nav-outlets" },
-  { to: "/reports", label: "Laporan", icon: BarChart3, testId: "nav-reports" },
-  { to: "/users", label: "Pengguna", icon: UserCog, testId: "nav-users", adminOnly: true },
-  { to: "/settings", label: "Pengaturan", icon: Settings, testId: "nav-settings" },
+  { to: "/dashboard",       label: "Dashboard",       icon: LayoutDashboard, testId: "nav-dashboard", roles: ["admin", "manager"] },
+  { to: "/pos",             label: "Kasir (POS)",     icon: ShoppingCart,    testId: "nav-pos",       roles: ["admin", "manager", "kasir"] },
+  { to: "/tables",          label: "Meja (Dine-In)",  icon: Utensils,        testId: "nav-tables",    roles: ["admin", "manager"] },
+  { to: "/shifts",          label: "Shift",           icon: Clock,           testId: "nav-shifts",    roles: ["admin", "manager"] },
+  { to: "/products",        label: "Produk",          icon: Package,         testId: "nav-products",  roles: ["admin", "manager"] },
+  { to: "/inventory",       label: "Inventory",       icon: Boxes,           testId: "nav-inventory", roles: ["admin", "manager"] },
+  { to: "/transfers",       label: "Transfer Stok",   icon: ArrowRightLeft,  testId: "nav-transfers", roles: ["admin", "manager"] },
+  { to: "/purchase-orders", label: "Purchase Order",  icon: ClipboardList,   testId: "nav-po",        roles: ["admin", "manager"] },
+  { to: "/customers",       label: "Pelanggan",       icon: Users,           testId: "nav-customers", roles: ["admin", "manager"] },
+  { to: "/suppliers",       label: "Supplier",        icon: Truck,           testId: "nav-suppliers", roles: ["admin", "manager"] },
+  { to: "/outlets",         label: "Outlet",          icon: Store,           testId: "nav-outlets",   roles: ["admin"] },
+  { to: "/reports",         label: "Laporan",         icon: BarChart3,       testId: "nav-reports",   roles: ["admin", "manager"] },
+  { to: "/users",           label: "Pengguna",        icon: UserCog,         testId: "nav-users",     roles: ["admin"] },
+  { to: "/settings",        label: "Pengaturan",      icon: Settings,        testId: "nav-settings",  roles: ["admin"] },
 ];
+
+// Exported so router / App.js can reuse the same matrix for route protection
+export function canAccess(role, path) {
+  const item = NAV.find(n => n.to === path);
+  if (!item) return false;
+  return item.roles.includes(role);
+}
+
+export function defaultLandingFor(role) {
+  if (role === "kasir") return "/pos";
+  return "/dashboard";
+}
+
+const ROLE_LABEL = { admin: "Owner / Admin", manager: "Manager", kasir: "Kasir" };
 
 export default function Layout() {
   const { user, logout } = useAuth();
   const nav = useNavigate();
 
   const handleLogout = async () => { await logout(); nav("/login"); };
-
-  const visibleNav = NAV.filter(n => !n.adminOnly || user?.role === "admin");
+  const visibleNav = NAV.filter(n => n.roles.includes(user?.role));
 
   return (
     <div className="min-h-screen bg-[#050505] text-[#FDFBF7] flex">
@@ -69,7 +84,7 @@ export default function Layout() {
           <div className="px-3 py-2 mb-2">
             <p className="text-xs text-[#A39B8B]">Masuk sebagai</p>
             <p className="text-sm text-[#FDFBF7] truncate" data-testid="user-name">{user?.name}</p>
-            <p className="text-[10px] text-[#D4AF37] uppercase tracking-wider">{user?.role}</p>
+            <p className="text-[10px] text-[#D4AF37] uppercase tracking-wider" data-testid="user-role-badge">{ROLE_LABEL[user?.role] || user?.role}</p>
           </div>
           <button
             onClick={handleLogout}
