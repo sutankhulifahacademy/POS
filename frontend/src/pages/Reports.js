@@ -1,19 +1,142 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import api, { formatIDR } from "../lib/api";
 import PageHeader from "../components/PageHeader";
-import { Receipt as ReceiptIcon, Printer } from "lucide-react";
+import { Receipt as ReceiptIcon, Printer, FileSpreadsheet, FileText, Calendar } from "lucide-react";
 import Receipt, { printReceipt } from "../components/Receipt";
+import { toast } from "sonner";
+import * as XLSX from "xlsx";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 export default function Reports() {
   const [sales, setSales] = useState([]);
   const [selected, setSelected] = useState(null);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   useEffect(() => { api.get("/sales").then(r => setSales(r.data)); }, []);
 
+  const filtered = useMemo(() => sales.filter(s => {
+    const d = s.created_at.slice(0, 10);
+    if (dateFrom && d < dateFrom) return false;
+    if (dateTo && d > dateTo) return false;
+    return true;
+  }), [sales, dateFrom, dateTo]);
+
+  const totals = useMemo(() => {
+    const total = filtered.reduce((s, x) => s + x.total, 0);
+    const itemsCount = filtered.reduce((s, x) => s + x.items.reduce((a, b) => a + b.quantity, 0), 0);
+    return { total, itemsCount, txCount: filtered.length };
+  }, [filtered]);
+
+  const exportExcel = () => {
+    if (filtered.length === 0) return toast.error("Tidak ada data untuk diekspor");
+    const rows = filtered.map(s => ({
+      "Invoice": s.invoice_no,
+      "Waktu": new Date(s.created_at).toLocaleString("id-ID"),
+      "Kasir": s.cashier_name,
+      "Metode": s.payment_method.toUpperCase(),
+      "Jumlah Item": s.items.reduce((a, b) => a + b.quantity, 0),
+      "Subtotal": s.subtotal,
+      "Diskon": s.discount,
+      "Total": s.total,
+    }));
+    const summary = [
+      { "Invoice": "", "Waktu": "", "Kasir": "", "Metode": "", "Jumlah Item": "", "Subtotal": "", "Diskon": "TOTAL", "Total": totals.total },
+    ];
+    const ws = XLSX.utils.json_to_sheet([...rows, ...summary]);
+    ws["!cols"] = [{ wch: 30 }, { wch: 22 }, { wch: 22 }, { wch: 10 }, { wch: 12 }, { wch: 15 }, { wch: 12 }, { wch: 15 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Laporan Penjualan");
+    const fname = `laporan-penjualan-${dateFrom || "all"}-${dateTo || "all"}.xlsx`;
+    XLSX.writeFile(wb, fname);
+    toast.success("Excel berhasil diunduh");
+  };
+
+  const exportPDF = () => {
+    if (filtered.length === 0) return toast.error("Tidak ada data untuk diekspor");
+    const doc = new jsPDF({ orientation: "landscape" });
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.setTextColor(212, 175, 55);
+    doc.text("Sutan Khulifah Academy", 14, 15);
+    doc.setFontSize(12);
+    doc.setTextColor(50);
+    doc.text("Laporan Penjualan", 14, 22);
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    const range = `${dateFrom || "Awal"} s/d ${dateTo || "Sekarang"}`;
+    doc.text(`Periode: ${range}`, 14, 28);
+    doc.text(`Total Transaksi: ${totals.txCount}  |  Item Terjual: ${totals.itemsCount}  |  Total Pendapatan: ${formatIDR(totals.total)}`, 14, 33);
+
+    autoTable(doc, {
+      startY: 40,
+      head: [["Invoice", "Waktu", "Kasir", "Metode", "Item", "Subtotal", "Diskon", "Total"]],
+      body: filtered.map(s => [
+        s.invoice_no,
+        new Date(s.created_at).toLocaleString("id-ID"),
+        s.cashier_name,
+        s.payment_method.toUpperCase(),
+        s.items.reduce((a, b) => a + b.quantity, 0),
+        formatIDR(s.subtotal),
+        formatIDR(s.discount),
+        formatIDR(s.total),
+      ]),
+      headStyles: { fillColor: [10, 10, 10], textColor: [212, 175, 55], fontStyle: "bold" },
+      styles: { fontSize: 8, cellPadding: 2 },
+      alternateRowStyles: { fillColor: [248, 244, 232] },
+      foot: [["", "", "", "", "TOTAL", "", "", formatIDR(totals.total)]],
+      footStyles: { fillColor: [212, 175, 55], textColor: [5, 5, 5], fontStyle: "bold" },
+    });
+
+    const fname = `laporan-penjualan-${dateFrom || "all"}-${dateTo || "all"}.pdf`;
+    doc.save(fname);
+    toast.success("PDF berhasil diunduh");
+  };
+
   return (
     <div>
-      <PageHeader title="Laporan Penjualan" subtitle="Riwayat transaksi dan detail invoice" />
-      <div className="p-8">
+      <PageHeader title="Laporan Penjualan" subtitle="Riwayat transaksi dengan filter periode dan ekspor PDF/Excel" />
+      <div className="p-8 space-y-6">
+        {/* Filter + Export Bar */}
+        <div className="bg-[#111] gold-border rounded-lg p-4 flex flex-wrap items-end gap-4">
+          <div>
+            <label className="text-[10px] uppercase tracking-widest text-[#A39B8B] mb-1 block flex items-center gap-1"><Calendar size={12} /> Dari</label>
+            <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-sm text-[#FDFBF7]" data-testid="report-from" />
+          </div>
+          <div>
+            <label className="text-[10px] uppercase tracking-widest text-[#A39B8B] mb-1 block flex items-center gap-1"><Calendar size={12} /> Sampai</label>
+            <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-sm text-[#FDFBF7]" data-testid="report-to" />
+          </div>
+          <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-xs text-[#A39B8B] hover:text-[#FDFBF7] px-3 py-2">Reset</button>
+          <div className="flex-1"></div>
+          <div className="flex gap-2">
+            <button onClick={exportExcel} data-testid="export-excel-btn" className="flex items-center gap-2 bg-[#111] border border-[#2E8B57] text-[#2E8B57] hover:bg-[#2E8B57]/10 px-4 py-2 rounded-md text-sm uppercase tracking-widest font-semibold transition-colors">
+              <FileSpreadsheet size={14} strokeWidth={1.8} /> Excel
+            </button>
+            <button onClick={exportPDF} data-testid="export-pdf-btn" className="flex items-center gap-2 bg-[#D4AF37] text-[#050505] hover:bg-[#FFD700] px-4 py-2 rounded-md text-sm uppercase tracking-widest font-semibold transition-colors">
+              <FileText size={14} strokeWidth={1.8} /> PDF
+            </button>
+          </div>
+        </div>
+
+        {/* Summary bar */}
+        <div className="grid grid-cols-3 gap-4">
+          <div className="bg-[#111] gold-border rounded-lg p-4">
+            <p className="text-xs uppercase tracking-widest text-[#A39B8B]">Transaksi</p>
+            <p className="font-serif-luxury text-2xl text-[#FDFBF7] mt-1">{totals.txCount}</p>
+          </div>
+          <div className="bg-[#111] gold-border rounded-lg p-4">
+            <p className="text-xs uppercase tracking-widest text-[#A39B8B]">Item Terjual</p>
+            <p className="font-serif-luxury text-2xl text-[#FDFBF7] mt-1">{totals.itemsCount}</p>
+          </div>
+          <div className="bg-[#111] gold-border rounded-lg p-4">
+            <p className="text-xs uppercase tracking-widest text-[#A39B8B]">Total Pendapatan</p>
+            <p className="font-serif-luxury text-2xl text-[#D4AF37] mt-1">{formatIDR(totals.total)}</p>
+          </div>
+        </div>
+
+        {/* Table */}
         <div className="bg-[#111] gold-border rounded-lg overflow-hidden">
           <table className="w-full">
             <thead>
@@ -26,8 +149,8 @@ export default function Reports() {
               </tr>
             </thead>
             <tbody>
-              {sales.length === 0 && <tr><td colSpan={5} className="px-6 py-12 text-center text-[#A39B8B]"><ReceiptIcon size={40} strokeWidth={1.2} className="mx-auto mb-3 opacity-40" />Belum ada transaksi</td></tr>}
-              {sales.map((s) => (
+              {filtered.length === 0 && <tr><td colSpan={5} className="px-6 py-12 text-center text-[#A39B8B]"><ReceiptIcon size={40} strokeWidth={1.2} className="mx-auto mb-3 opacity-40" />Tidak ada transaksi pada periode ini</td></tr>}
+              {filtered.map((s) => (
                 <tr key={s.id} onClick={() => setSelected(s)} className="border-b border-[rgba(212,175,55,0.08)] last:border-0 hover:bg-[#1A1A1A] transition-colors cursor-pointer" data-testid={`sale-row-${s.id}`}>
                   <td className="px-6 py-3 text-sm text-[#D4AF37]">{s.invoice_no}</td>
                   <td className="px-6 py-3 text-xs text-[#A39B8B]">{new Date(s.created_at).toLocaleString("id-ID")}</td>

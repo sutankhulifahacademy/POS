@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { LayoutDashboard, ShoppingCart, Package, Boxes, Users, Truck, Store, BarChart3, Settings, LogOut, ClipboardList, Clock } from "lucide-react";
+import { LayoutDashboard, ShoppingCart, Package, Boxes, Users, Truck, Store, BarChart3, Settings, LogOut, ClipboardList, Clock, UserCog, ArrowRightLeft } from "lucide-react";
 import { Toaster } from "sonner";
 
 const LOGO = "https://customer-assets-gfyr7b9c.emergentagent.net/job_inventory-hub-3002/artifacts/agyuw41m_logoSK.png";
@@ -11,11 +11,13 @@ const NAV = [
   { to: "/shifts", label: "Shift", icon: Clock, testId: "nav-shifts" },
   { to: "/products", label: "Produk", icon: Package, testId: "nav-products" },
   { to: "/inventory", label: "Inventory", icon: Boxes, testId: "nav-inventory" },
+  { to: "/transfers", label: "Transfer Stok", icon: ArrowRightLeft, testId: "nav-transfers" },
   { to: "/purchase-orders", label: "Purchase Order", icon: ClipboardList, testId: "nav-po" },
   { to: "/customers", label: "Pelanggan", icon: Users, testId: "nav-customers" },
   { to: "/suppliers", label: "Supplier", icon: Truck, testId: "nav-suppliers" },
   { to: "/outlets", label: "Outlet", icon: Store, testId: "nav-outlets" },
   { to: "/reports", label: "Laporan", icon: BarChart3, testId: "nav-reports" },
+  { to: "/users", label: "Pengguna", icon: UserCog, testId: "nav-users", adminOnly: true },
   { to: "/settings", label: "Pengaturan", icon: Settings, testId: "nav-settings" },
 ];
 
@@ -23,10 +25,9 @@ export default function Layout() {
   const { user, logout } = useAuth();
   const nav = useNavigate();
 
-  const handleLogout = async () => {
-    await logout();
-    nav("/login");
-  };
+  const handleLogout = async () => { await logout(); nav("/login"); };
+
+  const visibleNav = NAV.filter(n => !n.adminOnly || user?.role === "admin");
 
   return (
     <div className="min-h-screen bg-[#050505] text-[#FDFBF7] flex">
@@ -42,7 +43,7 @@ export default function Layout() {
           </div>
         </div>
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-          {NAV.map((n) => {
+          {visibleNav.map((n) => {
             const Icon = n.icon;
             return (
               <NavLink

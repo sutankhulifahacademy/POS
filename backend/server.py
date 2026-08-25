@@ -194,6 +194,33 @@ class ShiftCloseIn(BaseModel):
     actual_cash: float
     note: Optional[str] = ""
 
+class UserCreateIn(BaseModel):
+    email: EmailStr
+    password: str
+    name: str
+    role: Literal["admin", "manager", "kasir"] = "kasir"
+
+class UserUpdateIn(BaseModel):
+    name: Optional[str] = None
+    role: Optional[Literal["admin", "manager", "kasir"]] = None
+    is_active: Optional[bool] = None
+
+class PasswordResetIn(BaseModel):
+    new_password: str
+
+class TransferItem(BaseModel):
+    product_id: str
+    name: str
+    quantity: int
+
+class TransferIn(BaseModel):
+    from_outlet_id: str
+    to_outlet_id: str
+    from_outlet_name: str
+    to_outlet_name: str
+    items: List[TransferItem]
+    note: Optional[str] = ""
+
 # ============ AUTH ROUTES ============
 @api.post("/auth/register")
 async def register(body: RegisterIn, response: Response):
@@ -625,6 +652,126 @@ async def report_dashboard(user: dict = Depends(get_current_user)):
         "daily_revenue": [{"date": d, "revenue": r} for d, r in sorted_days],
         "top_products": top_products,
     }
+
+# ============ USER MANAGEMENT (admin only) ============
+@api.get("/users")
+async def list_users(user: dict = Depends(require_role("admin"))):
+    users = await db.users.find({}, {"_id": 0, "password_hash": 0}).sort("created_at", -1).to_list(500)
+    return users
+
+@api.post("/users")
+async def create_user(body: UserCreateIn, user: dict = Depends(require_role("admin"))):
+    email = body.email.lower()
+    existing = await db.users.find_one({"email": email})
+    if existing:
+        raise HTTPException(status_code=400, detail="Email sudah terdaftar")
+    doc = {
+        "id": new_id(),
+        "email": email,
+        "name": body.name,
+        "role": body.role,
+        "password_hash": hash_password(body.password),
+        "is_active": True,
+        "created_at": now_iso(),
+    }
+    await db.users.insert_one(doc)
+    doc.pop("_id", None)
+    doc.pop("password_hash", None)
+    return doc
+
+@api.put("/users/{user_id}")
+async def update_user(user_id: str, body: UserUpdateIn, user: dict = Depends(require_role("admin"))):
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not updates:
+        raise HTTPException(status_code=400, detail="No updates")
+    updates["updated_at"] = now_iso()
+    result = await db.users.update_one({"id": user_id}, {"$set": updates})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+    updated = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
+    return updated
+
+@api.post("/users/{user_id}/reset-password")
+async def reset_user_password(user_id: str, body: PasswordResetIn, user: dict = Depends(require_role("admin"))):
+    if len(body.new_password) < 6:
+        raise HTTPException(status_code=400, detail="Password minimal 6 karakter")
+    result = await db.users.update_one({"id": user_id}, {"$set": {"password_hash": hash_password(body.new_password), "updated_at": now_iso()}})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"ok": True}
+
+@api.delete("/users/{user_id}")
+async def delete_user(user_id: str, user: dict = Depends(require_role("admin"))):
+    if user_id == user["id"]:
+        raise HTTPException(status_code=400, detail="Tidak bisa menghapus akun sendiri")
+    result = await db.users.delete_one({"id": user_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"ok": True}
+
+# ============ STOCK TRANSFERS ============
+@api.get("/stock-transfers")
+async def list_transfers(user: dict = Depends(get_current_user), limit: int = 200):
+    items = await db.stock_transfers.find({}, {"_id": 0}).sort("created_at", -1).to_list(limit)
+    return items
+
+@api.post("/stock-transfers")
+async def create_transfer(body: TransferIn, user: dict = Depends(require_role("admin", "manager"))):
+    if body.from_outlet_id == body.to_outlet_id:
+        raise HTTPException(status_code=400, detail="Outlet sumber dan tujuan tidak boleh sama")
+    if not body.items:
+        raise HTTPException(status_code=400, detail="Item tidak boleh kosong")
+    # Validate products exist & stock
+    for it in body.items:
+        p = await db.products.find_one({"id": it.product_id})
+        if not p:
+            raise HTTPException(status_code=400, detail=f"Produk {it.name} tidak ditemukan")
+        if p["stock"] < it.quantity:
+            raise HTTPException(status_code=400, detail=f"Stok {p['name']} tidak cukup untuk transfer")
+    transfer_no = f"TRF-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+    transfer_id = new_id()
+    doc = {
+        "id": transfer_id,
+        "transfer_no": transfer_no,
+        "from_outlet_id": body.from_outlet_id,
+        "to_outlet_id": body.to_outlet_id,
+        "from_outlet_name": body.from_outlet_name,
+        "to_outlet_name": body.to_outlet_name,
+        "items": [i.model_dump() for i in body.items],
+        "total_quantity": sum(i.quantity for i in body.items),
+        "note": body.note,
+        "status": "completed",
+        "created_by": user["id"],
+        "created_by_name": user.get("name", ""),
+        "created_at": now_iso(),
+    }
+    await db.stock_transfers.insert_one(doc)
+    # Log two movements per item for audit
+    for it in body.items:
+        await db.stock_movements.insert_one({
+            "id": new_id(),
+            "product_id": it.product_id,
+            "product_name": it.name,
+            "delta": -it.quantity,
+            "reason": "transfer_out",
+            "note": f"{transfer_no} → {body.to_outlet_name}",
+            "outlet_id": body.from_outlet_id,
+            "user_id": user["id"],
+            "created_at": now_iso(),
+        })
+        await db.stock_movements.insert_one({
+            "id": new_id(),
+            "product_id": it.product_id,
+            "product_name": it.name,
+            "delta": it.quantity,
+            "reason": "transfer_in",
+            "note": f"{transfer_no} ← {body.from_outlet_name}",
+            "outlet_id": body.to_outlet_id,
+            "user_id": user["id"],
+            "created_at": now_iso(),
+        })
+    doc.pop("_id", None)
+    return doc
 
 # ============ SEED / STARTUP ============
 @app.on_event("startup")

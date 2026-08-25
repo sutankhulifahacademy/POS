@@ -14,6 +14,8 @@ import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import PurchaseOrders from "./pages/PurchaseOrders";
 import Shifts from "./pages/Shifts";
+import Users from "./pages/Users";
+import Transfers from "./pages/Transfers";
 
 function Protected({ children }) {
   const { user, loading } = useAuth();
@@ -40,11 +42,13 @@ function App() {
             <Route path="/shifts" element={<Shifts />} />
             <Route path="/products" element={<Products />} />
             <Route path="/inventory" element={<Inventory />} />
+            <Route path="/transfers" element={<Transfers />} />
             <Route path="/purchase-orders" element={<PurchaseOrders />} />
             <Route path="/customers" element={<Customers />} />
             <Route path="/suppliers" element={<Suppliers />} />
             <Route path="/outlets" element={<Outlets />} />
             <Route path="/reports" element={<Reports />} />
+            <Route path="/users" element={<Users />} />
             <Route path="/settings" element={<Settings />} />
           </Route>
           <Route path="/pos" element={<Protected><POS /></Protected>} />
