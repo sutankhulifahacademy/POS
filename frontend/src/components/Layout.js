@@ -20,7 +20,7 @@ const NAV = [
   { to: "/suppliers",       label: "Supplier",        icon: Truck,           testId: "nav-suppliers", roles: ["admin", "manager"] },
   { to: "/outlets",         label: "Outlet",          icon: Store,           testId: "nav-outlets",   roles: ["admin"] },
   { to: "/reports",         label: "Laporan",         icon: BarChart3,       testId: "nav-reports",   roles: ["admin", "manager"] },
-  { to: "/users",           label: "Pengguna",        icon: UserCog,         testId: "nav-users",     roles: ["admin"] },
+  { to: "/users",           label: "Karyawan",        icon: UserCog,         testId: "nav-users",     roles: ["admin", "manager"] },
   { to: "/settings",        label: "Pengaturan",      icon: Settings,        testId: "nav-settings",  roles: ["admin"] },
 ];
 

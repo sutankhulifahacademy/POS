@@ -1,289 +1,214 @@
+"""Sutan Khulifah POS - PostgreSQL backend (SQLAlchemy async + raw SQL for pragmatic clarity)."""
 from dotenv import load_dotenv
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-import os
-import uuid
-import logging
+import os, uuid, json, logging, base64, hashlib, hmac, io
+from datetime import datetime, timezone, timedelta
+from typing import List, Optional, Literal, Any
 import jwt
 import bcrypt
-from datetime import datetime, timezone, timedelta
-from typing import List, Optional, Literal
 
-from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, Query
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends
 from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
-from pydantic import BaseModel, Field, EmailStr, ConfigDict
+from pydantic import BaseModel, EmailStr
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy import text
 
 # ============ CONFIG ============
 JWT_ALGORITHM = "HS256"
 JWT_SECRET = os.environ["JWT_SECRET"]
-MONGO_URL = os.environ["MONGO_URL"]
-DB_NAME = os.environ["DB_NAME"]
+POSTGRES_URL = os.environ["POSTGRES_URL"]
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@example.com")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
 
-client = AsyncIOMotorClient(MONGO_URL)
-db = client[DB_NAME]
+engine = create_async_engine(POSTGRES_URL, pool_pre_ping=True, pool_size=10, max_overflow=20)
 
-app = FastAPI(title="Sutan Khulifah POS API")
+app = FastAPI(title="Sutan Khulifah POS API (PostgreSQL)")
 api = APIRouter(prefix="/api")
-
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ============ HELPERS ============
-def now_iso() -> str:
+# ============ DB HELPERS ============
+async def q_all(sql: str, **params):
+    async with engine.begin() as conn:
+        r = await conn.execute(text(sql), params)
+        return [dict(m) for m in r.mappings().all()]
+
+async def q_one(sql: str, **params):
+    async with engine.begin() as conn:
+        r = await conn.execute(text(sql), params)
+        row = r.mappings().first()
+        return dict(row) if row else None
+
+async def q_exec(sql: str, **params):
+    async with engine.begin() as conn:
+        r = await conn.execute(text(sql), params)
+        return r
+
+def now_iso():
     return datetime.now(timezone.utc).isoformat()
 
-def new_id() -> str:
+def new_id():
     return str(uuid.uuid4())
 
-def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+def _serialize(v):
+    """Convert non-JSON-serializable values (UUID, datetime) to str."""
+    if isinstance(v, uuid.UUID):
+        return str(v)
+    if isinstance(v, datetime):
+        return v.isoformat()
+    return v
 
-def verify_password(plain: str, hashed: str) -> bool:
-    try:
-        return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
-    except Exception:
-        return False
+def clean(row):
+    if row is None:
+        return None
+    return {k: _serialize(v) for k, v in row.items()}
 
-def create_access_token(user_id: str, email: str, role: str) -> str:
-    payload = {
-        "sub": user_id,
-        "email": email,
-        "role": role,
-        "exp": datetime.now(timezone.utc) + timedelta(hours=12),
-        "type": "access",
-    }
-    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+def clean_list(rows):
+    return [clean(r) for r in rows]
 
-async def get_current_user(request: Request) -> dict:
-    token = request.cookies.get("access_token")
+def hash_password(pw): return bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode()
+def verify_password(pw, hashed):
+    try: return bcrypt.checkpw(pw.encode(), hashed.encode())
+    except Exception: return False
+
+def create_token(uid, email, role):
+    return jwt.encode({"sub": uid, "email": email, "role": role,
+                       "exp": datetime.now(timezone.utc) + timedelta(hours=12),
+                       "type": "access"}, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+async def get_current_user(request: Request):
+    token = request.cookies.get("access_token") or ""
     if not token:
         auth = request.headers.get("Authorization", "")
-        if auth.startswith("Bearer "):
-            token = auth[7:]
+        if auth.startswith("Bearer "): token = auth[7:]
     if not token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+        raise HTTPException(401, "Not authenticated")
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        if payload.get("type") != "access":
-            raise HTTPException(status_code=401, detail="Invalid token type")
-        user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
-        if not user:
-            raise HTTPException(status_code=401, detail="User not found")
-        return user
+        user = await q_one("SELECT id, email, name, role, is_active FROM users WHERE id = :id", id=payload["sub"])
+        if not user: raise HTTPException(401, "User not found")
+        return clean(user)
     except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
+        raise HTTPException(401, "Token expired")
     except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
+        raise HTTPException(401, "Invalid token")
 
 def require_role(*roles):
     async def dep(user: dict = Depends(get_current_user)):
-        if user["role"] not in roles:
-            raise HTTPException(status_code=403, detail="Forbidden: insufficient role")
+        if user["role"] not in roles: raise HTTPException(403, "Forbidden")
         return user
     return dep
 
 # ============ MODELS ============
 class RegisterIn(BaseModel):
-    email: EmailStr
-    password: str
-    name: str
-    role: Literal["admin", "manager", "kasir"] = "kasir"
-
+    email: EmailStr; password: str; name: str; role: Literal["admin","manager","kasir"]="kasir"
 class LoginIn(BaseModel):
-    email: EmailStr
-    password: str
-
-class BusinessSetup(BaseModel):
-    name: str
-    business_type: Literal["retail", "fnb", "fashion", "general"]
-    currency: str = "IDR"
-    tax_rate: float = 0.0
-    address: Optional[str] = ""
-
+    email: EmailStr; password: str
+class BusinessIn(BaseModel):
+    name: str; business_type: Literal["retail","fnb","fashion","general"]; currency: str="IDR"; tax_rate: float=0.0; address: Optional[str]=""
 class OutletIn(BaseModel):
-    name: str
-    address: Optional[str] = ""
-    phone: Optional[str] = ""
-    is_main: bool = False
-
+    name: str; address: Optional[str]=""; phone: Optional[str]=""; is_main: bool=False
 class CategoryIn(BaseModel):
-    name: str
-    color: Optional[str] = "#D4AF37"
-
+    name: str; color: Optional[str]="#F4C842"
 class VariantIn(BaseModel):
-    name: str
-    sku: Optional[str] = ""
-    price: float
-    stock: int = 0
-
+    name: str; sku: Optional[str]=""; price: float; stock: int=0
 class ProductIn(BaseModel):
-    name: str
-    sku: str
-    barcode: Optional[str] = ""
-    category_id: Optional[str] = ""
-    price: float
-    cost: float = 0.0
-    stock: int = 0
-    low_stock_threshold: int = 5
-    unit: str = "pcs"
-    image_url: Optional[str] = ""
-    description: Optional[str] = ""
-    is_active: bool = True
-    variants: Optional[List[VariantIn]] = []
-
+    name: str; sku: str; barcode: Optional[str]=""; category_id: Optional[str]=""; price: float
+    cost: float=0.0; stock: int=0; low_stock_threshold: int=5; unit: str="pcs"
+    image_url: Optional[str]=""; description: Optional[str]=""; is_active: bool=True
+    variants: Optional[List[VariantIn]]=[]
 class StockAdjustIn(BaseModel):
-    product_id: str
-    delta: int  # positive or negative
-    reason: str  # "restock", "sale", "adjustment", "return"
-    note: Optional[str] = ""
-
+    product_id: str; delta: int; reason: str; note: Optional[str]=""
 class CustomerIn(BaseModel):
-    name: str
-    phone: Optional[str] = ""
-    email: Optional[str] = ""
-    address: Optional[str] = ""
-
+    name: str; phone: Optional[str]=""; email: Optional[str]=""; address: Optional[str]=""
 class SupplierIn(BaseModel):
-    name: str
-    contact_person: Optional[str] = ""
-    phone: Optional[str] = ""
-    email: Optional[str] = ""
-    address: Optional[str] = ""
-
+    name: str; contact_person: Optional[str]=""; phone: Optional[str]=""; email: Optional[str]=""; address: Optional[str]=""
 class CartItem(BaseModel):
-    product_id: str
-    variant_name: Optional[str] = ""
-    name: str
-    price: float
-    quantity: int
-
+    product_id: str; variant_name: Optional[str]=""; name: str; price: float; quantity: int
 class SaleIn(BaseModel):
-    outlet_id: Optional[str] = ""
-    customer_id: Optional[str] = ""
-    items: List[CartItem]
-    payment_method: Literal["cash", "card", "qris", "transfer"] = "cash"
-    amount_paid: float
-    discount: float = 0.0
-    tax: float = 0.0
-    note: Optional[str] = ""
-
+    outlet_id: Optional[str]=""; customer_id: Optional[str]=""; items: List[CartItem]
+    payment_method: Literal["cash","card","qris","transfer"]="cash"; amount_paid: float
+    discount: float=0.0; tax: float=0.0; note: Optional[str]=""
 class POItem(BaseModel):
-    product_id: str
-    name: str
-    quantity: int
-    cost: float
-
+    product_id: str; name: str; quantity: int; cost: float
 class POIn(BaseModel):
-    supplier_id: str
-    supplier_name: str
-    items: List[POItem]
-    note: Optional[str] = ""
-
+    supplier_id: str; supplier_name: str; items: List[POItem]; note: Optional[str]=""
 class ShiftOpenIn(BaseModel):
-    outlet_id: Optional[str] = ""
-    opening_cash: float = 0.0
-    note: Optional[str] = ""
-
+    outlet_id: Optional[str]=""; opening_cash: float=0.0; note: Optional[str]=""
 class ShiftCloseIn(BaseModel):
-    actual_cash: float
-    note: Optional[str] = ""
-
+    actual_cash: float; note: Optional[str]=""
 class UserCreateIn(BaseModel):
-    email: EmailStr
-    password: str
-    name: str
-    role: Literal["admin", "manager", "kasir"] = "kasir"
+    email: EmailStr; password: str; name: str; role: Literal["admin","manager","kasir"]="kasir"
+    phone: Optional[str] = ""
+    address: Optional[str] = ""
+    job_title: Optional[str] = ""
+    photo: Optional[str] = ""
+    ktp_image: Optional[str] = ""
+    ktp_number: Optional[str] = ""
 
 class UserUpdateIn(BaseModel):
     name: Optional[str] = None
-    role: Optional[Literal["admin", "manager", "kasir"]] = None
+    role: Optional[Literal["admin","manager","kasir"]] = None
     is_active: Optional[bool] = None
-
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    job_title: Optional[str] = None
+    photo: Optional[str] = None
+    ktp_image: Optional[str] = None
+    ktp_number: Optional[str] = None
 class PasswordResetIn(BaseModel):
     new_password: str
-
 class TransferItem(BaseModel):
-    product_id: str
-    name: str
-    quantity: int
-
+    product_id: str; name: str; quantity: int
 class TransferIn(BaseModel):
-    from_outlet_id: str
-    to_outlet_id: str
-    from_outlet_name: str
-    to_outlet_name: str
-    items: List[TransferItem]
-    note: Optional[str] = ""
-
+    from_outlet_id: str; to_outlet_id: str; from_outlet_name: str; to_outlet_name: str
+    items: List[TransferItem]; note: Optional[str]=""
 class TableIn(BaseModel):
-    name: str
-    capacity: int = 2
-    outlet_id: Optional[str] = ""
-    zone: Optional[str] = "Utama"
-
+    name: str; capacity: int=2; outlet_id: Optional[str]=""; zone: Optional[str]="Utama"
 class OrderItemIn(BaseModel):
-    product_id: str
-    name: str
-    price: float
-    quantity: int
-    variant_name: Optional[str] = ""
-    note: Optional[str] = ""
-
+    product_id: str; name: str; price: float; quantity: int; variant_name: Optional[str]=""; note: Optional[str]=""
 class OrderOpenIn(BaseModel):
-    table_id: str
-    outlet_id: Optional[str] = ""
-    guest_count: int = 1
-    items: Optional[List[OrderItemIn]] = []
-
+    table_id: str; outlet_id: Optional[str]=""; guest_count: int=1; items: Optional[List[OrderItemIn]]=[]
 class OrderUpdateItemsIn(BaseModel):
     items: List[OrderItemIn]
-
 class OrderCheckoutIn(BaseModel):
-    payment_method: Literal["cash", "card", "qris", "transfer"] = "cash"
-    amount_paid: float
-    discount: float = 0.0
-    tax: float = 0.0
-    customer_id: Optional[str] = ""
-
+    payment_method: Literal["cash","card","qris","transfer"]="cash"; amount_paid: float
+    discount: float=0.0; tax: float=0.0; customer_id: Optional[str]=""
 class QRISCreateIn(BaseModel):
-    amount: int
-    description: Optional[str] = "POS checkout"
+    amount: int; description: Optional[str]="POS checkout"
 
-# ============ AUTH ROUTES ============
+# ============ HELPERS ============
+def _u(v):
+    """Convert empty string to None for UUID columns."""
+    return None if not v or v == "" else v
+
+# ============ AUTH ============
 @api.post("/auth/register")
 async def register(body: RegisterIn, response: Response):
     email = body.email.lower()
-    existing = await db.users.find_one({"email": email})
-    if existing:
-        raise HTTPException(status_code=400, detail="Email already registered")
-    user_doc = {
-        "id": new_id(),
-        "email": email,
-        "name": body.name,
-        "role": body.role,
-        "password_hash": hash_password(body.password),
-        "created_at": now_iso(),
-    }
-    await db.users.insert_one(user_doc)
-    token = create_access_token(user_doc["id"], email, body.role)
-    response.set_cookie("access_token", token, httponly=True, secure=True, samesite="none", max_age=43200, path="/")
-    return {"id": user_doc["id"], "email": email, "name": body.name, "role": body.role, "token": token}
+    exists = await q_one("SELECT id FROM users WHERE email = :e", e=email)
+    if exists: raise HTTPException(400, "Email already registered")
+    uid = new_id()
+    await q_exec("""INSERT INTO users (id, email, name, role, password_hash, is_active, created_at)
+                    VALUES (:id, :e, :n, :r, :h, TRUE, NOW())""",
+                 id=uid, e=email, n=body.name, r=body.role, h=hash_password(body.password))
+    tok = create_token(uid, email, body.role)
+    response.set_cookie("access_token", tok, httponly=True, secure=True, samesite="none", max_age=43200, path="/")
+    return {"id": uid, "email": email, "name": body.name, "role": body.role, "token": tok}
 
 @api.post("/auth/login")
 async def login(body: LoginIn, response: Response):
     email = body.email.lower()
-    user = await db.users.find_one({"email": email})
-    if not user or not verify_password(body.password, user["password_hash"]):
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-    token = create_access_token(user["id"], email, user["role"])
-    response.set_cookie("access_token", token, httponly=True, secure=True, samesite="none", max_age=43200, path="/")
-    return {"id": user["id"], "email": email, "name": user["name"], "role": user["role"], "token": token}
+    u = await q_one("SELECT id, email, name, role, password_hash FROM users WHERE email = :e", e=email)
+    if not u or not verify_password(body.password, u["password_hash"]):
+        raise HTTPException(401, "Invalid email or password")
+    tok = create_token(str(u["id"]), u["email"], u["role"])
+    response.set_cookie("access_token", tok, httponly=True, secure=True, samesite="none", max_age=43200, path="/")
+    return {"id": str(u["id"]), "email": u["email"], "name": u["name"], "role": u["role"], "token": tok}
 
 @api.post("/auth/logout")
 async def logout(response: Response):
@@ -291,870 +216,652 @@ async def logout(response: Response):
     return {"ok": True}
 
 @api.get("/auth/me")
-async def me(user: dict = Depends(get_current_user)):
+async def me(user=Depends(get_current_user)):
     return user
 
 # ============ BUSINESS ============
 @api.get("/business")
-async def get_business(user: dict = Depends(get_current_user)):
-    b = await db.business.find_one({}, {"_id": 0})
-    return b
+async def get_business(user=Depends(get_current_user)):
+    return clean(await q_one("SELECT * FROM business LIMIT 1"))
 
 @api.post("/business")
-async def setup_business(body: BusinessSetup, user: dict = Depends(require_role("admin"))):
-    existing = await db.business.find_one({}, {"_id": 0})
-    doc = body.model_dump()
-    doc["updated_at"] = now_iso()
+async def setup_business(body: BusinessIn, user=Depends(require_role("admin"))):
+    existing = await q_one("SELECT id FROM business LIMIT 1")
     if existing:
-        await db.business.update_one({"id": existing["id"]}, {"$set": doc})
-        merged = {**existing, **doc}
-        return merged
-    doc["id"] = new_id()
-    doc["created_at"] = now_iso()
-    await db.business.insert_one(doc)
-    doc.pop("_id", None)
-    # Create default main outlet
-    outlet = {
-        "id": new_id(), "name": "Outlet Utama", "address": doc.get("address", ""),
-        "phone": "", "is_main": True, "created_at": now_iso()
-    }
-    if await db.outlets.count_documents({}) == 0:
-        await db.outlets.insert_one(outlet)
-    return doc
+        await q_exec("""UPDATE business SET name=:n, business_type=:bt, currency=:c, tax_rate=:t, address=:a, updated_at=NOW()
+                        WHERE id=:id""", id=existing["id"], n=body.name, bt=body.business_type,
+                     c=body.currency, t=body.tax_rate, a=body.address or "")
+    else:
+        await q_exec("""INSERT INTO business (id, name, business_type, currency, tax_rate, address, created_at)
+                        VALUES (:id, :n, :bt, :c, :t, :a, NOW())""",
+                     id=new_id(), n=body.name, bt=body.business_type, c=body.currency, t=body.tax_rate, a=body.address or "")
+        # Seed main outlet if none
+        cnt = await q_one("SELECT COUNT(*) AS c FROM outlets")
+        if cnt["c"] == 0:
+            await q_exec("""INSERT INTO outlets (id, name, address, phone, is_main, created_at)
+                            VALUES (:id, 'Outlet Utama', :a, '', TRUE, NOW())""",
+                         id=new_id(), a=body.address or "")
+    return clean(await q_one("SELECT * FROM business LIMIT 1"))
 
-# ============ GENERIC CRUD FACTORY ============
-def make_crud(path: str, collection: str, model_cls, role_write=("admin", "manager")):
-    @api.get(f"/{path}")
-    async def list_items(user: dict = Depends(get_current_user)):
-        items = await db[collection].find({}, {"_id": 0}).sort("created_at", -1).to_list(2000)
-        return items
+# ============ USERS (owner + manager can add/edit; only owner can delete) ============
+@api.get("/users")
+async def list_users(user=Depends(require_role("admin", "manager"))):
+    rows = await q_all("""SELECT id, email, name, role, is_active, phone, address, job_title, photo,
+                                  ktp_number, created_at, updated_at FROM users ORDER BY created_at DESC""")
+    return clean_list(rows)
 
-    @api.post(f"/{path}")
-    async def create_item(body: model_cls, user: dict = Depends(require_role(*role_write))):
-        doc = body.model_dump()
-        doc["id"] = new_id()
-        doc["created_at"] = now_iso()
-        doc["updated_at"] = now_iso()
-        await db[collection].insert_one(doc)
-        doc.pop("_id", None)
-        return doc
+@api.get("/users/{user_id}")
+async def get_user(user_id: str, user=Depends(require_role("admin", "manager"))):
+    row = await q_one("""SELECT id, email, name, role, is_active, phone, address, job_title, photo,
+                                 ktp_image, ktp_number, created_at, updated_at FROM users WHERE id=:id""", id=user_id)
+    if not row: raise HTTPException(404, "User not found")
+    return clean(row)
 
-    @api.put(f"/{path}/{{item_id}}")
-    async def update_item(item_id: str, body: model_cls, user: dict = Depends(require_role(*role_write))):
-        doc = body.model_dump()
-        doc["updated_at"] = now_iso()
-        result = await db[collection].update_one({"id": item_id}, {"$set": doc})
-        if result.matched_count == 0:
-            raise HTTPException(status_code=404, detail="Not found")
-        updated = await db[collection].find_one({"id": item_id}, {"_id": 0})
-        return updated
+@api.post("/users")
+async def create_user(body: UserCreateIn, user=Depends(require_role("admin", "manager"))):
+    email = body.email.lower()
+    if body.role == "admin" and user["role"] != "admin":
+        raise HTTPException(403, "Hanya owner yang bisa membuat akun admin")
+    exists = await q_one("SELECT id FROM users WHERE email = :e", e=email)
+    if exists: raise HTTPException(400, "Email sudah terdaftar")
+    uid = new_id()
+    await q_exec("""INSERT INTO users (id, email, name, role, password_hash, is_active, phone, address,
+                    job_title, photo, ktp_image, ktp_number, created_at)
+                    VALUES (:id, :e, :n, :r, :h, TRUE, :ph, :ad, :jt, :pt, :ki, :kn, NOW())""",
+                 id=uid, e=email, n=body.name, r=body.role, h=hash_password(body.password),
+                 ph=body.phone or "", ad=body.address or "", jt=body.job_title or "",
+                 pt=body.photo or "", ki=body.ktp_image or "", kn=body.ktp_number or "")
+    return clean(await q_one("""SELECT id, email, name, role, is_active, phone, address, job_title, photo,
+                                  ktp_number, created_at FROM users WHERE id=:id""", id=uid))
 
-    @api.delete(f"/{path}/{{item_id}}")
-    async def delete_item(item_id: str, user: dict = Depends(require_role(*role_write))):
-        result = await db[collection].delete_one({"id": item_id})
-        if result.deleted_count == 0:
-            raise HTTPException(status_code=404, detail="Not found")
-        return {"ok": True}
+@api.put("/users/{user_id}")
+async def update_user(user_id: str, body: UserUpdateIn, user=Depends(require_role("admin", "manager"))):
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not updates: raise HTTPException(400, "No updates")
+    if updates.get("role") == "admin" and user["role"] != "admin":
+        raise HTTPException(403, "Hanya owner yang bisa mengubah peran ke admin")
+    sets = ", ".join(f"{k}=:{k}" for k in updates.keys())
+    updates["id"] = user_id
+    r = await q_exec(f"UPDATE users SET {sets}, updated_at=NOW() WHERE id=:id", **updates)
+    if r.rowcount == 0: raise HTTPException(404, "User not found")
+    return clean(await q_one("SELECT id, email, name, role, is_active FROM users WHERE id=:id", id=user_id))
 
-make_crud("outlets", "outlets", OutletIn)
-make_crud("categories", "categories", CategoryIn)
-make_crud("customers", "customers", CustomerIn, role_write=("admin", "manager", "kasir"))
-make_crud("suppliers", "suppliers", SupplierIn)
-
-# ============ PRODUCTS (with stock movement handling) ============
-@api.get("/products")
-async def list_products(user: dict = Depends(get_current_user)):
-    items = await db.products.find({}, {"_id": 0}).sort("created_at", -1).to_list(5000)
-    return items
-
-@api.post("/products")
-async def create_product(body: ProductIn, user: dict = Depends(require_role("admin", "manager"))):
-    existing = await db.products.find_one({"sku": body.sku})
-    if existing:
-        raise HTTPException(status_code=400, detail="SKU already exists")
-    doc = body.model_dump()
-    doc["id"] = new_id()
-    doc["created_at"] = now_iso()
-    doc["updated_at"] = now_iso()
-    await db.products.insert_one(doc)
-    # Log initial stock as movement
-    if doc["stock"] > 0:
-        await db.stock_movements.insert_one({
-            "id": new_id(),
-            "product_id": doc["id"],
-            "product_name": doc["name"],
-            "delta": doc["stock"],
-            "reason": "initial",
-            "note": "Initial stock",
-            "user_id": user["id"],
-            "created_at": now_iso(),
-        })
-    doc.pop("_id", None)
-    return doc
-
-@api.put("/products/{product_id}")
-async def update_product(product_id: str, body: ProductIn, user: dict = Depends(require_role("admin", "manager"))):
-    doc = body.model_dump()
-    doc["updated_at"] = now_iso()
-    result = await db.products.update_one({"id": product_id}, {"$set": doc})
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Product not found")
-    return await db.products.find_one({"id": product_id}, {"_id": 0})
-
-@api.delete("/products/{product_id}")
-async def delete_product(product_id: str, user: dict = Depends(require_role("admin", "manager"))):
-    result = await db.products.delete_one({"id": product_id})
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Product not found")
+@api.post("/users/{user_id}/reset-password")
+async def reset_pw(user_id: str, body: PasswordResetIn, user=Depends(require_role("admin", "manager"))):
+    if len(body.new_password) < 6: raise HTTPException(400, "Password minimal 6 karakter")
+    r = await q_exec("UPDATE users SET password_hash=:h, updated_at=NOW() WHERE id=:id",
+                     h=hash_password(body.new_password), id=user_id)
+    if r.rowcount == 0: raise HTTPException(404, "User not found")
     return {"ok": True}
 
-@api.post("/inventory/adjust")
-async def adjust_stock(body: StockAdjustIn, user: dict = Depends(require_role("admin", "manager"))):
-    product = await db.products.find_one({"id": body.product_id})
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
-    new_stock = max(0, product["stock"] + body.delta)
-    await db.products.update_one({"id": body.product_id}, {"$set": {"stock": new_stock, "updated_at": now_iso()}})
-    movement = {
-        "id": new_id(),
-        "product_id": body.product_id,
-        "product_name": product["name"],
-        "delta": body.delta,
-        "reason": body.reason,
-        "note": body.note,
-        "user_id": user["id"],
-        "created_at": now_iso(),
-    }
-    await db.stock_movements.insert_one(movement)
-    movement.pop("_id", None)
-    return {"product_id": body.product_id, "new_stock": new_stock, "movement": movement}
+@api.delete("/users/{user_id}")
+async def delete_user(user_id: str, user=Depends(require_role("admin"))):
+    if str(user_id) == str(user["id"]): raise HTTPException(400, "Tidak bisa menghapus akun sendiri")
+    r = await q_exec("DELETE FROM users WHERE id=:id", id=user_id)
+    if r.rowcount == 0: raise HTTPException(404, "User not found")
+    return {"ok": True}
 
-@api.get("/inventory/movements")
-async def list_movements(user: dict = Depends(get_current_user), limit: int = 200):
-    items = await db.stock_movements.find({}, {"_id": 0}).sort("created_at", -1).to_list(limit)
-    return items
+# ============ CRUD FACTORY ============
+def make_crud(path, table, model_cls, cols, role_write=("admin", "manager")):
+    @api.get(f"/{path}")
+    async def _list(user=Depends(get_current_user)):
+        rows = await q_all(f"SELECT * FROM {table} ORDER BY created_at DESC NULLS LAST")
+        return clean_list(rows)
+    @api.post(f"/{path}")
+    async def _create(body: model_cls, user=Depends(require_role(*role_write))):
+        d = body.model_dump()
+        d["id"] = new_id()
+        col_list = ", ".join(["id"] + cols + ["created_at"])
+        val_list = ", ".join([":id"] + [f":{c}" for c in cols] + ["NOW()"])
+        await q_exec(f"INSERT INTO {table} ({col_list}) VALUES ({val_list})", **{"id": d["id"], **{c: d.get(c) for c in cols}})
+        return clean(await q_one(f"SELECT * FROM {table} WHERE id=:id", id=d["id"]))
+    @api.put(f"/{path}/{{item_id}}")
+    async def _update(item_id: str, body: model_cls, user=Depends(require_role(*role_write))):
+        d = body.model_dump()
+        sets = ", ".join([f"{c}=:{c}" for c in cols])
+        r = await q_exec(f"UPDATE {table} SET {sets}, updated_at=NOW() WHERE id=:id", id=item_id, **{c: d.get(c) for c in cols})
+        if r.rowcount == 0: raise HTTPException(404, "Not found")
+        return clean(await q_one(f"SELECT * FROM {table} WHERE id=:id", id=item_id))
+    @api.delete(f"/{path}/{{item_id}}")
+    async def _delete(item_id: str, user=Depends(require_role(*role_write))):
+        r = await q_exec(f"DELETE FROM {table} WHERE id=:id", id=item_id)
+        if r.rowcount == 0: raise HTTPException(404, "Not found")
+        return {"ok": True}
+
+make_crud("outlets", "outlets", OutletIn, ["name", "address", "phone", "is_main"])
+make_crud("categories", "categories", CategoryIn, ["name", "color"])
+make_crud("customers", "customers", CustomerIn, ["name", "phone", "email", "address"], role_write=("admin","manager","kasir"))
+make_crud("suppliers", "suppliers", SupplierIn, ["name", "contact_person", "phone", "email", "address"])
+
+# ============ PRODUCTS ============
+@api.get("/products")
+async def list_products(user=Depends(get_current_user)):
+    rows = await q_all("SELECT * FROM products ORDER BY created_at DESC")
+    return clean_list(rows)
 
 @api.get("/products/by-barcode/{code}")
-async def product_by_barcode(code: str, user: dict = Depends(get_current_user)):
-    p = await db.products.find_one({"$or": [{"barcode": code}, {"sku": code}]}, {"_id": 0})
-    if not p:
-        raise HTTPException(status_code=404, detail="Product not found")
-    return p
+async def product_by_barcode(code: str, user=Depends(get_current_user)):
+    p = await q_one("SELECT * FROM products WHERE barcode=:c OR sku=:c LIMIT 1", c=code)
+    if not p: raise HTTPException(404, "Product not found")
+    return clean(p)
+
+@api.post("/products")
+async def create_product(body: ProductIn, user=Depends(require_role("admin","manager"))):
+    exists = await q_one("SELECT id FROM products WHERE sku=:s", s=body.sku)
+    if exists: raise HTTPException(400, "SKU already exists")
+    pid = new_id()
+    variants_json = json.dumps([v.model_dump() for v in (body.variants or [])])
+    await q_exec("""INSERT INTO products (id, name, sku, barcode, category_id, price, cost, stock, low_stock_threshold,
+                                           unit, image_url, description, is_active, variants, created_at)
+                    VALUES (:id, :n, :s, :b, :ci, :p, :c, :st, :lt, :u, :img, :d, :a, CAST(:v AS jsonb), NOW())""",
+                 id=pid, n=body.name, s=body.sku, b=body.barcode or "", ci=_u(body.category_id),
+                 p=body.price, c=body.cost, st=body.stock, lt=body.low_stock_threshold,
+                 u=body.unit, img=body.image_url or "", d=body.description or "",
+                 a=body.is_active, v=variants_json)
+    if body.stock > 0:
+        await q_exec("""INSERT INTO stock_movements (id, product_id, product_name, delta, reason, note, user_id, created_at)
+                        VALUES (:id, :pid, :pn, :d, 'initial', 'Initial stock', :u, NOW())""",
+                     id=new_id(), pid=pid, pn=body.name, d=body.stock, u=user["id"])
+    return clean(await q_one("SELECT * FROM products WHERE id=:id", id=pid))
+
+@api.put("/products/{product_id}")
+async def update_product(product_id: str, body: ProductIn, user=Depends(require_role("admin","manager"))):
+    variants_json = json.dumps([v.model_dump() for v in (body.variants or [])])
+    r = await q_exec("""UPDATE products SET name=:n, sku=:s, barcode=:b, category_id=:ci, price=:p, cost=:c,
+                        stock=:st, low_stock_threshold=:lt, unit=:u, image_url=:img, description=:d, is_active=:a,
+                        variants=CAST(:v AS jsonb), updated_at=NOW() WHERE id=:id""",
+                     id=product_id, n=body.name, s=body.sku, b=body.barcode or "", ci=_u(body.category_id),
+                     p=body.price, c=body.cost, st=body.stock, lt=body.low_stock_threshold, u=body.unit,
+                     img=body.image_url or "", d=body.description or "", a=body.is_active, v=variants_json)
+    if r.rowcount == 0: raise HTTPException(404, "Product not found")
+    return clean(await q_one("SELECT * FROM products WHERE id=:id", id=product_id))
+
+@api.delete("/products/{product_id}")
+async def delete_product(product_id: str, user=Depends(require_role("admin","manager"))):
+    r = await q_exec("DELETE FROM products WHERE id=:id", id=product_id)
+    if r.rowcount == 0: raise HTTPException(404, "Not found")
+    return {"ok": True}
+
+# ============ INVENTORY ============
+async def _get_main_outlet_id():
+    r = await q_one("SELECT id FROM outlets WHERE is_main=TRUE LIMIT 1")
+    if not r:
+        r = await q_one("SELECT id FROM outlets LIMIT 1")
+    return str(r["id"]) if r else None
+
+async def _adjust_outlet_stock(product_id: str, outlet_id: str, delta: int):
+    if not outlet_id: return
+    existing = await q_one("SELECT id, quantity FROM outlet_stocks WHERE product_id=:p AND outlet_id=:o",
+                           p=product_id, o=outlet_id)
+    main = await _get_main_outlet_id()
+    if not existing:
+        # Seed: main outlet gets product.stock, others get 0
+        product = await q_one("SELECT stock FROM products WHERE id=:id", id=product_id)
+        base = product["stock"] if (product and str(outlet_id) == main) else 0
+        await q_exec("""INSERT INTO outlet_stocks (product_id, outlet_id, quantity, updated_at)
+                        VALUES (:p, :o, :q, NOW())""", p=product_id, o=outlet_id, q=base + delta)
+    else:
+        await q_exec("UPDATE outlet_stocks SET quantity=quantity+:d, updated_at=NOW() WHERE id=:id",
+                     d=delta, id=existing["id"])
+
+@api.post("/inventory/adjust")
+async def adjust_stock(body: StockAdjustIn, user=Depends(require_role("admin","manager"))):
+    p = await q_one("SELECT * FROM products WHERE id=:id", id=body.product_id)
+    if not p: raise HTTPException(404, "Product not found")
+    new_stock = max(0, p["stock"] + body.delta)
+    await q_exec("UPDATE products SET stock=:s, updated_at=NOW() WHERE id=:id", s=new_stock, id=body.product_id)
+    await q_exec("""INSERT INTO stock_movements (id, product_id, product_name, delta, reason, note, user_id, created_at)
+                    VALUES (:id, :pid, :pn, :d, :r, :note, :u, NOW())""",
+                 id=new_id(), pid=body.product_id, pn=p["name"], d=body.delta, r=body.reason, note=body.note or "", u=user["id"])
+    return {"product_id": body.product_id, "new_stock": new_stock}
+
+@api.get("/inventory/movements")
+async def list_movements(user=Depends(get_current_user), limit: int = 200):
+    rows = await q_all("SELECT * FROM stock_movements ORDER BY created_at DESC LIMIT :l", l=limit)
+    return clean_list(rows)
+
+# ============ SALES ============
+@api.post("/sales")
+async def create_sale(body: SaleIn, user=Depends(get_current_user)):
+    if not body.items: raise HTTPException(400, "Cart is empty")
+    subtotal = 0.0
+    for it in body.items:
+        p = await q_one("SELECT id, name, stock FROM products WHERE id=:id", id=it.product_id)
+        if not p: raise HTTPException(400, f"Product {it.name} not found")
+        if p["stock"] < it.quantity: raise HTTPException(400, f"Insufficient stock for {p['name']}")
+        subtotal += it.price * it.quantity
+    total = subtotal - body.discount + body.tax
+    if body.payment_method == "cash" and body.amount_paid < total:
+        raise HTTPException(400, "Insufficient payment amount")
+    change = max(0, body.amount_paid - total)
+    sale_id = new_id()
+    invoice_no = f"INV-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{sale_id[:6].upper()}"
+    active_shift = await q_one("SELECT id FROM shifts WHERE cashier_id=:c AND status='open' LIMIT 1", c=user["id"])
+    shift_id = str(active_shift["id"]) if active_shift else None
+    outlet_id = _u(body.outlet_id) or await _get_main_outlet_id()
+    items_json = json.dumps([i.model_dump() for i in body.items])
+    await q_exec("""INSERT INTO sales (id, invoice_no, shift_id, outlet_id, customer_id, cashier_id, cashier_name,
+                                        items, subtotal, discount, tax, total, payment_method, amount_paid,
+                                        change_amount, source, note, created_at)
+                    VALUES (:id, :inv, :sid, :oid, :cid, :ci, :cn, CAST(:it AS jsonb), :sub, :disc, :tax, :tot,
+                            :pm, :paid, :chg, 'pos', :note, NOW())""",
+                 id=sale_id, inv=invoice_no, sid=_u(shift_id), oid=_u(outlet_id), cid=_u(body.customer_id),
+                 ci=user["id"], cn=user.get("name",""), it=items_json, sub=subtotal, disc=body.discount,
+                 tax=body.tax, tot=total, pm=body.payment_method, paid=body.amount_paid, chg=change, note=body.note or "")
+    for it in body.items:
+        await q_exec("UPDATE products SET stock=stock-:q WHERE id=:id", q=it.quantity, id=it.product_id)
+        if outlet_id:
+            await _adjust_outlet_stock(it.product_id, outlet_id, -it.quantity)
+        await q_exec("""INSERT INTO stock_movements (id, product_id, product_name, delta, reason, note, outlet_id, user_id, created_at)
+                        VALUES (:id, :pid, :pn, :d, 'sale', :note, :oid, :u, NOW())""",
+                     id=new_id(), pid=it.product_id, pn=it.name, d=-it.quantity, note=f"Sale {invoice_no}",
+                     oid=_u(outlet_id), u=user["id"])
+    if body.customer_id:
+        pts = int(total // 10000)
+        await q_exec("""UPDATE customers SET loyalty_points=loyalty_points+:p, total_spent=total_spent+:t,
+                        visit_count=visit_count+1 WHERE id=:id""",
+                     p=pts, t=total, id=body.customer_id)
+    row = await q_one("SELECT *, change_amount AS change FROM sales WHERE id=:id", id=sale_id)
+    return clean(row)
+
+@api.get("/sales")
+async def list_sales(user=Depends(get_current_user), limit: int = 200):
+    rows = await q_all("SELECT *, change_amount AS change FROM sales ORDER BY created_at DESC LIMIT :l", l=limit)
+    return clean_list(rows)
+
+@api.get("/sales/{sale_id}")
+async def get_sale(sale_id: str, user=Depends(get_current_user)):
+    r = await q_one("SELECT *, change_amount AS change FROM sales WHERE id=:id", id=sale_id)
+    if not r: raise HTTPException(404, "Not found")
+    return clean(r)
+
+# ============ REPORTS ============
+@api.get("/reports/dashboard")
+async def report_dashboard(user=Depends(get_current_user)):
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    stats = await q_one("""
+        SELECT
+          COALESCE(SUM(CASE WHEN DATE(created_at AT TIME ZONE 'UTC') = CAST(:t AS DATE) THEN total ELSE 0 END), 0) AS rev_today,
+          COALESCE(SUM(total), 0) AS rev_total,
+          COUNT(*) FILTER (WHERE DATE(created_at AT TIME ZONE 'UTC') = CAST(:t AS DATE)) AS tx_today,
+          COUNT(*) AS tx_total
+        FROM sales""", t=today)
+    items_today = await q_one("""
+        SELECT COALESCE(SUM((elem->>'quantity')::int), 0) AS c
+        FROM sales, jsonb_array_elements(items) elem
+        WHERE DATE(created_at AT TIME ZONE 'UTC') = CAST(:t AS DATE)""", t=today)
+    products_count = await q_one("SELECT COUNT(*) AS c FROM products")
+    customers_count = await q_one("SELECT COUNT(*) AS c FROM customers")
+    low_stock = await q_all("""SELECT * FROM products WHERE stock <= low_stock_threshold LIMIT 10""")
+    daily = await q_all("""
+        SELECT DATE(created_at AT TIME ZONE 'UTC') AS date, SUM(total) AS revenue
+        FROM sales GROUP BY DATE(created_at AT TIME ZONE 'UTC')
+        ORDER BY date DESC LIMIT 7""")
+    top = await q_all("""
+        SELECT elem->>'product_id' AS product_id, elem->>'name' AS name,
+               SUM((elem->>'quantity')::int) AS quantity,
+               SUM((elem->>'price')::numeric * (elem->>'quantity')::int) AS revenue
+        FROM sales, jsonb_array_elements(items) elem
+        GROUP BY elem->>'product_id', elem->>'name'
+        ORDER BY revenue DESC LIMIT 5""")
+    return {
+        "revenue_today": float(stats["rev_today"]),
+        "revenue_total": float(stats["rev_total"]),
+        "transactions_today": stats["tx_today"],
+        "transactions_total": stats["tx_total"],
+        "items_sold_today": items_today["c"],
+        "products_count": products_count["c"],
+        "customers_count": customers_count["c"],
+        "low_stock_count": len(low_stock),
+        "low_stock_items": clean_list(low_stock),
+        "daily_revenue": [{"date": str(d["date"]), "revenue": float(d["revenue"])} for d in sorted(daily, key=lambda x: str(x["date"]))],
+        "top_products": [{"name": t["name"], "quantity": t["quantity"], "revenue": float(t["revenue"])} for t in top],
+    }
 
 # ============ PURCHASE ORDERS ============
 @api.get("/purchase-orders")
-async def list_pos(user: dict = Depends(get_current_user)):
-    items = await db.purchase_orders.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
-    return items
+async def list_pos(user=Depends(get_current_user)):
+    rows = await q_all("SELECT * FROM purchase_orders ORDER BY created_at DESC LIMIT 500")
+    return clean_list(rows)
 
 @api.post("/purchase-orders")
-async def create_po(body: POIn, user: dict = Depends(require_role("admin", "manager"))):
+async def create_po(body: POIn, user=Depends(require_role("admin","manager"))):
     total = sum(i.quantity * i.cost for i in body.items)
     po_no = f"PO-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
-    doc = {
-        "id": new_id(),
-        "po_no": po_no,
-        "supplier_id": body.supplier_id,
-        "supplier_name": body.supplier_name,
-        "items": [i.model_dump() for i in body.items],
-        "total": total,
-        "status": "draft",  # draft | received | cancelled
-        "note": body.note,
-        "created_by": user["id"],
-        "created_at": now_iso(),
-        "received_at": None,
-    }
-    await db.purchase_orders.insert_one(doc)
-    doc.pop("_id", None)
-    return doc
+    pid = new_id()
+    items_json = json.dumps([i.model_dump() for i in body.items])
+    await q_exec("""INSERT INTO purchase_orders (id, po_no, supplier_id, supplier_name, items, total, status, note, created_by, created_at)
+                    VALUES (:id, :po, :sid, :sn, CAST(:it AS jsonb), :t, 'draft', :note, :u, NOW())""",
+                 id=pid, po=po_no, sid=_u(body.supplier_id), sn=body.supplier_name,
+                 it=items_json, t=total, note=body.note or "", u=user["id"])
+    return clean(await q_one("SELECT * FROM purchase_orders WHERE id=:id", id=pid))
 
 @api.post("/purchase-orders/{po_id}/receive")
-async def receive_po(po_id: str, user: dict = Depends(require_role("admin", "manager"))):
-    po = await db.purchase_orders.find_one({"id": po_id})
-    if not po:
-        raise HTTPException(status_code=404, detail="PO not found")
-    if po["status"] != "draft":
-        raise HTTPException(status_code=400, detail=f"PO status is {po['status']}")
-    for item in po["items"]:
-        await db.products.update_one({"id": item["product_id"]}, {"$inc": {"stock": item["quantity"]}, "$set": {"updated_at": now_iso()}})
-        main_outlet = await _get_main_outlet_id()
-        if main_outlet:
-            await _adjust_outlet_stock(item["product_id"], main_outlet, item["quantity"])
-        await db.stock_movements.insert_one({
-            "id": new_id(),
-            "product_id": item["product_id"],
-            "product_name": item["name"],
-            "delta": item["quantity"],
-            "reason": "purchase",
-            "note": f"PO {po['po_no']}",
-            "outlet_id": main_outlet,
-            "user_id": user["id"],
-            "created_at": now_iso(),
-        })
-    await db.purchase_orders.update_one({"id": po_id}, {"$set": {"status": "received", "received_at": now_iso()}})
+async def receive_po(po_id: str, user=Depends(require_role("admin","manager"))):
+    po = await q_one("SELECT * FROM purchase_orders WHERE id=:id", id=po_id)
+    if not po: raise HTTPException(404, "PO not found")
+    if po["status"] != "draft": raise HTTPException(400, f"PO status is {po['status']}")
+    main = await _get_main_outlet_id()
+    items = po["items"] if isinstance(po["items"], list) else json.loads(po["items"])
+    for it in items:
+        await q_exec("UPDATE products SET stock=stock+:q, updated_at=NOW() WHERE id=:id", q=it["quantity"], id=it["product_id"])
+        if main:
+            await _adjust_outlet_stock(it["product_id"], main, it["quantity"])
+        await q_exec("""INSERT INTO stock_movements (id, product_id, product_name, delta, reason, note, outlet_id, user_id, created_at)
+                        VALUES (:id, :pid, :pn, :d, 'purchase', :note, :oid, :u, NOW())""",
+                     id=new_id(), pid=it["product_id"], pn=it["name"], d=it["quantity"],
+                     note=f"PO {po['po_no']}", oid=_u(main), u=user["id"])
+    await q_exec("UPDATE purchase_orders SET status='received', received_at=NOW() WHERE id=:id", id=po_id)
     return {"ok": True, "po_id": po_id}
 
 @api.delete("/purchase-orders/{po_id}")
-async def delete_po(po_id: str, user: dict = Depends(require_role("admin", "manager"))):
-    result = await db.purchase_orders.delete_one({"id": po_id, "status": "draft"})
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=400, detail="Cannot delete: not draft or not found")
+async def delete_po(po_id: str, user=Depends(require_role("admin","manager"))):
+    r = await q_exec("DELETE FROM purchase_orders WHERE id=:id AND status='draft'", id=po_id)
+    if r.rowcount == 0: raise HTTPException(400, "Cannot delete: not draft or not found")
     return {"ok": True}
 
 # ============ SHIFTS ============
 @api.get("/shifts/active")
-async def active_shift(user: dict = Depends(get_current_user)):
-    s = await db.shifts.find_one({"cashier_id": user["id"], "status": "open"}, {"_id": 0})
-    return s
+async def active_shift(user=Depends(get_current_user)):
+    return clean(await q_one("SELECT * FROM shifts WHERE cashier_id=:c AND status='open' LIMIT 1", c=user["id"]))
 
 @api.get("/shifts")
-async def list_shifts(user: dict = Depends(get_current_user), limit: int = 100):
-    items = await db.shifts.find({}, {"_id": 0}).sort("opened_at", -1).to_list(limit)
-    return items
+async def list_shifts(user=Depends(get_current_user), limit: int = 100):
+    rows = await q_all("SELECT * FROM shifts ORDER BY opened_at DESC LIMIT :l", l=limit)
+    return clean_list(rows)
 
 @api.post("/shifts/open")
-async def open_shift(body: ShiftOpenIn, user: dict = Depends(get_current_user)):
-    existing = await db.shifts.find_one({"cashier_id": user["id"], "status": "open"})
-    if existing:
-        raise HTTPException(status_code=400, detail="Shift already open")
-    doc = {
-        "id": new_id(),
-        "cashier_id": user["id"],
-        "cashier_name": user.get("name", ""),
-        "outlet_id": body.outlet_id,
-        "opening_cash": body.opening_cash,
-        "status": "open",
-        "opened_at": now_iso(),
-        "closed_at": None,
-        "actual_cash": None,
-        "expected_cash": None,
-        "difference": None,
-        "cash_sales": 0.0,
-        "non_cash_sales": 0.0,
-        "transaction_count": 0,
-        "note": body.note,
-    }
-    await db.shifts.insert_one(doc)
-    doc.pop("_id", None)
-    return doc
+async def open_shift(body: ShiftOpenIn, user=Depends(get_current_user)):
+    existing = await q_one("SELECT id FROM shifts WHERE cashier_id=:c AND status='open'", c=user["id"])
+    if existing: raise HTTPException(400, "Shift already open")
+    sid = new_id()
+    await q_exec("""INSERT INTO shifts (id, cashier_id, cashier_name, outlet_id, opening_cash, status, opened_at, note)
+                    VALUES (:id, :ci, :cn, :oid, :cash, 'open', NOW(), :note)""",
+                 id=sid, ci=user["id"], cn=user.get("name",""), oid=_u(body.outlet_id),
+                 cash=body.opening_cash, note=body.note or "")
+    return clean(await q_one("SELECT * FROM shifts WHERE id=:id", id=sid))
 
 @api.post("/shifts/close")
-async def close_shift(body: ShiftCloseIn, user: dict = Depends(get_current_user)):
-    shift = await db.shifts.find_one({"cashier_id": user["id"], "status": "open"})
-    if not shift:
-        raise HTTPException(status_code=400, detail="No open shift")
-    # Aggregate sales in shift
-    sales = await db.sales.find({"shift_id": shift["id"]}).to_list(5000)
-    cash_sales = sum(s["total"] for s in sales if s.get("payment_method") == "cash")
-    non_cash_sales = sum(s["total"] for s in sales if s.get("payment_method") != "cash")
-    expected_cash = shift["opening_cash"] + cash_sales
-    difference = body.actual_cash - expected_cash
-    update = {
-        "status": "closed",
-        "closed_at": now_iso(),
-        "actual_cash": body.actual_cash,
-        "expected_cash": expected_cash,
-        "difference": difference,
-        "cash_sales": cash_sales,
-        "non_cash_sales": non_cash_sales,
-        "transaction_count": len(sales),
-        "close_note": body.note,
-    }
-    await db.shifts.update_one({"id": shift["id"]}, {"$set": update})
-    return {**shift, **update, "_id": None}
+async def close_shift(body: ShiftCloseIn, user=Depends(get_current_user)):
+    shift = await q_one("SELECT * FROM shifts WHERE cashier_id=:c AND status='open' LIMIT 1", c=user["id"])
+    if not shift: raise HTTPException(400, "No open shift")
+    agg = await q_one("""SELECT
+        COALESCE(SUM(CASE WHEN payment_method='cash' THEN total ELSE 0 END), 0) AS cash_sales,
+        COALESCE(SUM(CASE WHEN payment_method<>'cash' THEN total ELSE 0 END), 0) AS non_cash_sales,
+        COUNT(*) AS cnt FROM sales WHERE shift_id=:sid""", sid=shift["id"])
+    expected = float(shift["opening_cash"]) + float(agg["cash_sales"])
+    diff = body.actual_cash - expected
+    await q_exec("""UPDATE shifts SET status='closed', closed_at=NOW(), actual_cash=:ac, expected_cash=:ec,
+                    difference=:d, cash_sales=:cs, non_cash_sales=:ncs, transaction_count=:tc, close_note=:cn
+                    WHERE id=:id""",
+                 id=shift["id"], ac=body.actual_cash, ec=expected, d=diff,
+                 cs=float(agg["cash_sales"]), ncs=float(agg["non_cash_sales"]),
+                 tc=agg["cnt"], cn=body.note or "")
+    return clean(await q_one("SELECT * FROM shifts WHERE id=:id", id=shift["id"]))
 
-# ============ SALES / POS CHECKOUT ============
-@api.post("/sales")
-async def create_sale(body: SaleIn, user: dict = Depends(get_current_user)):
-    if not body.items:
-        raise HTTPException(status_code=400, detail="Cart is empty")
-    subtotal = 0.0
-    # Validate stock and compute totals
-    for item in body.items:
-        product = await db.products.find_one({"id": item.product_id})
-        if not product:
-            raise HTTPException(status_code=400, detail=f"Product {item.name} not found")
-        if product["stock"] < item.quantity:
-            raise HTTPException(status_code=400, detail=f"Insufficient stock for {product['name']}")
-        subtotal += item.price * item.quantity
-    total = subtotal - body.discount + body.tax
-    change = max(0, body.amount_paid - total)
-    if body.payment_method == "cash" and body.amount_paid < total:
-        raise HTTPException(status_code=400, detail="Insufficient payment amount")
-
-    sale_id = new_id()
-    invoice_no = f"INV-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{sale_id[:6].upper()}"
-    active_shift_doc = await db.shifts.find_one({"cashier_id": user["id"], "status": "open"})
-    shift_id = active_shift_doc["id"] if active_shift_doc else None
-    sale_doc = {
-        "id": sale_id,
-        "invoice_no": invoice_no,
-        "shift_id": shift_id,
-        "outlet_id": body.outlet_id,
-        "customer_id": body.customer_id,
-        "cashier_id": user["id"],
-        "cashier_name": user.get("name", ""),
-        "items": [i.model_dump() for i in body.items],
-        "subtotal": subtotal,
-        "discount": body.discount,
-        "tax": body.tax,
-        "total": total,
-        "payment_method": body.payment_method,
-        "amount_paid": body.amount_paid,
-        "change": change,
-        "note": body.note,
-        "created_at": now_iso(),
-    }
-    await db.sales.insert_one(sale_doc)
-
-    # Decrement stock + log movements
-    for item in body.items:
-        await db.products.update_one({"id": item.product_id}, {"$inc": {"stock": -item.quantity}})
-        if body.outlet_id:
-            await _adjust_outlet_stock(item.product_id, body.outlet_id, -item.quantity)
-        await db.stock_movements.insert_one({
-            "id": new_id(),
-            "product_id": item.product_id,
-            "product_name": item.name,
-            "delta": -item.quantity,
-            "reason": "sale",
-            "note": f"Sale {invoice_no}",
-            "outlet_id": body.outlet_id,
-            "user_id": user["id"],
-            "created_at": now_iso(),
-        })
-
-    # Update customer loyalty
-    if body.customer_id:
-        points = int(total // 10000)  # 1 point per Rp 10.000
-        await db.customers.update_one(
-            {"id": body.customer_id},
-            {"$inc": {"loyalty_points": points, "total_spent": total, "visit_count": 1}}
-        )
-
-    sale_doc.pop("_id", None)
-    return sale_doc
-
-@api.get("/sales")
-async def list_sales(user: dict = Depends(get_current_user), limit: int = 200):
-    items = await db.sales.find({}, {"_id": 0}).sort("created_at", -1).to_list(limit)
-    return items
-
-@api.get("/sales/{sale_id}")
-async def get_sale(sale_id: str, user: dict = Depends(get_current_user)):
-    sale = await db.sales.find_one({"id": sale_id}, {"_id": 0})
-    if not sale:
-        raise HTTPException(status_code=404, detail="Sale not found")
-    return sale
-
-# ============ REPORTS ============
-@api.get("/reports/dashboard")
-async def report_dashboard(user: dict = Depends(get_current_user)):
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    sales = await db.sales.find({}, {"_id": 0}).to_list(10000)
-    products = await db.products.find({}, {"_id": 0}).to_list(5000)
-    customers_count = await db.customers.count_documents({})
-
-    today_sales = [s for s in sales if s["created_at"].startswith(today)]
-    revenue_today = sum(s["total"] for s in today_sales)
-    revenue_total = sum(s["total"] for s in sales)
-    items_sold_today = sum(sum(i["quantity"] for i in s["items"]) for s in today_sales)
-    low_stock = [p for p in products if p["stock"] <= p.get("low_stock_threshold", 5)]
-
-    # Last 7 days
-    daily = {}
-    for s in sales:
-        d = s["created_at"][:10]
-        daily[d] = daily.get(d, 0) + s["total"]
-    # Sort last 7 days
-    sorted_days = sorted(daily.items())[-7:]
-
-    # Top products
-    product_sales = {}
-    for s in sales:
-        for i in s["items"]:
-            key = i["product_id"]
-            if key not in product_sales:
-                product_sales[key] = {"name": i["name"], "quantity": 0, "revenue": 0}
-            product_sales[key]["quantity"] += i["quantity"]
-            product_sales[key]["revenue"] += i["price"] * i["quantity"]
-    top_products = sorted(product_sales.values(), key=lambda x: x["revenue"], reverse=True)[:5]
-
-    return {
-        "revenue_today": revenue_today,
-        "revenue_total": revenue_total,
-        "transactions_today": len(today_sales),
-        "transactions_total": len(sales),
-        "items_sold_today": items_sold_today,
-        "products_count": len(products),
-        "customers_count": customers_count,
-        "low_stock_count": len(low_stock),
-        "low_stock_items": low_stock[:10],
-        "daily_revenue": [{"date": d, "revenue": r} for d, r in sorted_days],
-        "top_products": top_products,
-    }
-
-# ============ USER MANAGEMENT (admin only) ============
-@api.get("/users")
-async def list_users(user: dict = Depends(require_role("admin"))):
-    users = await db.users.find({}, {"_id": 0, "password_hash": 0}).sort("created_at", -1).to_list(500)
-    return users
-
-@api.post("/users")
-async def create_user(body: UserCreateIn, user: dict = Depends(require_role("admin"))):
-    email = body.email.lower()
-    existing = await db.users.find_one({"email": email})
-    if existing:
-        raise HTTPException(status_code=400, detail="Email sudah terdaftar")
-    doc = {
-        "id": new_id(),
-        "email": email,
-        "name": body.name,
-        "role": body.role,
-        "password_hash": hash_password(body.password),
-        "is_active": True,
-        "created_at": now_iso(),
-    }
-    await db.users.insert_one(doc)
-    doc.pop("_id", None)
-    doc.pop("password_hash", None)
-    return doc
-
-@api.put("/users/{user_id}")
-async def update_user(user_id: str, body: UserUpdateIn, user: dict = Depends(require_role("admin"))):
-    updates = {k: v for k, v in body.model_dump().items() if v is not None}
-    if not updates:
-        raise HTTPException(status_code=400, detail="No updates")
-    updates["updated_at"] = now_iso()
-    result = await db.users.update_one({"id": user_id}, {"$set": updates})
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="User not found")
-    updated = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
-    return updated
-
-@api.post("/users/{user_id}/reset-password")
-async def reset_user_password(user_id: str, body: PasswordResetIn, user: dict = Depends(require_role("admin"))):
-    if len(body.new_password) < 6:
-        raise HTTPException(status_code=400, detail="Password minimal 6 karakter")
-    result = await db.users.update_one({"id": user_id}, {"$set": {"password_hash": hash_password(body.new_password), "updated_at": now_iso()}})
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="User not found")
-    return {"ok": True}
-
-@api.delete("/users/{user_id}")
-async def delete_user(user_id: str, user: dict = Depends(require_role("admin"))):
-    if user_id == user["id"]:
-        raise HTTPException(status_code=400, detail="Tidak bisa menghapus akun sendiri")
-    result = await db.users.delete_one({"id": user_id})
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="User not found")
-    return {"ok": True}
-
-# ============ STOCK TRANSFERS ============
+# ============ TRANSFERS ============
 @api.get("/stock-transfers")
-async def list_transfers(user: dict = Depends(get_current_user), limit: int = 200):
-    items = await db.stock_transfers.find({}, {"_id": 0}).sort("created_at", -1).to_list(limit)
-    return items
+async def list_transfers(user=Depends(get_current_user), limit: int = 200):
+    rows = await q_all("SELECT * FROM stock_transfers ORDER BY created_at DESC LIMIT :l", l=limit)
+    return clean_list(rows)
 
 @api.post("/stock-transfers")
-async def create_transfer(body: TransferIn, user: dict = Depends(require_role("admin", "manager"))):
-    if body.from_outlet_id == body.to_outlet_id:
-        raise HTTPException(status_code=400, detail="Outlet sumber dan tujuan tidak boleh sama")
-    if not body.items:
-        raise HTTPException(status_code=400, detail="Item tidak boleh kosong")
-    # Validate products exist & stock
+async def create_transfer(body: TransferIn, user=Depends(require_role("admin","manager"))):
+    if body.from_outlet_id == body.to_outlet_id: raise HTTPException(400, "Outlet sumber dan tujuan tidak boleh sama")
+    if not body.items: raise HTTPException(400, "Item tidak boleh kosong")
     for it in body.items:
-        p = await db.products.find_one({"id": it.product_id})
-        if not p:
-            raise HTTPException(status_code=400, detail=f"Produk {it.name} tidak ditemukan")
-        if p["stock"] < it.quantity:
-            raise HTTPException(status_code=400, detail=f"Stok {p['name']} tidak cukup untuk transfer")
-    transfer_no = f"TRF-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
-    transfer_id = new_id()
-    doc = {
-        "id": transfer_id,
-        "transfer_no": transfer_no,
-        "from_outlet_id": body.from_outlet_id,
-        "to_outlet_id": body.to_outlet_id,
-        "from_outlet_name": body.from_outlet_name,
-        "to_outlet_name": body.to_outlet_name,
-        "items": [i.model_dump() for i in body.items],
-        "total_quantity": sum(i.quantity for i in body.items),
-        "note": body.note,
-        "status": "completed",
-        "created_by": user["id"],
-        "created_by_name": user.get("name", ""),
-        "created_at": now_iso(),
-    }
-    await db.stock_transfers.insert_one(doc)
-    # Log two movements per item for audit
+        p = await q_one("SELECT * FROM products WHERE id=:id", id=it.product_id)
+        if not p: raise HTTPException(400, f"Produk {it.name} tidak ditemukan")
+        if p["stock"] < it.quantity: raise HTTPException(400, f"Stok {p['name']} tidak cukup")
+    tno = f"TRF-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+    tid = new_id()
+    total_qty = sum(i.quantity for i in body.items)
+    items_json = json.dumps([i.model_dump() for i in body.items])
+    await q_exec("""INSERT INTO stock_transfers (id, transfer_no, from_outlet_id, to_outlet_id, from_outlet_name,
+                    to_outlet_name, items, total_quantity, note, status, created_by, created_by_name, created_at)
+                    VALUES (:id, :tno, :fo, :to, :fn, :tn, CAST(:it AS jsonb), :tq, :note, 'completed', :cb, :cbn, NOW())""",
+                 id=tid, tno=tno, fo=_u(body.from_outlet_id), to=_u(body.to_outlet_id),
+                 fn=body.from_outlet_name, tn=body.to_outlet_name, it=items_json,
+                 tq=total_qty, note=body.note or "", cb=user["id"], cbn=user.get("name",""))
     for it in body.items:
-        await db.stock_movements.insert_one({
-            "id": new_id(),
-            "product_id": it.product_id,
-            "product_name": it.name,
-            "delta": -it.quantity,
-            "reason": "transfer_out",
-            "note": f"{transfer_no} → {body.to_outlet_name}",
-            "outlet_id": body.from_outlet_id,
-            "user_id": user["id"],
-            "created_at": now_iso(),
-        })
+        for delta, reason, oid, other in [(-it.quantity, "transfer_out", body.from_outlet_id, body.to_outlet_name),
+                                            (it.quantity, "transfer_in", body.to_outlet_id, body.from_outlet_name)]:
+            await q_exec("""INSERT INTO stock_movements (id, product_id, product_name, delta, reason, note, outlet_id, user_id, created_at)
+                            VALUES (:id, :pid, :pn, :d, :r, :note, :oid, :u, NOW())""",
+                         id=new_id(), pid=it.product_id, pn=it.name, d=delta, r=reason,
+                         note=f"{tno} {'→' if delta<0 else '←'} {other}", oid=_u(oid), u=user["id"])
         await _adjust_outlet_stock(it.product_id, body.from_outlet_id, -it.quantity)
-        await db.stock_movements.insert_one({
-            "id": new_id(),
-            "product_id": it.product_id,
-            "product_name": it.name,
-            "delta": it.quantity,
-            "reason": "transfer_in",
-            "note": f"{transfer_no} ← {body.from_outlet_name}",
-            "outlet_id": body.to_outlet_id,
-            "user_id": user["id"],
-            "created_at": now_iso(),
-        })
         await _adjust_outlet_stock(it.product_id, body.to_outlet_id, it.quantity)
-    doc.pop("_id", None)
-    return doc
+    return clean(await q_one("SELECT * FROM stock_transfers WHERE id=:id", id=tid))
 
-# ============ SEED / STARTUP ============
-async def _get_main_outlet_id():
-    o = await db.outlets.find_one({"is_main": True})
-    if not o:
-        o = await db.outlets.find_one({})
-    return o["id"] if o else None
-
-async def _get_outlet_stock(product_id: str, outlet_id: str) -> int:
-    entry = await db.outlet_stocks.find_one({"product_id": product_id, "outlet_id": outlet_id})
-    if entry is None:
-        # Lazy-init: if this is the main outlet, seed from product.stock; else 0
-        product = await db.products.find_one({"id": product_id}, {"_id": 0, "stock": 1})
-        main_id = await _get_main_outlet_id()
-        qty = product["stock"] if (product and outlet_id == main_id) else 0
-        await db.outlet_stocks.insert_one({"product_id": product_id, "outlet_id": outlet_id, "quantity": qty, "updated_at": now_iso()})
-        return qty
-    return entry["quantity"]
-
-async def _adjust_outlet_stock(product_id: str, outlet_id: str, delta: int):
-    await _get_outlet_stock(product_id, outlet_id)  # ensure exists
-    await db.outlet_stocks.update_one({"product_id": product_id, "outlet_id": outlet_id}, {"$inc": {"quantity": delta}, "$set": {"updated_at": now_iso()}})
-
-# ============ TABLES (F&B) ============
-make_crud_placeholder = None  # avoid unused
-
+# ============ TABLES ============
 @api.get("/tables")
-async def list_tables(user: dict = Depends(get_current_user)):
-    tables = await db.tables.find({}, {"_id": 0}).sort("name", 1).to_list(500)
-    # Attach active order id if any
-    for t in tables:
-        active = await db.orders.find_one({"table_id": t["id"], "status": "open"}, {"_id": 0})
-        t["active_order_id"] = active["id"] if active else None
-        t["active_order_total"] = active["total"] if active else 0
-    return tables
+async def list_tables(user=Depends(get_current_user)):
+    rows = await q_all("""SELECT t.*,
+        (SELECT id FROM orders WHERE table_id=t.id AND status='open' LIMIT 1) AS active_order_id,
+        COALESCE((SELECT total FROM orders WHERE table_id=t.id AND status='open' LIMIT 1), 0) AS active_order_total
+        FROM tables t ORDER BY name""")
+    return clean_list(rows)
 
 @api.post("/tables")
-async def create_table(body: TableIn, user: dict = Depends(require_role("admin", "manager"))):
-    doc = body.model_dump()
-    doc["id"] = new_id()
-    doc["status"] = "available"
-    doc["created_at"] = now_iso()
-    await db.tables.insert_one(doc)
-    doc.pop("_id", None)
-    return doc
+async def create_table(body: TableIn, user=Depends(require_role("admin","manager"))):
+    tid = new_id()
+    await q_exec("""INSERT INTO tables (id, name, capacity, outlet_id, zone, status, created_at)
+                    VALUES (:id, :n, :c, :oid, :z, 'available', NOW())""",
+                 id=tid, n=body.name, c=body.capacity, oid=_u(body.outlet_id), z=body.zone or "Utama")
+    return clean(await q_one("SELECT * FROM tables WHERE id=:id", id=tid))
 
 @api.put("/tables/{table_id}")
-async def update_table(table_id: str, body: TableIn, user: dict = Depends(require_role("admin", "manager"))):
-    doc = body.model_dump()
-    doc["updated_at"] = now_iso()
-    result = await db.tables.update_one({"id": table_id}, {"$set": doc})
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Meja tidak ditemukan")
-    return await db.tables.find_one({"id": table_id}, {"_id": 0})
+async def update_table(table_id: str, body: TableIn, user=Depends(require_role("admin","manager"))):
+    r = await q_exec("""UPDATE tables SET name=:n, capacity=:c, outlet_id=:oid, zone=:z, updated_at=NOW()
+                        WHERE id=:id""", id=table_id, n=body.name, c=body.capacity,
+                     oid=_u(body.outlet_id), z=body.zone or "Utama")
+    if r.rowcount == 0: raise HTTPException(404, "Not found")
+    return clean(await q_one("SELECT * FROM tables WHERE id=:id", id=table_id))
 
 @api.delete("/tables/{table_id}")
-async def delete_table(table_id: str, user: dict = Depends(require_role("admin", "manager"))):
-    open_order = await db.orders.find_one({"table_id": table_id, "status": "open"})
-    if open_order:
-        raise HTTPException(status_code=400, detail="Meja masih memiliki order terbuka")
-    result = await db.tables.delete_one({"id": table_id})
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Meja tidak ditemukan")
+async def delete_table(table_id: str, user=Depends(require_role("admin","manager"))):
+    active = await q_one("SELECT id FROM orders WHERE table_id=:t AND status='open'", t=table_id)
+    if active: raise HTTPException(400, "Meja masih memiliki order terbuka")
+    r = await q_exec("DELETE FROM tables WHERE id=:id", id=table_id)
+    if r.rowcount == 0: raise HTTPException(404, "Not found")
     return {"ok": True}
 
 # ============ ORDERS (Dine-in) ============
-def _calc_order_total(items):
-    return sum(i["price"] * i["quantity"] for i in items)
+def _calc_total(items):
+    return sum(float(i["price"]) * int(i["quantity"]) for i in items)
 
 @api.get("/orders")
-async def list_orders(status: Optional[str] = None, user: dict = Depends(get_current_user)):
-    q = {}
+async def list_orders(status: Optional[str] = None, user=Depends(get_current_user)):
     if status:
-        q["status"] = status
-    items = await db.orders.find(q, {"_id": 0}).sort("opened_at", -1).to_list(500)
-    return items
+        rows = await q_all("SELECT * FROM orders WHERE status=:s ORDER BY opened_at DESC LIMIT 500", s=status)
+    else:
+        rows = await q_all("SELECT * FROM orders ORDER BY opened_at DESC LIMIT 500")
+    return clean_list(rows)
 
 @api.post("/orders")
-async def open_order(body: OrderOpenIn, user: dict = Depends(get_current_user)):
-    table = await db.tables.find_one({"id": body.table_id}, {"_id": 0})
-    if not table:
-        raise HTTPException(status_code=404, detail="Meja tidak ditemukan")
-    existing = await db.orders.find_one({"table_id": body.table_id, "status": "open"})
-    if existing:
-        raise HTTPException(status_code=400, detail="Meja sudah memiliki order terbuka")
+async def open_order(body: OrderOpenIn, user=Depends(get_current_user)):
+    table = await q_one("SELECT * FROM tables WHERE id=:id", id=body.table_id)
+    if not table: raise HTTPException(404, "Meja tidak ditemukan")
+    existing = await q_one("SELECT id FROM orders WHERE table_id=:t AND status='open'", t=body.table_id)
+    if existing: raise HTTPException(400, "Meja sudah memiliki order terbuka")
     items = [i.model_dump() for i in (body.items or [])]
-    doc = {
-        "id": new_id(),
-        "order_no": f"ORD-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}",
-        "table_id": body.table_id,
-        "table_name": table["name"],
-        "outlet_id": body.outlet_id or table.get("outlet_id", ""),
-        "guest_count": body.guest_count,
-        "items": items,
-        "total": _calc_order_total(items),
-        "status": "open",
-        "cashier_id": user["id"],
-        "cashier_name": user.get("name", ""),
-        "opened_at": now_iso(),
-        "closed_at": None,
-    }
-    await db.orders.insert_one(doc)
-    await db.tables.update_one({"id": body.table_id}, {"$set": {"status": "occupied"}})
-    doc.pop("_id", None)
-    return doc
+    oid = new_id()
+    await q_exec("""INSERT INTO orders (id, order_no, table_id, table_name, outlet_id, guest_count, items, total,
+                                          status, cashier_id, cashier_name, opened_at)
+                    VALUES (:id, :ono, :tid, :tn, :oid, :g, CAST(:it AS jsonb), :tot, 'open', :ci, :cn, NOW())""",
+                 id=oid, ono=f"ORD-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}",
+                 tid=body.table_id, tn=table["name"], oid=_u(body.outlet_id or table.get("outlet_id")),
+                 g=body.guest_count, it=json.dumps(items), tot=_calc_total(items),
+                 ci=user["id"], cn=user.get("name",""))
+    await q_exec("UPDATE tables SET status='occupied' WHERE id=:id", id=body.table_id)
+    return clean(await q_one("SELECT * FROM orders WHERE id=:id", id=oid))
 
 @api.put("/orders/{order_id}/items")
-async def update_order_items(order_id: str, body: OrderUpdateItemsIn, user: dict = Depends(get_current_user)):
-    order = await db.orders.find_one({"id": order_id})
-    if not order or order["status"] != "open":
-        raise HTTPException(status_code=400, detail="Order tidak aktif")
+async def update_order_items(order_id: str, body: OrderUpdateItemsIn, user=Depends(get_current_user)):
+    order = await q_one("SELECT status FROM orders WHERE id=:id", id=order_id)
+    if not order or order["status"] != "open": raise HTTPException(400, "Order tidak aktif")
     items = [i.model_dump() for i in body.items]
-    await db.orders.update_one({"id": order_id}, {"$set": {"items": items, "total": _calc_order_total(items), "updated_at": now_iso()}})
-    return await db.orders.find_one({"id": order_id}, {"_id": 0})
+    await q_exec("UPDATE orders SET items=CAST(:it AS jsonb), total=:t, updated_at=NOW() WHERE id=:id",
+                 it=json.dumps(items), t=_calc_total(items), id=order_id)
+    return clean(await q_one("SELECT * FROM orders WHERE id=:id", id=order_id))
 
 @api.post("/orders/{order_id}/checkout")
-async def checkout_order(order_id: str, body: OrderCheckoutIn, user: dict = Depends(get_current_user)):
-    order = await db.orders.find_one({"id": order_id})
-    if not order or order["status"] != "open":
-        raise HTTPException(status_code=400, detail="Order tidak aktif")
-    if not order["items"]:
-        raise HTTPException(status_code=400, detail="Order kosong")
-    subtotal = _calc_order_total(order["items"])
+async def checkout_order(order_id: str, body: OrderCheckoutIn, user=Depends(get_current_user)):
+    order = await q_one("SELECT * FROM orders WHERE id=:id", id=order_id)
+    if not order or order["status"] != "open": raise HTTPException(400, "Order tidak aktif")
+    items = order["items"] if isinstance(order["items"], list) else json.loads(order["items"])
+    if not items: raise HTTPException(400, "Order kosong")
+    subtotal = _calc_total(items)
     total = subtotal - body.discount + body.tax
-    if body.payment_method == "cash" and body.amount_paid < total:
-        raise HTTPException(status_code=400, detail="Uang bayar kurang")
-    # Validate stock
-    for it in order["items"]:
-        p = await db.products.find_one({"id": it["product_id"]})
-        if not p or p["stock"] < it["quantity"]:
-            raise HTTPException(status_code=400, detail=f"Stok kurang untuk {it['name']}")
+    if body.payment_method == "cash" and body.amount_paid < total: raise HTTPException(400, "Uang bayar kurang")
+    for it in items:
+        p = await q_one("SELECT stock, name FROM products WHERE id=:id", id=it["product_id"])
+        if not p or p["stock"] < it["quantity"]: raise HTTPException(400, f"Stok kurang untuk {it['name']}")
     change = max(0, body.amount_paid - total)
     sale_id = new_id()
     invoice_no = f"INV-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{sale_id[:6].upper()}"
-    active_shift_doc = await db.shifts.find_one({"cashier_id": user["id"], "status": "open"})
-    shift_id = active_shift_doc["id"] if active_shift_doc else None
-    outlet_id = order.get("outlet_id") or await _get_main_outlet_id()
-    sale_doc = {
-        "id": sale_id,
-        "invoice_no": invoice_no,
-        "shift_id": shift_id,
-        "outlet_id": outlet_id,
-        "customer_id": body.customer_id or "",
-        "cashier_id": user["id"],
-        "cashier_name": user.get("name", ""),
-        "items": order["items"],
-        "subtotal": subtotal,
-        "discount": body.discount,
-        "tax": body.tax,
-        "total": total,
-        "payment_method": body.payment_method,
-        "amount_paid": body.amount_paid,
-        "change": change,
-        "source": "dine-in",
-        "table_id": order["table_id"],
-        "table_name": order["table_name"],
-        "note": "",
-        "created_at": now_iso(),
-    }
-    await db.sales.insert_one(sale_doc)
-    # Decrement stock + outlet stock + log movements
-    for it in order["items"]:
-        await db.products.update_one({"id": it["product_id"]}, {"$inc": {"stock": -it["quantity"]}})
+    active_shift = await q_one("SELECT id FROM shifts WHERE cashier_id=:c AND status='open' LIMIT 1", c=user["id"])
+    shift_id = str(active_shift["id"]) if active_shift else None
+    outlet_id = str(order["outlet_id"]) if order.get("outlet_id") else await _get_main_outlet_id()
+    await q_exec("""INSERT INTO sales (id, invoice_no, shift_id, outlet_id, customer_id, cashier_id, cashier_name,
+                    items, subtotal, discount, tax, total, payment_method, amount_paid, change_amount,
+                    source, table_id, table_name, created_at)
+                    VALUES (:id, :inv, :sid, :oid, :cid, :ci, :cn, CAST(:it AS jsonb), :sub, :disc, :tax, :tot,
+                            :pm, :paid, :chg, 'dine-in', :tid, :tn, NOW())""",
+                 id=sale_id, inv=invoice_no, sid=_u(shift_id), oid=_u(outlet_id), cid=_u(body.customer_id),
+                 ci=user["id"], cn=user.get("name",""), it=json.dumps(items),
+                 sub=subtotal, disc=body.discount, tax=body.tax, tot=total, pm=body.payment_method,
+                 paid=body.amount_paid, chg=change, tid=_u(str(order["table_id"])), tn=order["table_name"])
+    for it in items:
+        await q_exec("UPDATE products SET stock=stock-:q WHERE id=:id", q=it["quantity"], id=it["product_id"])
         if outlet_id:
             await _adjust_outlet_stock(it["product_id"], outlet_id, -it["quantity"])
-        await db.stock_movements.insert_one({
-            "id": new_id(), "product_id": it["product_id"], "product_name": it["name"],
-            "delta": -it["quantity"], "reason": "sale", "note": f"Sale {invoice_no}",
-            "outlet_id": outlet_id, "user_id": user["id"], "created_at": now_iso(),
-        })
-    # Close order + free table
-    await db.orders.update_one({"id": order_id}, {"$set": {"status": "closed", "closed_at": now_iso(), "sale_id": sale_id}})
-    await db.tables.update_one({"id": order["table_id"]}, {"$set": {"status": "available"}})
-    sale_doc.pop("_id", None)
-    return sale_doc
+        await q_exec("""INSERT INTO stock_movements (id, product_id, product_name, delta, reason, note, outlet_id, user_id, created_at)
+                        VALUES (:id, :pid, :pn, :d, 'sale', :note, :oid, :u, NOW())""",
+                     id=new_id(), pid=it["product_id"], pn=it["name"], d=-it["quantity"],
+                     note=f"Sale {invoice_no}", oid=_u(outlet_id), u=user["id"])
+    await q_exec("UPDATE orders SET status='closed', closed_at=NOW(), sale_id=:sid WHERE id=:id", sid=sale_id, id=order_id)
+    await q_exec("UPDATE tables SET status='available' WHERE id=:id", id=order["table_id"])
+    row = await q_one("SELECT *, change_amount AS change FROM sales WHERE id=:id", id=sale_id)
+    return clean(row)
 
 @api.delete("/orders/{order_id}")
-async def cancel_order(order_id: str, user: dict = Depends(require_role("admin", "manager", "kasir"))):
-    order = await db.orders.find_one({"id": order_id})
-    if not order:
-        raise HTTPException(status_code=404, detail="Order tidak ditemukan")
-    if order["status"] != "open":
-        raise HTTPException(status_code=400, detail="Order sudah selesai")
-    await db.orders.update_one({"id": order_id}, {"$set": {"status": "cancelled", "closed_at": now_iso()}})
-    await db.tables.update_one({"id": order["table_id"]}, {"$set": {"status": "available"}})
+async def cancel_order(order_id: str, user=Depends(get_current_user)):
+    order = await q_one("SELECT table_id, status FROM orders WHERE id=:id", id=order_id)
+    if not order: raise HTTPException(404, "Not found")
+    if order["status"] != "open": raise HTTPException(400, "Order sudah selesai")
+    await q_exec("UPDATE orders SET status='cancelled', closed_at=NOW() WHERE id=:id", id=order_id)
+    await q_exec("UPDATE tables SET status='available' WHERE id=:id", id=order["table_id"])
     return {"ok": True}
 
 # ============ PER-OUTLET STOCK ============
 @api.get("/outlet-stocks/{outlet_id}")
-async def get_outlet_stocks(outlet_id: str, user: dict = Depends(get_current_user)):
-    entries = await db.outlet_stocks.find({"outlet_id": outlet_id}, {"_id": 0}).to_list(5000)
-    return entries
+async def get_outlet_stocks(outlet_id: str, user=Depends(get_current_user)):
+    rows = await q_all("SELECT product_id, outlet_id, quantity FROM outlet_stocks WHERE outlet_id=:o", o=outlet_id)
+    return clean_list(rows)
 
 # ============ MIDTRANS QRIS ============
-import base64, hashlib, hmac, io
 try:
     import httpx as _httpx
     import qrcode as _qrcode
-    _midtrans_libs_ok = True
+    _mid_ok = True
 except Exception:
-    _midtrans_libs_ok = False
+    _mid_ok = False
 
-def _midtrans_auth_header():
+def _midtrans_auth():
     key = os.environ.get("MIDTRANS_SERVER_KEY", "")
-    if not key:
-        raise HTTPException(status_code=503, detail="Midtrans belum dikonfigurasi. Tambahkan MIDTRANS_SERVER_KEY di .env")
-    token = base64.b64encode(f"{key}:".encode()).decode()
-    return {"Authorization": f"Basic {token}", "Accept": "application/json"}
+    if not key: raise HTTPException(503, "Midtrans belum dikonfigurasi. Tambahkan MIDTRANS_SERVER_KEY di .env")
+    return {"Authorization": f"Basic {base64.b64encode(f'{key}:'.encode()).decode()}", "Accept": "application/json"}
 
-def _qr_data_uri(qr_string: str) -> str:
-    img = _qrcode.make(qr_string)
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
+def _qr_data_uri(s: str):
+    img = _qrcode.make(s); buf = io.BytesIO(); img.save(buf, format="PNG")
     return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
 
 @api.post("/payments/qris")
-async def create_qris(body: QRISCreateIn, user: dict = Depends(get_current_user)):
-    if not _midtrans_libs_ok:
-        raise HTTPException(status_code=503, detail="Midtrans libraries not installed")
-    headers = _midtrans_auth_header()
+async def create_qris(body: QRISCreateIn, user=Depends(get_current_user)):
+    if not _mid_ok: raise HTTPException(503, "Midtrans libs missing")
+    headers = _midtrans_auth()
     base = os.environ.get("MIDTRANS_BASE_URL", "https://api.sandbox.midtrans.com").rstrip("/")
     order_id = f"POS-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{new_id()[:8]}"
-    payload = {
-        "payment_type": "qris",
-        "transaction_details": {"order_id": order_id, "gross_amount": body.amount},
-        "qris": {"acquirer": "gopay"},
-        "custom_expiry": {"expiry_duration": 15, "unit": "minute"},
-    }
+    payload = {"payment_type": "qris", "transaction_details": {"order_id": order_id, "gross_amount": body.amount},
+               "qris": {"acquirer": "gopay"}, "custom_expiry": {"expiry_duration": 15, "unit": "minute"}}
     async with _httpx.AsyncClient(timeout=15) as http:
         r = await http.post(f"{base}/v2/charge", json=payload, headers={**headers, "Content-Type": "application/json"})
-    if r.status_code not in (200, 201):
-        raise HTTPException(status_code=r.status_code, detail=r.text)
+    if r.status_code not in (200, 201): raise HTTPException(r.status_code, r.text)
     result = r.json()
-    qr_string = result.get("qr_string")
-    if not qr_string:
-        raise HTTPException(status_code=502, detail="Midtrans tidak mengembalikan qr_string")
-    await db.qris_orders.insert_one({
-        "order_id": order_id, "amount": body.amount, "description": body.description,
-        "transaction_id": result.get("transaction_id"),
-        "status": result.get("transaction_status", "pending"),
-        "fraud_status": result.get("fraud_status"),
-        "qr_string": qr_string, "created_at": now_iso(),
-    })
-    return {
-        "order_id": order_id, "transaction_id": result.get("transaction_id"),
-        "amount": body.amount, "status": result.get("transaction_status", "pending"),
-        "qr_image": _qr_data_uri(qr_string),
-    }
+    qs = result.get("qr_string")
+    if not qs: raise HTTPException(502, "Midtrans tidak mengembalikan qr_string")
+    await q_exec("""INSERT INTO qris_orders (order_id, amount, description, transaction_id, status, fraud_status, qr_string, created_at)
+                    VALUES (:oid, :a, :d, :tid, :s, :f, :qs, NOW())""",
+                 oid=order_id, a=body.amount, d=body.description, tid=result.get("transaction_id"),
+                 s=result.get("transaction_status", "pending"), f=result.get("fraud_status"), qs=qs)
+    return {"order_id": order_id, "amount": body.amount, "status": result.get("transaction_status", "pending"),
+            "qr_image": _qr_data_uri(qs)}
 
 @api.get("/payments/{order_id}")
-async def payment_status(order_id: str, user: dict = Depends(get_current_user)):
-    local = await db.qris_orders.find_one({"order_id": order_id}, {"_id": 0})
-    if not local:
-        raise HTTPException(status_code=404, detail="Order tidak ditemukan")
+async def payment_status(order_id: str, user=Depends(get_current_user)):
+    local = await q_one("SELECT * FROM qris_orders WHERE order_id=:o", o=order_id)
+    if not local: raise HTTPException(404, "Not found")
     try:
-        headers = _midtrans_auth_header()
+        headers = _midtrans_auth()
         base = os.environ.get("MIDTRANS_BASE_URL", "https://api.sandbox.midtrans.com").rstrip("/")
         async with _httpx.AsyncClient(timeout=10) as http:
             r = await http.get(f"{base}/v2/{order_id}/status", headers=headers)
         if r.status_code == 200:
             result = r.json()
-            status = result.get("transaction_status", "unknown")
+            new_status = result.get("transaction_status", local["status"])
             fraud = result.get("fraud_status")
             if local["status"] not in ("settlement", "capture"):
-                await db.qris_orders.update_one({"order_id": order_id}, {"$set": {"status": status, "fraud_status": fraud, "updated_at": now_iso()}})
-                local["status"] = status
-                local["fraud_status"] = fraud
+                await q_exec("UPDATE qris_orders SET status=:s, fraud_status=:f, updated_at=NOW() WHERE order_id=:o",
+                             s=new_status, f=fraud, o=order_id)
+                local["status"] = new_status; local["fraud_status"] = fraud
     except Exception:
         pass
-    paid = local["status"] in ("settlement", "capture") and (local.get("fraud_status") is None or local.get("fraud_status", "").lower() == "accept")
+    paid = local["status"] in ("settlement", "capture") and ((local.get("fraud_status") or "").lower() in ("", "accept"))
     return {"order_id": order_id, "status": local["status"], "paid": paid}
 
 @api.post("/midtrans/webhook")
 async def midtrans_webhook(request: Request):
     data = await request.json()
     order_id = str(data.get("order_id", ""))
-    status_code = str(data.get("status_code", ""))
-    gross_amount = str(data.get("gross_amount", ""))
-    received = str(data.get("signature_key", ""))
     key = os.environ.get("MIDTRANS_SERVER_KEY", "")
-    if not key:
-        raise HTTPException(status_code=503, detail="Midtrans not configured")
-    expected = hashlib.sha512(f"{order_id}{status_code}{gross_amount}{key}".encode()).hexdigest()
-    if not hmac.compare_digest(expected, received):
-        raise HTTPException(status_code=403, detail="Invalid signature")
-    local = await db.qris_orders.find_one({"order_id": order_id})
-    if not local:
-        raise HTTPException(status_code=404, detail="Unknown order")
-    new_status = str(data.get("transaction_status", ""))
+    if not key: raise HTTPException(503, "Midtrans not configured")
+    expected = hashlib.sha512(f"{order_id}{data.get('status_code','')}{data.get('gross_amount','')}{key}".encode()).hexdigest()
+    if not hmac.compare_digest(expected, str(data.get("signature_key", ""))):
+        raise HTTPException(403, "Invalid signature")
+    local = await q_one("SELECT status FROM qris_orders WHERE order_id=:o", o=order_id)
+    if not local: raise HTTPException(404, "Unknown order")
     if local["status"] not in ("settlement", "capture"):
-        await db.qris_orders.update_one({"order_id": order_id}, {"$set": {
-            "status": new_status, "fraud_status": data.get("fraud_status"),
-            "updated_at": now_iso(),
-        }})
+        await q_exec("UPDATE qris_orders SET status=:s, fraud_status=:f, updated_at=NOW() WHERE order_id=:o",
+                     s=str(data.get("transaction_status", "")), f=data.get("fraud_status"), o=order_id)
     return {"ok": True}
 
-# ============ SEED / STARTUP (moved) ============
+# ============ STARTUP ============
 @app.on_event("startup")
-async def startup_event():
-    await db.users.create_index("email", unique=True)
-    await db.products.create_index("sku", unique=True)
+async def startup():
     # Seed admin
-    existing = await db.users.find_one({"email": ADMIN_EMAIL.lower()})
+    existing = await q_one("SELECT id, password_hash FROM users WHERE email=:e", e=ADMIN_EMAIL.lower())
     if not existing:
-        await db.users.insert_one({
-            "id": new_id(),
-            "email": ADMIN_EMAIL.lower(),
-            "name": "Owner Sutan Khulifah",
-            "role": "admin",
-            "password_hash": hash_password(ADMIN_PASSWORD),
-            "created_at": now_iso(),
-        })
+        await q_exec("""INSERT INTO users (id, email, name, role, password_hash, is_active, created_at)
+                        VALUES (:id, :e, :n, 'admin', :h, TRUE, NOW())""",
+                     id=new_id(), e=ADMIN_EMAIL.lower(), n="Owner Sutan Khulifah", h=hash_password(ADMIN_PASSWORD))
         logger.info(f"Seeded admin: {ADMIN_EMAIL}")
     elif not verify_password(ADMIN_PASSWORD, existing["password_hash"]):
-        await db.users.update_one(
-            {"email": ADMIN_EMAIL.lower()},
-            {"$set": {"password_hash": hash_password(ADMIN_PASSWORD)}}
-        )
+        await q_exec("UPDATE users SET password_hash=:h WHERE email=:e",
+                     h=hash_password(ADMIN_PASSWORD), e=ADMIN_EMAIL.lower())
     # Seed sample kasir
-    kasir = await db.users.find_one({"email": "kasir@sutankhulifah.com"})
-    if not kasir:
-        await db.users.insert_one({
-            "id": new_id(),
-            "email": "kasir@sutankhulifah.com",
-            "name": "Kasir Demo",
-            "role": "kasir",
-            "password_hash": hash_password("Kasir@2026"),
-            "created_at": now_iso(),
-        })
+    k = await q_one("SELECT id FROM users WHERE email=:e", e="kasir@sutankhulifah.com")
+    if not k:
+        await q_exec("""INSERT INTO users (id, email, name, role, password_hash, is_active, created_at)
+                        VALUES (:id, :e, 'Kasir Demo', 'kasir', :h, TRUE, NOW())""",
+                     id=new_id(), e="kasir@sutankhulifah.com", h=hash_password("Kasir@2026"))
 
 @app.on_event("shutdown")
-async def shutdown_event():
-    client.close()
+async def shutdown():
+    await engine.dispose()
 
 app.include_router(api)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app.add_middleware(CORSMiddleware, allow_credentials=True,
+                   allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
+                   allow_methods=["*"], allow_headers=["*"])

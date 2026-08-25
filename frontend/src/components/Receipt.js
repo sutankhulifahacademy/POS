@@ -1,11 +1,13 @@
 import { formatIDR } from "../lib/api";
 
-export default function Receipt({ sale, businessName = "Sutan Khulifah Store" }) {
+export default function Receipt({ sale, businessName = "Republik Dimsum Imperium" }) {
   return (
     <div id="print-receipt" className="print-only bg-white text-black" style={{ width: "80mm", padding: "8px", fontFamily: "monospace", fontSize: "11px" }}>
       <div style={{ textAlign: "center", marginBottom: "6px" }}>
         <div style={{ fontSize: "14px", fontWeight: "bold" }}>{businessName}</div>
-        <div style={{ fontSize: "10px" }}>Sutan Khulifah Academy</div>
+        <div style={{ fontSize: "9px", marginTop: "2px" }}>Jl. Gadjah Mada No.15 Pakualaman</div>
+        <div style={{ fontSize: "9px" }}>Kota Yogyakarta</div>
+        <div style={{ fontSize: "9px", fontStyle: "italic" }}>(1.2 KM dari Malioboro)</div>
       </div>
       <div style={{ borderTop: "1px dashed #000", padding: "4px 0", textAlign: "center", fontSize: "10px" }}>
         <div>{sale.invoice_no}</div>

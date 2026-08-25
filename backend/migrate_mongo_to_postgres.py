@@ -26,6 +26,8 @@ load_dotenv()
 MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
 MONGO_DB = os.environ.get("DB_NAME", "test_database")
 POSTGRES_URL = os.environ.get("POSTGRES_URL", "postgresql://posuser:pospass@localhost:5432/sutankhulifah_pos")
+# asyncpg tidak menerima scheme "postgresql+asyncpg" — strip prefix jika ada
+POSTGRES_URL = POSTGRES_URL.replace("postgresql+asyncpg://", "postgresql://")
 
 
 def _dt(v):

@@ -315,8 +315,9 @@ export default function POS() {
           <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 no-print" onClick={() => setReceipt(null)}>
             <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] border border-[rgba(244,200,66,0.3)] rounded-lg p-8 max-w-md w-full" data-testid="receipt-modal">
               <div className="text-center border-b border-dashed border-[rgba(244,200,66,0.2)] pb-4 mb-4">
-                <h3 className="font-serif-luxury text-2xl text-[#F4C842]">Sutan Khulifah</h3>
-                <p className="text-xs text-[#C4A484] mt-1">{receipt.invoice_no}</p>
+                <h3 className="font-serif-luxury text-2xl text-[#F4C842]">Republik Dimsum Imperium</h3>
+                <p className="text-xs text-[#C4A484] mt-1">Jl. Gadjah Mada No.15 Pakualaman, Yogyakarta</p>
+                <p className="text-xs text-[#C4A484]">{receipt.invoice_no}</p>
                 <p className="text-xs text-[#C4A484]">{new Date(receipt.created_at).toLocaleString("id-ID")}</p>
               </div>
               <div className="space-y-2 mb-4">

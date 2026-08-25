@@ -14,7 +14,7 @@ import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import PurchaseOrders from "./pages/PurchaseOrders";
 import Shifts from "./pages/Shifts";
-import Users from "./pages/Users";
+import Users from "./pages/Karyawan";
 import Transfers from "./pages/Transfers";
 import Tables from "./pages/Tables";
 
