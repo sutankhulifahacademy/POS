@@ -49,15 +49,15 @@ export default function Transfers() {
   return (
     <div>
       <PageHeader title="Transfer Antar Outlet" subtitle="Pindahkan stok dari satu outlet ke outlet lain tanpa buka PO" actions={
-        <button onClick={() => setShowForm(true)} data-testid="add-transfer-btn" className="flex items-center gap-2 bg-[#D4AF37] text-[#050505] px-5 py-2.5 rounded-md text-sm font-semibold uppercase tracking-wider hover:bg-[#FFD700] transition-colors">
+        <button onClick={() => setShowForm(true)} data-testid="add-transfer-btn" className="flex items-center gap-2 bg-[#D4AF37] text-[#0A1128] px-5 py-2.5 rounded-md text-sm font-semibold uppercase tracking-wider hover:bg-[#FFD700] transition-colors">
           <Plus size={16} /> Buat Transfer
         </button>
       } />
       <div className="p-8">
-        <div className="bg-[#111] gold-border rounded-lg overflow-hidden">
+        <div className="bg-[#14213D] gold-border rounded-lg overflow-hidden">
           <table className="w-full">
             <thead>
-              <tr className="text-left text-xs uppercase tracking-wider text-[#A39B8B] border-b border-[rgba(212,175,55,0.15)]">
+              <tr className="text-left text-xs uppercase tracking-wider text-[#94A3B8] border-b border-[rgba(212,175,55,0.15)]">
                 <th className="px-6 py-4">No. Transfer</th>
                 <th className="px-6 py-4">Dari</th>
                 <th className="px-6 py-4"></th>
@@ -67,15 +67,15 @@ export default function Transfers() {
               </tr>
             </thead>
             <tbody>
-              {transfers.length === 0 && <tr><td colSpan={6} className="px-6 py-12 text-center text-[#A39B8B]"><ArrowRightLeft size={40} strokeWidth={1.2} className="mx-auto mb-3 opacity-40" />Belum ada transfer</td></tr>}
+              {transfers.length === 0 && <tr><td colSpan={6} className="px-6 py-12 text-center text-[#94A3B8]"><ArrowRightLeft size={40} strokeWidth={1.2} className="mx-auto mb-3 opacity-40" />Belum ada transfer</td></tr>}
               {transfers.map((t) => (
-                <tr key={t.id} onClick={() => setDetail(t)} className="border-b border-[rgba(212,175,55,0.08)] last:border-0 hover:bg-[#1A1A1A] transition-colors cursor-pointer" data-testid={`transfer-row-${t.id}`}>
+                <tr key={t.id} onClick={() => setDetail(t)} className="border-b border-[rgba(212,175,55,0.08)] last:border-0 hover:bg-[#1E2A4A] transition-colors cursor-pointer" data-testid={`transfer-row-${t.id}`}>
                   <td className="px-6 py-3 text-sm text-[#D4AF37]">{t.transfer_no}</td>
-                  <td className="px-6 py-3 text-sm text-[#FDFBF7]">{t.from_outlet_name}</td>
+                  <td className="px-6 py-3 text-sm text-[#F5F5F5]">{t.from_outlet_name}</td>
                   <td className="px-6 py-3 text-[#D4AF37]"><ArrowRightLeft size={14} /></td>
-                  <td className="px-6 py-3 text-sm text-[#FDFBF7]">{t.to_outlet_name}</td>
-                  <td className="px-6 py-3 text-sm text-[#A39B8B]">{t.total_quantity} unit ({t.items.length} produk)</td>
-                  <td className="px-6 py-3 text-xs text-[#A39B8B]">{new Date(t.created_at).toLocaleString("id-ID")}</td>
+                  <td className="px-6 py-3 text-sm text-[#F5F5F5]">{t.to_outlet_name}</td>
+                  <td className="px-6 py-3 text-sm text-[#94A3B8]">{t.total_quantity} unit ({t.items.length} produk)</td>
+                  <td className="px-6 py-3 text-xs text-[#94A3B8]">{new Date(t.created_at).toLocaleString("id-ID")}</td>
                 </tr>
               ))}
             </tbody>
@@ -85,23 +85,23 @@ export default function Transfers() {
 
       {showForm && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setShowForm(false)}>
-          <div onClick={(e) => e.stopPropagation()} className="bg-[#0A0A0A] gold-border rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+          <div onClick={(e) => e.stopPropagation()} className="bg-[#0F1A3A] gold-border rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-[rgba(212,175,55,0.15)] flex items-center justify-between">
-              <h2 className="font-serif-luxury text-2xl text-[#FDFBF7]">Buat Transfer Stok</h2>
-              <button onClick={() => setShowForm(false)} className="text-[#A39B8B] hover:text-[#FDFBF7]"><X size={20} /></button>
+              <h2 className="font-serif-luxury text-2xl text-[#F5F5F5]">Buat Transfer Stok</h2>
+              <button onClick={() => setShowForm(false)} className="text-[#94A3B8] hover:text-[#F5F5F5]"><X size={20} /></button>
             </div>
             <form onSubmit={submit} className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-4 items-end">
                 <div>
-                  <label className="text-xs uppercase tracking-widest text-[#A39B8B] mb-1 block">Dari Outlet</label>
-                  <select required value={fromOutlet} onChange={(e) => setFromOutlet(e.target.value)} className="w-full bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#FDFBF7]" data-testid="transfer-from">
+                  <label className="text-xs uppercase tracking-widest text-[#94A3B8] mb-1 block">Dari Outlet</label>
+                  <select required value={fromOutlet} onChange={(e) => setFromOutlet(e.target.value)} className="w-full bg-[#0F1A3A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" data-testid="transfer-from">
                     <option value="">Pilih outlet sumber</option>
                     {outlets.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs uppercase tracking-widest text-[#A39B8B] mb-1 block">Ke Outlet</label>
-                  <select required value={toOutlet} onChange={(e) => setToOutlet(e.target.value)} className="w-full bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#FDFBF7]" data-testid="transfer-to">
+                  <label className="text-xs uppercase tracking-widest text-[#94A3B8] mb-1 block">Ke Outlet</label>
+                  <select required value={toOutlet} onChange={(e) => setToOutlet(e.target.value)} className="w-full bg-[#0F1A3A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" data-testid="transfer-to">
                     <option value="">Pilih outlet tujuan</option>
                     {outlets.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
                   </select>
@@ -110,7 +110,7 @@ export default function Transfers() {
 
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs uppercase tracking-widest text-[#A39B8B]">Item Transfer</label>
+                  <label className="text-xs uppercase tracking-widest text-[#94A3B8]">Item Transfer</label>
                   <button type="button" onClick={addLine} data-testid="transfer-add-line" className="text-xs text-[#D4AF37] hover:text-[#FFD700] flex items-center gap-1"><Plus size={12} /> Tambah baris</button>
                 </div>
                 <div className="space-y-2">
@@ -119,26 +119,26 @@ export default function Transfers() {
                       <select value={it.product_id} onChange={(e) => {
                         const p = products.find(pr => pr.id === e.target.value);
                         updateLine(idx, { product_id: e.target.value, name: p?.name || "" });
-                      }} className="col-span-8 bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-2 py-2 text-sm text-[#FDFBF7]">
+                      }} className="col-span-8 bg-[#0F1A3A] border border-[rgba(212,175,55,0.2)] rounded-md px-2 py-2 text-sm text-[#F5F5F5]">
                         <option value="">Pilih produk</option>
                         {products.map(p => <option key={p.id} value={p.id}>{p.name} (stok: {p.stock})</option>)}
                       </select>
-                      <input type="number" min="1" value={it.quantity} onChange={(e) => updateLine(idx, { quantity: e.target.value })} placeholder="Qty" className="col-span-3 bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-2 py-2 text-sm text-[#FDFBF7]" />
-                      <button type="button" onClick={() => removeLine(idx)} className="col-span-1 text-[#A39B8B] hover:text-[#8B0000]"><Trash2 size={14} /></button>
+                      <input type="number" min="1" value={it.quantity} onChange={(e) => updateLine(idx, { quantity: e.target.value })} placeholder="Qty" className="col-span-3 bg-[#0F1A3A] border border-[rgba(212,175,55,0.2)] rounded-md px-2 py-2 text-sm text-[#F5F5F5]" />
+                      <button type="button" onClick={() => removeLine(idx)} className="col-span-1 text-[#94A3B8] hover:text-[#8B0000]"><Trash2 size={14} /></button>
                     </div>
                   ))}
-                  {items.length === 0 && <p className="text-xs text-[#A39B8B] italic">Belum ada item. Klik "Tambah baris".</p>}
+                  {items.length === 0 && <p className="text-xs text-[#94A3B8] italic">Belum ada item. Klik "Tambah baris".</p>}
                 </div>
               </div>
 
               <div>
-                <label className="text-xs uppercase tracking-widest text-[#A39B8B] mb-1 block">Catatan</label>
-                <textarea value={note} onChange={(e) => setNote(e.target.value)} rows="2" className="w-full bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#FDFBF7]" placeholder="Alasan transfer, dll." />
+                <label className="text-xs uppercase tracking-widest text-[#94A3B8] mb-1 block">Catatan</label>
+                <textarea value={note} onChange={(e) => setNote(e.target.value)} rows="2" className="w-full bg-[#0F1A3A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" placeholder="Alasan transfer, dll." />
               </div>
 
               <div className="flex gap-3 pt-4">
-                <button type="button" onClick={() => setShowForm(false)} className="flex-1 border border-[rgba(212,175,55,0.3)] text-[#D4AF37] py-2.5 rounded-md text-sm uppercase tracking-widest hover:bg-[#111] transition-colors">Batal</button>
-                <button type="submit" data-testid="transfer-submit" className="flex-1 bg-[#D4AF37] text-[#050505] py-2.5 rounded-md text-sm font-semibold uppercase tracking-widest hover:bg-[#FFD700] transition-colors">Konfirmasi Transfer</button>
+                <button type="button" onClick={() => setShowForm(false)} className="flex-1 border border-[rgba(212,175,55,0.3)] text-[#D4AF37] py-2.5 rounded-md text-sm uppercase tracking-widest hover:bg-[#14213D] transition-colors">Batal</button>
+                <button type="submit" data-testid="transfer-submit" className="flex-1 bg-[#D4AF37] text-[#0A1128] py-2.5 rounded-md text-sm font-semibold uppercase tracking-widest hover:bg-[#FFD700] transition-colors">Konfirmasi Transfer</button>
               </div>
             </form>
           </div>
@@ -147,17 +147,17 @@ export default function Transfers() {
 
       {detail && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setDetail(null)}>
-          <div onClick={(e) => e.stopPropagation()} className="bg-[#0A0A0A] gold-border rounded-lg max-w-lg w-full p-8">
+          <div onClick={(e) => e.stopPropagation()} className="bg-[#0F1A3A] gold-border rounded-lg max-w-lg w-full p-8">
             <h3 className="font-serif-luxury text-2xl text-[#D4AF37] text-center">{detail.transfer_no}</h3>
-            <div className="flex items-center justify-center gap-3 text-sm text-[#A39B8B] my-3">
-              <span className="text-[#FDFBF7]">{detail.from_outlet_name}</span>
+            <div className="flex items-center justify-center gap-3 text-sm text-[#94A3B8] my-3">
+              <span className="text-[#F5F5F5]">{detail.from_outlet_name}</span>
               <ArrowRightLeft size={14} className="text-[#D4AF37]" />
-              <span className="text-[#FDFBF7]">{detail.to_outlet_name}</span>
+              <span className="text-[#F5F5F5]">{detail.to_outlet_name}</span>
             </div>
-            <p className="text-xs text-[#A39B8B] text-center mb-4">{new Date(detail.created_at).toLocaleString("id-ID")} · oleh {detail.created_by_name}</p>
+            <p className="text-xs text-[#94A3B8] text-center mb-4">{new Date(detail.created_at).toLocaleString("id-ID")} · oleh {detail.created_by_name}</p>
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-[#A39B8B] text-xs uppercase border-b border-[rgba(212,175,55,0.15)]">
+                <tr className="text-[#94A3B8] text-xs uppercase border-b border-[rgba(212,175,55,0.15)]">
                   <th className="py-2 text-left">Item</th>
                   <th className="py-2 text-right">Qty</th>
                 </tr>
@@ -165,14 +165,14 @@ export default function Transfers() {
               <tbody>
                 {detail.items.map((i, idx) => (
                   <tr key={idx} className="border-b border-[rgba(212,175,55,0.08)]">
-                    <td className="py-2 text-[#FDFBF7]">{i.name}</td>
+                    <td className="py-2 text-[#F5F5F5]">{i.name}</td>
                     <td className="py-2 text-right text-[#D4AF37]">{i.quantity}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            {detail.note && <p className="text-xs text-[#A39B8B] italic mt-3">"{detail.note}"</p>}
-            <button onClick={() => setDetail(null)} className="mt-6 w-full bg-[#D4AF37] text-[#050505] py-2.5 rounded-md text-sm font-semibold uppercase tracking-widest hover:bg-[#FFD700] transition-colors">Tutup</button>
+            {detail.note && <p className="text-xs text-[#94A3B8] italic mt-3">"{detail.note}"</p>}
+            <button onClick={() => setDetail(null)} className="mt-6 w-full bg-[#D4AF37] text-[#0A1128] py-2.5 rounded-md text-sm font-semibold uppercase tracking-widest hover:bg-[#FFD700] transition-colors">Tutup</button>
           </div>
         </div>
       )}

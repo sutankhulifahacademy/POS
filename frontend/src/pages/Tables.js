@@ -127,20 +127,20 @@ export default function Tables() {
   return (
     <div>
       <PageHeader title="Manajemen Meja" subtitle="Peta meja & alur dine-in untuk mode restoran / cafe" actions={
-        <button onClick={() => setShowForm(true)} data-testid="add-table-btn" className="flex items-center gap-2 bg-[#D4AF37] text-[#050505] px-5 py-2.5 rounded-md text-sm font-semibold uppercase tracking-wider hover:bg-[#FFD700] transition-colors">
+        <button onClick={() => setShowForm(true)} data-testid="add-table-btn" className="flex items-center gap-2 bg-[#D4AF37] text-[#0A1128] px-5 py-2.5 rounded-md text-sm font-semibold uppercase tracking-wider hover:bg-[#FFD700] transition-colors">
           <Plus size={16} /> Tambah Meja
         </button>
       } />
       <div className="p-8 space-y-8">
         {tables.length === 0 && (
-          <div className="bg-[#111] gold-border rounded-lg p-12 text-center">
+          <div className="bg-[#14213D] gold-border rounded-lg p-12 text-center">
             <MapPin size={40} strokeWidth={1.2} className="mx-auto mb-3 text-[#D4AF37] opacity-40" />
-            <p className="text-[#A39B8B]">Belum ada meja. Mulai dengan menambahkan meja pertama Anda.</p>
+            <p className="text-[#94A3B8]">Belum ada meja. Mulai dengan menambahkan meja pertama Anda.</p>
           </div>
         )}
         {zones.map(zone => (
           <div key={zone}>
-            <h2 className="font-serif-luxury text-2xl text-[#FDFBF7] mb-4 flex items-center gap-2">
+            <h2 className="font-serif-luxury text-2xl text-[#F5F5F5] mb-4 flex items-center gap-2">
               <MapPin size={18} strokeWidth={1.5} className="text-[#D4AF37]" /> Zona {zone}
             </h2>
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
@@ -152,14 +152,14 @@ export default function Tables() {
                   className={`relative cursor-pointer rounded-lg p-5 card-hover ${
                     t.status === "occupied"
                       ? "bg-[#D4AF37]/10 border border-[#D4AF37] gold-glow"
-                      : "bg-[#111] gold-border hover:border-[#D4AF37]"
+                      : "bg-[#14213D] gold-border hover:border-[#D4AF37]"
                   }`}
                 >
-                  <button onClick={(e) => { e.stopPropagation(); deleteTable(t.id, t.name); }} className="absolute top-2 right-2 text-[#A39B8B] hover:text-[#8B0000] opacity-0 group-hover:opacity-100"><Trash2 size={12} /></button>
-                  <p className="font-serif-luxury text-2xl text-[#FDFBF7]">{t.name}</p>
-                  <p className="text-xs text-[#A39B8B] mt-1 flex items-center gap-1"><UsersIcon size={11} /> {t.capacity} orang</p>
+                  <button onClick={(e) => { e.stopPropagation(); deleteTable(t.id, t.name); }} className="absolute top-2 right-2 text-[#94A3B8] hover:text-[#8B0000] opacity-0 group-hover:opacity-100"><Trash2 size={12} /></button>
+                  <p className="font-serif-luxury text-2xl text-[#F5F5F5]">{t.name}</p>
+                  <p className="text-xs text-[#94A3B8] mt-1 flex items-center gap-1"><UsersIcon size={11} /> {t.capacity} orang</p>
                   <div className={`mt-3 text-[10px] uppercase tracking-widest px-2 py-1 rounded inline-block ${
-                    t.status === "occupied" ? "bg-[#D4AF37] text-[#050505]" : "bg-[#2E8B57]/20 text-[#2E8B57]"
+                    t.status === "occupied" ? "bg-[#D4AF37] text-[#0A1128]" : "bg-[#2E8B57]/20 text-[#2E8B57]"
                   }`}>
                     {t.status === "occupied" ? "TERISI" : "KOSONG"}
                   </div>
@@ -176,29 +176,29 @@ export default function Tables() {
       {/* Add table form */}
       {showForm && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setShowForm(false)}>
-          <div onClick={(e) => e.stopPropagation()} className="bg-[#0A0A0A] gold-border rounded-lg max-w-md w-full p-6">
+          <div onClick={(e) => e.stopPropagation()} className="bg-[#0F1A3A] gold-border rounded-lg max-w-md w-full p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-serif-luxury text-2xl text-[#FDFBF7]">Tambah Meja</h2>
-              <button onClick={() => setShowForm(false)} className="text-[#A39B8B]"><X size={20} /></button>
+              <h2 className="font-serif-luxury text-2xl text-[#F5F5F5]">Tambah Meja</h2>
+              <button onClick={() => setShowForm(false)} className="text-[#94A3B8]"><X size={20} /></button>
             </div>
             <form onSubmit={saveTable} className="space-y-3">
               <div>
-                <label className="text-xs uppercase tracking-widest text-[#A39B8B] mb-1 block">Nama</label>
-                <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#FDFBF7]" data-testid="table-name" />
+                <label className="text-xs uppercase tracking-widest text-[#94A3B8] mb-1 block">Nama</label>
+                <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full bg-[#0F1A3A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" data-testid="table-name" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs uppercase tracking-widest text-[#A39B8B] mb-1 block">Kapasitas</label>
-                  <input type="number" min="1" value={form.capacity} onChange={(e) => setForm({ ...form, capacity: e.target.value })} className="w-full bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#FDFBF7]" />
+                  <label className="text-xs uppercase tracking-widest text-[#94A3B8] mb-1 block">Kapasitas</label>
+                  <input type="number" min="1" value={form.capacity} onChange={(e) => setForm({ ...form, capacity: e.target.value })} className="w-full bg-[#0F1A3A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" />
                 </div>
                 <div>
-                  <label className="text-xs uppercase tracking-widest text-[#A39B8B] mb-1 block">Zona</label>
-                  <input value={form.zone} onChange={(e) => setForm({ ...form, zone: e.target.value })} className="w-full bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#FDFBF7]" placeholder="Utama / VIP / Outdoor" />
+                  <label className="text-xs uppercase tracking-widest text-[#94A3B8] mb-1 block">Zona</label>
+                  <input value={form.zone} onChange={(e) => setForm({ ...form, zone: e.target.value })} className="w-full bg-[#0F1A3A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" placeholder="Utama / VIP / Outdoor" />
                 </div>
               </div>
               <div className="flex gap-2 pt-3">
                 <button type="button" onClick={() => setShowForm(false)} className="flex-1 border border-[rgba(212,175,55,0.3)] text-[#D4AF37] py-2 rounded-md text-xs uppercase tracking-widest">Batal</button>
-                <button type="submit" data-testid="table-submit" className="flex-1 bg-[#D4AF37] text-[#050505] py-2 rounded-md text-xs font-semibold uppercase tracking-widest">Simpan</button>
+                <button type="submit" data-testid="table-submit" className="flex-1 bg-[#D4AF37] text-[#0A1128] py-2 rounded-md text-xs font-semibold uppercase tracking-widest">Simpan</button>
               </div>
             </form>
           </div>
@@ -210,58 +210,58 @@ export default function Tables() {
         <div className="fixed inset-0 bg-black/90 z-40 flex" onClick={() => { if (!activeOrder) setOpenTable(null); }}>
           <div onClick={(e) => e.stopPropagation()} className="flex w-full max-w-6xl mx-auto my-6">
             {/* Left: product picker */}
-            <div className="flex-1 bg-[#080808] gold-border rounded-l-lg p-6 overflow-y-auto">
+            <div className="flex-1 bg-[#0F1A3A] gold-border rounded-l-lg p-6 overflow-y-auto">
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <p className="text-xs uppercase tracking-widest text-[#D4AF37]">Meja {openTable.name}</p>
-                  <h2 className="font-serif-luxury text-3xl text-[#FDFBF7]">{activeOrder ? "Edit Order" : "Buka Order Baru"}</h2>
+                  <h2 className="font-serif-luxury text-3xl text-[#F5F5F5]">{activeOrder ? "Edit Order" : "Buka Order Baru"}</h2>
                 </div>
-                <button onClick={() => { setOpenTable(null); setActiveOrder(null); setOrderItems([]); }} className="text-[#A39B8B] hover:text-[#FDFBF7]"><X size={22} /></button>
+                <button onClick={() => { setOpenTable(null); setActiveOrder(null); setOrderItems([]); }} className="text-[#94A3B8] hover:text-[#F5F5F5]"><X size={22} /></button>
               </div>
               {!activeOrder && (
                 <div className="mb-4">
-                  <label className="text-xs uppercase tracking-widest text-[#A39B8B] mb-1 block">Jumlah Tamu</label>
-                  <input type="number" min="1" value={guests} onChange={(e) => setGuests(e.target.value)} className="w-32 bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#FDFBF7]" />
+                  <label className="text-xs uppercase tracking-widest text-[#94A3B8] mb-1 block">Jumlah Tamu</label>
+                  <input type="number" min="1" value={guests} onChange={(e) => setGuests(e.target.value)} className="w-32 bg-[#0F1A3A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" />
                 </div>
               )}
               <div className="mb-4 relative">
-                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#A39B8B]" />
-                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari menu..." className="w-full bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md pl-9 pr-3 py-2 text-sm text-[#FDFBF7]" data-testid="dinein-search" />
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
+                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari menu..." className="w-full bg-[#0F1A3A] border border-[rgba(212,175,55,0.2)] rounded-md pl-9 pr-3 py-2 text-sm text-[#F5F5F5]" data-testid="dinein-search" />
               </div>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {filteredProducts.map(p => (
-                  <button key={p.id} onClick={() => addItem(p)} disabled={p.stock <= 0} data-testid={`dinein-product-${p.id}`} className="bg-[#111] gold-border rounded-md p-3 text-left card-hover disabled:opacity-40">
-                    <p className="text-sm text-[#FDFBF7] truncate">{p.name}</p>
-                    <p className="text-[10px] text-[#A39B8B]">Stok: {p.stock}</p>
+                  <button key={p.id} onClick={() => addItem(p)} disabled={p.stock <= 0} data-testid={`dinein-product-${p.id}`} className="bg-[#14213D] gold-border rounded-md p-3 text-left card-hover disabled:opacity-40">
+                    <p className="text-sm text-[#F5F5F5] truncate">{p.name}</p>
+                    <p className="text-[10px] text-[#94A3B8]">Stok: {p.stock}</p>
                     <p className="text-[#D4AF37] font-semibold text-sm mt-1">{formatIDR(p.price)}</p>
                   </button>
                 ))}
               </div>
             </div>
             {/* Right: order cart */}
-            <div className="w-96 bg-[#050505] gold-border rounded-r-lg p-6 flex flex-col">
+            <div className="w-96 bg-[#0A1128] gold-border rounded-r-lg p-6 flex flex-col">
               <div className="flex items-center gap-2 mb-4">
                 <ShoppingBag size={18} strokeWidth={1.5} className="text-[#D4AF37]" />
-                <h3 className="font-serif-luxury text-xl text-[#FDFBF7]">Order</h3>
-                <span className="ml-auto text-xs text-[#A39B8B]">{orderItems.length} item</span>
+                <h3 className="font-serif-luxury text-xl text-[#F5F5F5]">Order</h3>
+                <span className="ml-auto text-xs text-[#94A3B8]">{orderItems.length} item</span>
               </div>
               <div className="flex-1 overflow-y-auto space-y-2 mb-4">
-                {orderItems.length === 0 ? <p className="text-xs text-[#A39B8B] italic text-center py-8">Belum ada item</p> : orderItems.map(i => (
-                  <div key={i.product_id} className="bg-[#111] rounded-md p-2 flex items-center justify-between text-sm">
+                {orderItems.length === 0 ? <p className="text-xs text-[#94A3B8] italic text-center py-8">Belum ada item</p> : orderItems.map(i => (
+                  <div key={i.product_id} className="bg-[#14213D] rounded-md p-2 flex items-center justify-between text-sm">
                     <div className="flex-1">
-                      <p className="text-[#FDFBF7]">{i.name}</p>
-                      <p className="text-xs text-[#A39B8B]">{formatIDR(i.price)}</p>
+                      <p className="text-[#F5F5F5]">{i.name}</p>
+                      <p className="text-xs text-[#94A3B8]">{formatIDR(i.price)}</p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <button onClick={() => changeQty(i.product_id, -1)} className="w-6 h-6 rounded bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] text-[#D4AF37]">−</button>
-                      <span className="text-[#FDFBF7] min-w-[20px] text-center">{i.quantity}</span>
-                      <button onClick={() => changeQty(i.product_id, 1)} className="w-6 h-6 rounded bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] text-[#D4AF37]">+</button>
+                      <button onClick={() => changeQty(i.product_id, -1)} className="w-6 h-6 rounded bg-[#0F1A3A] border border-[rgba(212,175,55,0.2)] text-[#D4AF37]">−</button>
+                      <span className="text-[#F5F5F5] min-w-[20px] text-center">{i.quantity}</span>
+                      <button onClick={() => changeQty(i.product_id, 1)} className="w-6 h-6 rounded bg-[#0F1A3A] border border-[rgba(212,175,55,0.2)] text-[#D4AF37]">+</button>
                     </div>
                   </div>
                 ))}
               </div>
               <div className="border-t border-[rgba(212,175,55,0.15)] pt-3 space-y-1 mb-3">
-                <div className="flex justify-between text-lg text-[#FDFBF7]">
+                <div className="flex justify-between text-lg text-[#F5F5F5]">
                   <span className="font-serif-luxury">Total</span>
                   <span className="text-[#D4AF37] font-serif-luxury">{formatIDR(orderTotal)}</span>
                 </div>
@@ -270,7 +270,7 @@ export default function Tables() {
                 <button onClick={saveOrder} data-testid="save-order-btn" className="w-full border border-[#D4AF37] text-[#D4AF37] py-2.5 rounded-md text-xs uppercase tracking-widest font-semibold hover:bg-[#D4AF37]/10 transition-colors">
                   {activeOrder ? "Update Order" : "Simpan (Belum Bayar)"}
                 </button>
-                <button onClick={() => setShowCheckout(true)} disabled={orderItems.length === 0} data-testid="dinein-checkout-btn" className="w-full bg-[#D4AF37] text-[#050505] py-3 rounded-md text-sm uppercase tracking-widest font-semibold hover:bg-[#FFD700] transition-colors disabled:opacity-50">
+                <button onClick={() => setShowCheckout(true)} disabled={orderItems.length === 0} data-testid="dinein-checkout-btn" className="w-full bg-[#D4AF37] text-[#0A1128] py-3 rounded-md text-sm uppercase tracking-widest font-semibold hover:bg-[#FFD700] transition-colors disabled:opacity-50">
                   Bayar Sekarang
                 </button>
                 {activeOrder && (
@@ -285,38 +285,38 @@ export default function Tables() {
       {/* Checkout modal */}
       {showCheckout && openTable && (
         <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#0A0A0A] gold-border rounded-lg max-w-md w-full p-6">
-            <h3 className="font-serif-luxury text-2xl text-[#FDFBF7] mb-4">Bayar - Meja {openTable.name}</h3>
+          <div className="bg-[#0F1A3A] gold-border rounded-lg max-w-md w-full p-6">
+            <h3 className="font-serif-luxury text-2xl text-[#F5F5F5] mb-4">Bayar - Meja {openTable.name}</h3>
             <div className="space-y-3">
-              <select value={customerId} onChange={(e) => setCustomerId(e.target.value)} className="w-full bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-sm text-[#FDFBF7]">
+              <select value={customerId} onChange={(e) => setCustomerId(e.target.value)} className="w-full bg-[#0F1A3A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]">
                 <option value="">Pelanggan (opsional)</option>
                 {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] uppercase tracking-widest text-[#A39B8B]">Metode</label>
-                  <select value={payMethod} onChange={(e) => setPayMethod(e.target.value)} className="mt-1 w-full bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-sm text-[#FDFBF7]" data-testid="dinein-payment">
+                  <label className="text-[10px] uppercase tracking-widest text-[#94A3B8]">Metode</label>
+                  <select value={payMethod} onChange={(e) => setPayMethod(e.target.value)} className="mt-1 w-full bg-[#0F1A3A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]" data-testid="dinein-payment">
                     <option value="cash">Tunai</option><option value="card">Kartu</option><option value="qris">QRIS</option><option value="transfer">Transfer</option>
                   </select>
                 </div>
                 <div>
-                  <label className="text-[10px] uppercase tracking-widest text-[#A39B8B]">Diskon</label>
-                  <input type="number" value={discount} onChange={(e) => setDiscount(e.target.value)} className="mt-1 w-full bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-sm text-[#FDFBF7]" />
+                  <label className="text-[10px] uppercase tracking-widest text-[#94A3B8]">Diskon</label>
+                  <input type="number" value={discount} onChange={(e) => setDiscount(e.target.value)} className="mt-1 w-full bg-[#0F1A3A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]" />
                 </div>
               </div>
               {payMethod === "cash" && (
                 <div>
-                  <label className="text-[10px] uppercase tracking-widest text-[#A39B8B]">Uang Bayar</label>
-                  <input type="number" value={amountPaid} onChange={(e) => setAmountPaid(e.target.value)} className="mt-1 w-full bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-sm text-[#FDFBF7]" data-testid="dinein-amount" />
+                  <label className="text-[10px] uppercase tracking-widest text-[#94A3B8]">Uang Bayar</label>
+                  <input type="number" value={amountPaid} onChange={(e) => setAmountPaid(e.target.value)} className="mt-1 w-full bg-[#0F1A3A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]" data-testid="dinein-amount" />
                 </div>
               )}
               <div className="border-t border-dashed border-[rgba(212,175,55,0.2)] pt-3 flex justify-between text-lg">
-                <span className="text-[#A39B8B]">Total</span>
+                <span className="text-[#94A3B8]">Total</span>
                 <span className="text-[#D4AF37] font-serif-luxury">{formatIDR(orderTotal - Number(discount || 0))}</span>
               </div>
               <div className="flex gap-2">
                 <button onClick={() => setShowCheckout(false)} className="flex-1 border border-[rgba(212,175,55,0.3)] text-[#D4AF37] py-2.5 rounded-md text-xs uppercase tracking-widest">Batal</button>
-                <button onClick={doCheckout} data-testid="dinein-confirm-checkout" className="flex-1 bg-[#D4AF37] text-[#050505] py-2.5 rounded-md text-xs font-semibold uppercase tracking-widest">Konfirmasi</button>
+                <button onClick={doCheckout} data-testid="dinein-confirm-checkout" className="flex-1 bg-[#D4AF37] text-[#0A1128] py-2.5 rounded-md text-xs font-semibold uppercase tracking-widest">Konfirmasi</button>
               </div>
             </div>
           </div>

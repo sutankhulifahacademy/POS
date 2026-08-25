@@ -99,22 +99,22 @@ export default function Reports() {
       <PageHeader title="Laporan Penjualan" subtitle="Riwayat transaksi dengan filter periode dan ekspor PDF/Excel" />
       <div className="p-8 space-y-6">
         {/* Filter + Export Bar */}
-        <div className="bg-[#111] gold-border rounded-lg p-4 flex flex-wrap items-end gap-4">
+        <div className="bg-[#14213D] gold-border rounded-lg p-4 flex flex-wrap items-end gap-4">
           <div>
-            <label className="text-[10px] uppercase tracking-widest text-[#A39B8B] mb-1 block flex items-center gap-1"><Calendar size={12} /> Dari</label>
-            <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-sm text-[#FDFBF7]" data-testid="report-from" />
+            <label className="text-[10px] uppercase tracking-widest text-[#94A3B8] mb-1 block flex items-center gap-1"><Calendar size={12} /> Dari</label>
+            <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="bg-[#0F1A3A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]" data-testid="report-from" />
           </div>
           <div>
-            <label className="text-[10px] uppercase tracking-widest text-[#A39B8B] mb-1 block flex items-center gap-1"><Calendar size={12} /> Sampai</label>
-            <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-sm text-[#FDFBF7]" data-testid="report-to" />
+            <label className="text-[10px] uppercase tracking-widest text-[#94A3B8] mb-1 block flex items-center gap-1"><Calendar size={12} /> Sampai</label>
+            <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="bg-[#0F1A3A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]" data-testid="report-to" />
           </div>
-          <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-xs text-[#A39B8B] hover:text-[#FDFBF7] px-3 py-2">Reset</button>
+          <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-xs text-[#94A3B8] hover:text-[#F5F5F5] px-3 py-2">Reset</button>
           <div className="flex-1"></div>
           <div className="flex gap-2">
-            <button onClick={exportExcel} data-testid="export-excel-btn" className="flex items-center gap-2 bg-[#111] border border-[#2E8B57] text-[#2E8B57] hover:bg-[#2E8B57]/10 px-4 py-2 rounded-md text-sm uppercase tracking-widest font-semibold transition-colors">
+            <button onClick={exportExcel} data-testid="export-excel-btn" className="flex items-center gap-2 bg-[#14213D] border border-[#2E8B57] text-[#2E8B57] hover:bg-[#2E8B57]/10 px-4 py-2 rounded-md text-sm uppercase tracking-widest font-semibold transition-colors">
               <FileSpreadsheet size={14} strokeWidth={1.8} /> Excel
             </button>
-            <button onClick={exportPDF} data-testid="export-pdf-btn" className="flex items-center gap-2 bg-[#D4AF37] text-[#050505] hover:bg-[#FFD700] px-4 py-2 rounded-md text-sm uppercase tracking-widest font-semibold transition-colors">
+            <button onClick={exportPDF} data-testid="export-pdf-btn" className="flex items-center gap-2 bg-[#D4AF37] text-[#0A1128] hover:bg-[#FFD700] px-4 py-2 rounded-md text-sm uppercase tracking-widest font-semibold transition-colors">
               <FileText size={14} strokeWidth={1.8} /> PDF
             </button>
           </div>
@@ -122,25 +122,25 @@ export default function Reports() {
 
         {/* Summary bar */}
         <div className="grid grid-cols-3 gap-4">
-          <div className="bg-[#111] gold-border rounded-lg p-4">
-            <p className="text-xs uppercase tracking-widest text-[#A39B8B]">Transaksi</p>
-            <p className="font-serif-luxury text-2xl text-[#FDFBF7] mt-1">{totals.txCount}</p>
+          <div className="bg-[#14213D] gold-border rounded-lg p-4">
+            <p className="text-xs uppercase tracking-widest text-[#94A3B8]">Transaksi</p>
+            <p className="font-serif-luxury text-2xl text-[#F5F5F5] mt-1">{totals.txCount}</p>
           </div>
-          <div className="bg-[#111] gold-border rounded-lg p-4">
-            <p className="text-xs uppercase tracking-widest text-[#A39B8B]">Item Terjual</p>
-            <p className="font-serif-luxury text-2xl text-[#FDFBF7] mt-1">{totals.itemsCount}</p>
+          <div className="bg-[#14213D] gold-border rounded-lg p-4">
+            <p className="text-xs uppercase tracking-widest text-[#94A3B8]">Item Terjual</p>
+            <p className="font-serif-luxury text-2xl text-[#F5F5F5] mt-1">{totals.itemsCount}</p>
           </div>
-          <div className="bg-[#111] gold-border rounded-lg p-4">
-            <p className="text-xs uppercase tracking-widest text-[#A39B8B]">Total Pendapatan</p>
+          <div className="bg-[#14213D] gold-border rounded-lg p-4">
+            <p className="text-xs uppercase tracking-widest text-[#94A3B8]">Total Pendapatan</p>
             <p className="font-serif-luxury text-2xl text-[#D4AF37] mt-1">{formatIDR(totals.total)}</p>
           </div>
         </div>
 
         {/* Table */}
-        <div className="bg-[#111] gold-border rounded-lg overflow-hidden">
+        <div className="bg-[#14213D] gold-border rounded-lg overflow-hidden">
           <table className="w-full">
             <thead>
-              <tr className="text-left text-xs uppercase tracking-wider text-[#A39B8B] border-b border-[rgba(212,175,55,0.15)]">
+              <tr className="text-left text-xs uppercase tracking-wider text-[#94A3B8] border-b border-[rgba(212,175,55,0.15)]">
                 <th className="px-6 py-4">Invoice</th>
                 <th className="px-6 py-4">Waktu</th>
                 <th className="px-6 py-4">Kasir</th>
@@ -149,14 +149,14 @@ export default function Reports() {
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 && <tr><td colSpan={5} className="px-6 py-12 text-center text-[#A39B8B]"><ReceiptIcon size={40} strokeWidth={1.2} className="mx-auto mb-3 opacity-40" />Tidak ada transaksi pada periode ini</td></tr>}
+              {filtered.length === 0 && <tr><td colSpan={5} className="px-6 py-12 text-center text-[#94A3B8]"><ReceiptIcon size={40} strokeWidth={1.2} className="mx-auto mb-3 opacity-40" />Tidak ada transaksi pada periode ini</td></tr>}
               {filtered.map((s) => (
-                <tr key={s.id} onClick={() => setSelected(s)} className="border-b border-[rgba(212,175,55,0.08)] last:border-0 hover:bg-[#1A1A1A] transition-colors cursor-pointer" data-testid={`sale-row-${s.id}`}>
+                <tr key={s.id} onClick={() => setSelected(s)} className="border-b border-[rgba(212,175,55,0.08)] last:border-0 hover:bg-[#1E2A4A] transition-colors cursor-pointer" data-testid={`sale-row-${s.id}`}>
                   <td className="px-6 py-3 text-sm text-[#D4AF37]">{s.invoice_no}</td>
-                  <td className="px-6 py-3 text-xs text-[#A39B8B]">{new Date(s.created_at).toLocaleString("id-ID")}</td>
-                  <td className="px-6 py-3 text-sm text-[#FDFBF7]">{s.cashier_name}</td>
-                  <td className="px-6 py-3 text-xs uppercase text-[#A39B8B]">{s.payment_method}</td>
-                  <td className="px-6 py-3 text-right text-sm text-[#FDFBF7] font-semibold">{formatIDR(s.total)}</td>
+                  <td className="px-6 py-3 text-xs text-[#94A3B8]">{new Date(s.created_at).toLocaleString("id-ID")}</td>
+                  <td className="px-6 py-3 text-sm text-[#F5F5F5]">{s.cashier_name}</td>
+                  <td className="px-6 py-3 text-xs uppercase text-[#94A3B8]">{s.payment_method}</td>
+                  <td className="px-6 py-3 text-right text-sm text-[#F5F5F5] font-semibold">{formatIDR(s.total)}</td>
                 </tr>
               ))}
             </tbody>
@@ -166,22 +166,22 @@ export default function Reports() {
         {selected && (
           <>
             <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 no-print" onClick={() => setSelected(null)}>
-              <div onClick={(e) => e.stopPropagation()} className="bg-[#0A0A0A] gold-border rounded-lg max-w-md w-full p-8">
+              <div onClick={(e) => e.stopPropagation()} className="bg-[#0F1A3A] gold-border rounded-lg max-w-md w-full p-8">
                 <h3 className="font-serif-luxury text-2xl text-[#D4AF37] text-center">{selected.invoice_no}</h3>
-                <p className="text-xs text-[#A39B8B] text-center mb-6">{new Date(selected.created_at).toLocaleString("id-ID")}</p>
+                <p className="text-xs text-[#94A3B8] text-center mb-6">{new Date(selected.created_at).toLocaleString("id-ID")}</p>
                 <div className="space-y-2 border-t border-dashed border-[rgba(212,175,55,0.2)] pt-4">
                   {selected.items.map((i, idx) => (
-                    <div key={idx} className="flex justify-between text-sm"><span className="text-[#FDFBF7]">{i.name} × {i.quantity}</span><span className="text-[#A39B8B]">{formatIDR(i.price * i.quantity)}</span></div>
+                    <div key={idx} className="flex justify-between text-sm"><span className="text-[#F5F5F5]">{i.name} × {i.quantity}</span><span className="text-[#94A3B8]">{formatIDR(i.price * i.quantity)}</span></div>
                   ))}
                 </div>
                 <div className="border-t border-dashed border-[rgba(212,175,55,0.2)] mt-4 pt-4 space-y-1">
-                  <div className="flex justify-between text-xs text-[#A39B8B]"><span>Subtotal</span><span>{formatIDR(selected.subtotal)}</span></div>
-                  <div className="flex justify-between text-xs text-[#A39B8B]"><span>Diskon</span><span>- {formatIDR(selected.discount)}</span></div>
+                  <div className="flex justify-between text-xs text-[#94A3B8]"><span>Subtotal</span><span>{formatIDR(selected.subtotal)}</span></div>
+                  <div className="flex justify-between text-xs text-[#94A3B8]"><span>Diskon</span><span>- {formatIDR(selected.discount)}</span></div>
                   <div className="flex justify-between text-lg text-[#D4AF37] font-semibold pt-2"><span>Total</span><span>{formatIDR(selected.total)}</span></div>
                 </div>
                 <div className="flex gap-2 mt-6">
                   <button onClick={printReceipt} data-testid="reprint-receipt-btn" className="flex-1 border border-[#D4AF37] text-[#D4AF37] py-2.5 rounded-md text-sm font-semibold uppercase tracking-widest hover:bg-[#D4AF37]/10 transition-colors flex items-center justify-center gap-2"><Printer size={14} /> Cetak Ulang</button>
-                  <button onClick={() => setSelected(null)} className="flex-1 bg-[#D4AF37] text-[#050505] py-2.5 rounded-md text-sm font-semibold uppercase tracking-widest hover:bg-[#FFD700] transition-colors">Tutup</button>
+                  <button onClick={() => setSelected(null)} className="flex-1 bg-[#D4AF37] text-[#0A1128] py-2.5 rounded-md text-sm font-semibold uppercase tracking-widest hover:bg-[#FFD700] transition-colors">Tutup</button>
                 </div>
               </div>
             </div>

@@ -44,27 +44,27 @@ export default function QRISPayment({ amount, description, onSuccess, onClose })
 
   return (
     <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#0A0A0A] gold-border rounded-lg max-w-md w-full p-6" data-testid="qris-modal">
+      <div className="bg-[#0F1A3A] gold-border rounded-lg max-w-md w-full p-6" data-testid="qris-modal">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-serif-luxury text-2xl text-[#D4AF37]">Pembayaran QRIS</h3>
-          <button onClick={onClose} className="text-[#A39B8B] hover:text-[#FDFBF7]"><X size={20} /></button>
+          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#F5F5F5]"><X size={20} /></button>
         </div>
         {error ? (
           <div className="text-center py-8">
             <p className="text-[#8B0000] mb-3">{error}</p>
-            <p className="text-xs text-[#A39B8B]">Admin: tambahkan MIDTRANS_SERVER_KEY di /app/backend/.env kemudian restart backend.</p>
+            <p className="text-xs text-[#94A3B8]">Admin: tambahkan MIDTRANS_SERVER_KEY di /app/backend/.env kemudian restart backend.</p>
           </div>
         ) : loading ? (
           <div className="text-center py-16">
             <Loader2 className="animate-spin mx-auto text-[#D4AF37]" size={40} />
-            <p className="text-sm text-[#A39B8B] mt-4">Membuat QR...</p>
+            <p className="text-sm text-[#94A3B8] mt-4">Membuat QR...</p>
           </div>
         ) : (
           <div className="text-center">
-            <p className="text-sm text-[#A39B8B]">Total Pembayaran</p>
+            <p className="text-sm text-[#94A3B8]">Total Pembayaran</p>
             <p className="font-serif-luxury text-3xl text-[#D4AF37] mb-4">{formatIDR(amount)}</p>
             {qr?.qr_image && <img src={qr.qr_image} alt="QRIS" className="mx-auto w-64 h-64 bg-white p-3 rounded-md" data-testid="qris-image" />}
-            <p className="text-xs text-[#A39B8B] mt-4">{qr?.order_id}</p>
+            <p className="text-xs text-[#94A3B8] mt-4">{qr?.order_id}</p>
             <div className="mt-4 py-3 border-t border-dashed border-[rgba(212,175,55,0.2)]">
               {status === "pending" ? (
                 <div className="flex items-center justify-center gap-2 text-[#D4AF37]">
@@ -79,7 +79,7 @@ export default function QRISPayment({ amount, description, onSuccess, onClose })
                 <p className="text-sm text-[#8B0000] uppercase">Status: {status}</p>
               )}
             </div>
-            <p className="text-xs text-[#A39B8B] mt-2 italic">Scan dengan aplikasi e-wallet apapun (GoPay, OVO, Dana, ShopeePay, dll.)</p>
+            <p className="text-xs text-[#94A3B8] mt-2 italic">Scan dengan aplikasi e-wallet apapun (GoPay, OVO, Dana, ShopeePay, dll.)</p>
           </div>
         )}
       </div>
