@@ -116,6 +116,12 @@ class CategoryIn(BaseModel):
     name: str
     color: Optional[str] = "#D4AF37"
 
+class VariantIn(BaseModel):
+    name: str
+    sku: Optional[str] = ""
+    price: float
+    stock: int = 0
+
 class ProductIn(BaseModel):
     name: str
     sku: str
@@ -129,6 +135,7 @@ class ProductIn(BaseModel):
     image_url: Optional[str] = ""
     description: Optional[str] = ""
     is_active: bool = True
+    variants: Optional[List[VariantIn]] = []
 
 class StockAdjustIn(BaseModel):
     product_id: str
@@ -151,6 +158,7 @@ class SupplierIn(BaseModel):
 
 class CartItem(BaseModel):
     product_id: str
+    variant_name: Optional[str] = ""
     name: str
     price: float
     quantity: int
@@ -163,6 +171,27 @@ class SaleIn(BaseModel):
     amount_paid: float
     discount: float = 0.0
     tax: float = 0.0
+    note: Optional[str] = ""
+
+class POItem(BaseModel):
+    product_id: str
+    name: str
+    quantity: int
+    cost: float
+
+class POIn(BaseModel):
+    supplier_id: str
+    supplier_name: str
+    items: List[POItem]
+    note: Optional[str] = ""
+
+class ShiftOpenIn(BaseModel):
+    outlet_id: Optional[str] = ""
+    opening_cash: float = 0.0
+    note: Optional[str] = ""
+
+class ShiftCloseIn(BaseModel):
+    actual_cash: float
     note: Optional[str] = ""
 
 # ============ AUTH ROUTES ============
@@ -344,6 +373,131 @@ async def list_movements(user: dict = Depends(get_current_user), limit: int = 20
     items = await db.stock_movements.find({}, {"_id": 0}).sort("created_at", -1).to_list(limit)
     return items
 
+@api.get("/products/by-barcode/{code}")
+async def product_by_barcode(code: str, user: dict = Depends(get_current_user)):
+    p = await db.products.find_one({"$or": [{"barcode": code}, {"sku": code}]}, {"_id": 0})
+    if not p:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return p
+
+# ============ PURCHASE ORDERS ============
+@api.get("/purchase-orders")
+async def list_pos(user: dict = Depends(get_current_user)):
+    items = await db.purchase_orders.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    return items
+
+@api.post("/purchase-orders")
+async def create_po(body: POIn, user: dict = Depends(require_role("admin", "manager"))):
+    total = sum(i.quantity * i.cost for i in body.items)
+    po_no = f"PO-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+    doc = {
+        "id": new_id(),
+        "po_no": po_no,
+        "supplier_id": body.supplier_id,
+        "supplier_name": body.supplier_name,
+        "items": [i.model_dump() for i in body.items],
+        "total": total,
+        "status": "draft",  # draft | received | cancelled
+        "note": body.note,
+        "created_by": user["id"],
+        "created_at": now_iso(),
+        "received_at": None,
+    }
+    await db.purchase_orders.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+@api.post("/purchase-orders/{po_id}/receive")
+async def receive_po(po_id: str, user: dict = Depends(require_role("admin", "manager"))):
+    po = await db.purchase_orders.find_one({"id": po_id})
+    if not po:
+        raise HTTPException(status_code=404, detail="PO not found")
+    if po["status"] != "draft":
+        raise HTTPException(status_code=400, detail=f"PO status is {po['status']}")
+    for item in po["items"]:
+        await db.products.update_one({"id": item["product_id"]}, {"$inc": {"stock": item["quantity"]}, "$set": {"updated_at": now_iso()}})
+        await db.stock_movements.insert_one({
+            "id": new_id(),
+            "product_id": item["product_id"],
+            "product_name": item["name"],
+            "delta": item["quantity"],
+            "reason": "purchase",
+            "note": f"PO {po['po_no']}",
+            "user_id": user["id"],
+            "created_at": now_iso(),
+        })
+    await db.purchase_orders.update_one({"id": po_id}, {"$set": {"status": "received", "received_at": now_iso()}})
+    return {"ok": True, "po_id": po_id}
+
+@api.delete("/purchase-orders/{po_id}")
+async def delete_po(po_id: str, user: dict = Depends(require_role("admin", "manager"))):
+    result = await db.purchase_orders.delete_one({"id": po_id, "status": "draft"})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=400, detail="Cannot delete: not draft or not found")
+    return {"ok": True}
+
+# ============ SHIFTS ============
+@api.get("/shifts/active")
+async def active_shift(user: dict = Depends(get_current_user)):
+    s = await db.shifts.find_one({"cashier_id": user["id"], "status": "open"}, {"_id": 0})
+    return s
+
+@api.get("/shifts")
+async def list_shifts(user: dict = Depends(get_current_user), limit: int = 100):
+    items = await db.shifts.find({}, {"_id": 0}).sort("opened_at", -1).to_list(limit)
+    return items
+
+@api.post("/shifts/open")
+async def open_shift(body: ShiftOpenIn, user: dict = Depends(get_current_user)):
+    existing = await db.shifts.find_one({"cashier_id": user["id"], "status": "open"})
+    if existing:
+        raise HTTPException(status_code=400, detail="Shift already open")
+    doc = {
+        "id": new_id(),
+        "cashier_id": user["id"],
+        "cashier_name": user.get("name", ""),
+        "outlet_id": body.outlet_id,
+        "opening_cash": body.opening_cash,
+        "status": "open",
+        "opened_at": now_iso(),
+        "closed_at": None,
+        "actual_cash": None,
+        "expected_cash": None,
+        "difference": None,
+        "cash_sales": 0.0,
+        "non_cash_sales": 0.0,
+        "transaction_count": 0,
+        "note": body.note,
+    }
+    await db.shifts.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+@api.post("/shifts/close")
+async def close_shift(body: ShiftCloseIn, user: dict = Depends(get_current_user)):
+    shift = await db.shifts.find_one({"cashier_id": user["id"], "status": "open"})
+    if not shift:
+        raise HTTPException(status_code=400, detail="No open shift")
+    # Aggregate sales in shift
+    sales = await db.sales.find({"shift_id": shift["id"]}).to_list(5000)
+    cash_sales = sum(s["total"] for s in sales if s.get("payment_method") == "cash")
+    non_cash_sales = sum(s["total"] for s in sales if s.get("payment_method") != "cash")
+    expected_cash = shift["opening_cash"] + cash_sales
+    difference = body.actual_cash - expected_cash
+    update = {
+        "status": "closed",
+        "closed_at": now_iso(),
+        "actual_cash": body.actual_cash,
+        "expected_cash": expected_cash,
+        "difference": difference,
+        "cash_sales": cash_sales,
+        "non_cash_sales": non_cash_sales,
+        "transaction_count": len(sales),
+        "close_note": body.note,
+    }
+    await db.shifts.update_one({"id": shift["id"]}, {"$set": update})
+    return {**shift, **update, "_id": None}
+
 # ============ SALES / POS CHECKOUT ============
 @api.post("/sales")
 async def create_sale(body: SaleIn, user: dict = Depends(get_current_user)):
@@ -365,9 +519,12 @@ async def create_sale(body: SaleIn, user: dict = Depends(get_current_user)):
 
     sale_id = new_id()
     invoice_no = f"INV-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{sale_id[:6].upper()}"
+    active_shift_doc = await db.shifts.find_one({"cashier_id": user["id"], "status": "open"})
+    shift_id = active_shift_doc["id"] if active_shift_doc else None
     sale_doc = {
         "id": sale_id,
         "invoice_no": invoice_no,
+        "shift_id": shift_id,
         "outlet_id": body.outlet_id,
         "customer_id": body.customer_id,
         "cashier_id": user["id"],

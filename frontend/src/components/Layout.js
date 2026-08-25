@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { LayoutDashboard, ShoppingCart, Package, Boxes, Users, Truck, Store, BarChart3, Settings, LogOut } from "lucide-react";
+import { LayoutDashboard, ShoppingCart, Package, Boxes, Users, Truck, Store, BarChart3, Settings, LogOut, ClipboardList, Clock } from "lucide-react";
 import { Toaster } from "sonner";
 
 const LOGO = "https://customer-assets-gfyr7b9c.emergentagent.net/job_inventory-hub-3002/artifacts/agyuw41m_logoSK.png";
@@ -8,8 +8,10 @@ const LOGO = "https://customer-assets-gfyr7b9c.emergentagent.net/job_inventory-h
 const NAV = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, testId: "nav-dashboard" },
   { to: "/pos", label: "Kasir (POS)", icon: ShoppingCart, testId: "nav-pos" },
+  { to: "/shifts", label: "Shift", icon: Clock, testId: "nav-shifts" },
   { to: "/products", label: "Produk", icon: Package, testId: "nav-products" },
   { to: "/inventory", label: "Inventory", icon: Boxes, testId: "nav-inventory" },
+  { to: "/purchase-orders", label: "Purchase Order", icon: ClipboardList, testId: "nav-po" },
   { to: "/customers", label: "Pelanggan", icon: Users, testId: "nav-customers" },
   { to: "/suppliers", label: "Supplier", icon: Truck, testId: "nav-suppliers" },
   { to: "/outlets", label: "Outlet", icon: Store, testId: "nav-outlets" },
@@ -29,7 +31,6 @@ export default function Layout() {
   return (
     <div className="min-h-screen bg-[#050505] text-[#FDFBF7] flex">
       <Toaster theme="dark" position="top-right" toastOptions={{ style: { background: '#111', border: '1px solid rgba(212,175,55,0.3)', color: '#FDFBF7' } }} />
-      {/* Sidebar */}
       <aside className="w-64 bg-[#080808] border-r border-[rgba(212,175,55,0.15)] flex flex-col fixed h-screen" data-testid="app-sidebar">
         <div className="p-6 border-b border-[rgba(212,175,55,0.15)]">
           <div className="flex flex-col items-center gap-3">
@@ -40,7 +41,6 @@ export default function Layout() {
             </div>
           </div>
         </div>
-
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
           {NAV.map((n) => {
             const Icon = n.icon;
@@ -63,7 +63,6 @@ export default function Layout() {
             );
           })}
         </nav>
-
         <div className="p-3 border-t border-[rgba(212,175,55,0.15)]">
           <div className="px-3 py-2 mb-2">
             <p className="text-xs text-[#A39B8B]">Masuk sebagai</p>
@@ -80,8 +79,6 @@ export default function Layout() {
           </button>
         </div>
       </aside>
-
-      {/* Main */}
       <main className="flex-1 ml-64 min-h-screen">
         <Outlet />
       </main>

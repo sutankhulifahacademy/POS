@@ -12,6 +12,8 @@ import Suppliers from "./pages/Suppliers";
 import Outlets from "./pages/Outlets";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
+import PurchaseOrders from "./pages/PurchaseOrders";
+import Shifts from "./pages/Shifts";
 
 function Protected({ children }) {
   const { user, loading } = useAuth();
@@ -35,8 +37,10 @@ function App() {
           <Route path="/login" element={<Public><Login /></Public>} />
           <Route element={<Protected><Layout /></Protected>}>
             <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/shifts" element={<Shifts />} />
             <Route path="/products" element={<Products />} />
             <Route path="/inventory" element={<Inventory />} />
+            <Route path="/purchase-orders" element={<PurchaseOrders />} />
             <Route path="/customers" element={<Customers />} />
             <Route path="/suppliers" element={<Suppliers />} />
             <Route path="/outlets" element={<Outlets />} />

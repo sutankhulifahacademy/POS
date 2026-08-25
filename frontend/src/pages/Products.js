@@ -4,7 +4,7 @@ import PageHeader from "../components/PageHeader";
 import { Plus, Edit3, Trash2, X, Search } from "lucide-react";
 import { toast } from "sonner";
 
-const empty = { name: "", sku: "", barcode: "", category_id: "", price: 0, cost: 0, stock: 0, low_stock_threshold: 5, unit: "pcs", image_url: "", description: "", is_active: true };
+const empty = { name: "", sku: "", barcode: "", category_id: "", price: 0, cost: 0, stock: 0, low_stock_threshold: 5, unit: "pcs", image_url: "", description: "", is_active: true, variants: [] };
 
 export default function Products() {
   const [items, setItems] = useState([]);
@@ -16,38 +16,37 @@ export default function Products() {
 
   const load = async () => {
     const [p, c] = await Promise.all([api.get("/products"), api.get("/categories")]);
-    setItems(p.data);
-    setCategories(c.data);
+    setItems(p.data); setCategories(c.data);
   };
   useEffect(() => { load(); }, []);
 
   const openNew = () => { setForm(empty); setEditing(null); setShowForm(true); };
-  const openEdit = (p) => { setForm({ ...empty, ...p }); setEditing(p.id); setShowForm(true); };
+  const openEdit = (p) => { setForm({ ...empty, ...p, variants: p.variants || [] }); setEditing(p.id); setShowForm(true); };
 
   const save = async (e) => {
     e.preventDefault();
-    const payload = { ...form, price: Number(form.price), cost: Number(form.cost), stock: Number(form.stock), low_stock_threshold: Number(form.low_stock_threshold) };
+    const payload = {
+      ...form,
+      price: Number(form.price), cost: Number(form.cost), stock: Number(form.stock), low_stock_threshold: Number(form.low_stock_threshold),
+      variants: (form.variants || []).map(v => ({ name: v.name, sku: v.sku || "", price: Number(v.price), stock: Number(v.stock) })),
+    };
     try {
       if (editing) await api.put(`/products/${editing}`, payload);
       else await api.post("/products", payload);
       toast.success(editing ? "Produk diperbarui" : "Produk ditambahkan");
-      setShowForm(false);
-      load();
-    } catch (e) {
-      toast.error(e.response?.data?.detail || "Gagal menyimpan");
-    }
+      setShowForm(false); load();
+    } catch (e) { toast.error(e.response?.data?.detail || "Gagal menyimpan"); }
   };
 
   const remove = async (id) => {
     if (!window.confirm("Hapus produk ini?")) return;
-    try {
-      await api.delete(`/products/${id}`);
-      toast.success("Produk dihapus");
-      load();
-    } catch (e) {
-      toast.error(e.response?.data?.detail || "Gagal menghapus");
-    }
+    try { await api.delete(`/products/${id}`); toast.success("Produk dihapus"); load(); }
+    catch (e) { toast.error(e.response?.data?.detail || "Gagal menghapus"); }
   };
+
+  const addVariant = () => setForm({ ...form, variants: [...(form.variants || []), { name: "", sku: "", price: form.price || 0, stock: 0 }] });
+  const updateVariant = (idx, patch) => setForm({ ...form, variants: form.variants.map((v, i) => i === idx ? { ...v, ...patch } : v) });
+  const removeVariant = (idx) => setForm({ ...form, variants: form.variants.filter((_, i) => i !== idx) });
 
   const filtered = items.filter((p) => !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase()));
 
@@ -55,7 +54,7 @@ export default function Products() {
     <div>
       <PageHeader
         title="Produk"
-        subtitle="Kelola katalog produk, harga, dan stok awal"
+        subtitle="Kelola katalog produk, varian, harga, dan stok"
         actions={
           <button onClick={openNew} data-testid="add-product-btn" className="flex items-center gap-2 bg-[#D4AF37] text-[#050505] px-5 py-2.5 rounded-md text-sm font-semibold uppercase tracking-wider hover:bg-[#FFD700] transition-colors">
             <Plus size={16} strokeWidth={2} /> Tambah Produk
@@ -74,15 +73,14 @@ export default function Products() {
               <tr className="text-left text-xs uppercase tracking-wider text-[#A39B8B] border-b border-[rgba(212,175,55,0.15)]">
                 <th className="px-6 py-4">Produk</th>
                 <th className="px-6 py-4">SKU</th>
+                <th className="px-6 py-4">Varian</th>
                 <th className="px-6 py-4 text-right">Harga</th>
                 <th className="px-6 py-4 text-right">Stok</th>
                 <th className="px-6 py-4 text-right">Aksi</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 && (
-                <tr><td colSpan={5} className="px-6 py-12 text-center text-[#A39B8B]">Belum ada produk. Tambahkan produk pertama Anda.</td></tr>
-              )}
+              {filtered.length === 0 && <tr><td colSpan={6} className="px-6 py-12 text-center text-[#A39B8B]">Belum ada produk. Tambahkan produk pertama Anda.</td></tr>}
               {filtered.map((p) => (
                 <tr key={p.id} className="border-b border-[rgba(212,175,55,0.08)] last:border-0 hover:bg-[#1A1A1A] transition-colors" data-testid={`product-row-${p.id}`}>
                   <td className="px-6 py-4">
@@ -95,14 +93,13 @@ export default function Products() {
                     </div>
                   </td>
                   <td className="px-6 py-4 text-sm text-[#A39B8B]">{p.sku}</td>
+                  <td className="px-6 py-4 text-sm text-[#A39B8B]">{p.variants?.length ? `${p.variants.length} varian` : "—"}</td>
                   <td className="px-6 py-4 text-right text-sm text-[#D4AF37]">{formatIDR(p.price)}</td>
-                  <td className="px-6 py-4 text-right">
-                    <span className={`text-sm ${p.stock <= (p.low_stock_threshold || 5) ? 'text-[#8B0000]' : 'text-[#FDFBF7]'}`}>{p.stock}</span>
-                  </td>
+                  <td className="px-6 py-4 text-right"><span className={`text-sm ${p.stock <= (p.low_stock_threshold || 5) ? 'text-[#8B0000]' : 'text-[#FDFBF7]'}`}>{p.stock}</span></td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-2">
-                      <button onClick={() => openEdit(p)} data-testid={`edit-product-${p.id}`} className="p-2 text-[#A39B8B] hover:text-[#D4AF37] transition-colors"><Edit3 size={15} strokeWidth={1.5} /></button>
-                      <button onClick={() => remove(p.id)} data-testid={`delete-product-${p.id}`} className="p-2 text-[#A39B8B] hover:text-[#8B0000] transition-colors"><Trash2 size={15} strokeWidth={1.5} /></button>
+                      <button onClick={() => openEdit(p)} data-testid={`edit-product-${p.id}`} className="p-2 text-[#A39B8B] hover:text-[#D4AF37]"><Edit3 size={15} /></button>
+                      <button onClick={() => remove(p.id)} data-testid={`delete-product-${p.id}`} className="p-2 text-[#A39B8B] hover:text-[#8B0000]"><Trash2 size={15} /></button>
                     </div>
                   </td>
                 </tr>
@@ -114,60 +111,82 @@ export default function Products() {
 
       {showForm && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setShowForm(false)}>
-          <div onClick={(e) => e.stopPropagation()} className="bg-[#0A0A0A] gold-border rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+          <div onClick={(e) => e.stopPropagation()} className="bg-[#0A0A0A] gold-border rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-[rgba(212,175,55,0.15)] flex items-center justify-between">
               <h2 className="font-serif-luxury text-2xl text-[#FDFBF7]">{editing ? "Edit Produk" : "Tambah Produk"}</h2>
               <button onClick={() => setShowForm(false)} className="text-[#A39B8B] hover:text-[#FDFBF7]"><X size={20} /></button>
             </div>
-            <form onSubmit={save} className="p-6 grid grid-cols-2 gap-4" data-testid="product-form">
-              <div className="col-span-2">
-                <label className="text-xs uppercase tracking-widest text-[#A39B8B] mb-1 block">Nama Produk *</label>
-                <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#FDFBF7]" data-testid="form-name" />
+            <form onSubmit={save} className="p-6 space-y-6" data-testid="product-form">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <label className="text-xs uppercase tracking-widest text-[#A39B8B] mb-1 block">Nama Produk *</label>
+                  <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#FDFBF7]" data-testid="form-name" />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-widest text-[#A39B8B] mb-1 block">SKU *</label>
+                  <input required value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} className="w-full bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#FDFBF7]" data-testid="form-sku" />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-widest text-[#A39B8B] mb-1 block">Barcode</label>
+                  <input value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} className="w-full bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#FDFBF7]" />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-widest text-[#A39B8B] mb-1 block">Kategori</label>
+                  <select value={form.category_id} onChange={(e) => setForm({ ...form, category_id: e.target.value })} className="w-full bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#FDFBF7]">
+                    <option value="">-- Tidak ada --</option>
+                    {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-widest text-[#A39B8B] mb-1 block">Unit</label>
+                  <input value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} className="w-full bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#FDFBF7]" />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-widest text-[#A39B8B] mb-1 block">Harga Jual *</label>
+                  <input required type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className="w-full bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#FDFBF7]" data-testid="form-price" />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-widest text-[#A39B8B] mb-1 block">Harga Modal</label>
+                  <input type="number" value={form.cost} onChange={(e) => setForm({ ...form, cost: e.target.value })} className="w-full bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#FDFBF7]" />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-widest text-[#A39B8B] mb-1 block">Stok Awal</label>
+                  <input type="number" value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} className="w-full bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#FDFBF7]" data-testid="form-stock" />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-widest text-[#A39B8B] mb-1 block">Batas Stok Rendah</label>
+                  <input type="number" value={form.low_stock_threshold} onChange={(e) => setForm({ ...form, low_stock_threshold: e.target.value })} className="w-full bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#FDFBF7]" />
+                </div>
+                <div className="col-span-2">
+                  <label className="text-xs uppercase tracking-widest text-[#A39B8B] mb-1 block">URL Gambar</label>
+                  <input value={form.image_url} onChange={(e) => setForm({ ...form, image_url: e.target.value })} placeholder="https://..." className="w-full bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#FDFBF7]" />
+                </div>
               </div>
-              <div>
-                <label className="text-xs uppercase tracking-widest text-[#A39B8B] mb-1 block">SKU *</label>
-                <input required value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} className="w-full bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#FDFBF7]" data-testid="form-sku" />
+
+              {/* Variants */}
+              <div className="border-t border-[rgba(212,175,55,0.15)] pt-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <h3 className="font-serif-luxury text-lg text-[#FDFBF7]">Varian Produk</h3>
+                    <p className="text-xs text-[#A39B8B]">Opsional. Untuk fashion (S/M/L), F&B (rasa/topping), dll.</p>
+                  </div>
+                  <button type="button" onClick={addVariant} data-testid="add-variant-btn" className="flex items-center gap-1 text-xs text-[#D4AF37] hover:text-[#FFD700]"><Plus size={12} /> Tambah Varian</button>
+                </div>
+                <div className="space-y-2">
+                  {(form.variants || []).map((v, i) => (
+                    <div key={i} className="grid grid-cols-12 gap-2 items-center" data-testid={`variant-row-${i}`}>
+                      <input placeholder="Nama (e.g. Large / Red)" value={v.name} onChange={(e) => updateVariant(i, { name: e.target.value })} className="col-span-4 bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-2 py-2 text-sm text-[#FDFBF7]" />
+                      <input placeholder="SKU" value={v.sku} onChange={(e) => updateVariant(i, { sku: e.target.value })} className="col-span-3 bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-2 py-2 text-sm text-[#FDFBF7]" />
+                      <input type="number" placeholder="Harga" value={v.price} onChange={(e) => updateVariant(i, { price: e.target.value })} className="col-span-2 bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-2 py-2 text-sm text-[#FDFBF7]" />
+                      <input type="number" placeholder="Stok" value={v.stock} onChange={(e) => updateVariant(i, { stock: e.target.value })} className="col-span-2 bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-2 py-2 text-sm text-[#FDFBF7]" />
+                      <button type="button" onClick={() => removeVariant(i)} className="col-span-1 text-[#A39B8B] hover:text-[#8B0000]"><Trash2 size={14} /></button>
+                    </div>
+                  ))}
+                  {(!form.variants || form.variants.length === 0) && <p className="text-xs text-[#A39B8B] italic">Tidak ada varian. Produk akan dijual sebagai item tunggal.</p>}
+                </div>
               </div>
-              <div>
-                <label className="text-xs uppercase tracking-widest text-[#A39B8B] mb-1 block">Barcode</label>
-                <input value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} className="w-full bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#FDFBF7]" />
-              </div>
-              <div>
-                <label className="text-xs uppercase tracking-widest text-[#A39B8B] mb-1 block">Kategori</label>
-                <select value={form.category_id} onChange={(e) => setForm({ ...form, category_id: e.target.value })} className="w-full bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#FDFBF7]">
-                  <option value="">-- Tidak ada --</option>
-                  {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs uppercase tracking-widest text-[#A39B8B] mb-1 block">Unit</label>
-                <input value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} className="w-full bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#FDFBF7]" />
-              </div>
-              <div>
-                <label className="text-xs uppercase tracking-widest text-[#A39B8B] mb-1 block">Harga Jual *</label>
-                <input required type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className="w-full bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#FDFBF7]" data-testid="form-price" />
-              </div>
-              <div>
-                <label className="text-xs uppercase tracking-widest text-[#A39B8B] mb-1 block">Harga Modal</label>
-                <input type="number" value={form.cost} onChange={(e) => setForm({ ...form, cost: e.target.value })} className="w-full bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#FDFBF7]" />
-              </div>
-              <div>
-                <label className="text-xs uppercase tracking-widest text-[#A39B8B] mb-1 block">Stok Awal</label>
-                <input type="number" value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} className="w-full bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#FDFBF7]" data-testid="form-stock" />
-              </div>
-              <div>
-                <label className="text-xs uppercase tracking-widest text-[#A39B8B] mb-1 block">Batas Stok Rendah</label>
-                <input type="number" value={form.low_stock_threshold} onChange={(e) => setForm({ ...form, low_stock_threshold: e.target.value })} className="w-full bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#FDFBF7]" />
-              </div>
-              <div className="col-span-2">
-                <label className="text-xs uppercase tracking-widest text-[#A39B8B] mb-1 block">URL Gambar</label>
-                <input value={form.image_url} onChange={(e) => setForm({ ...form, image_url: e.target.value })} placeholder="https://..." className="w-full bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#FDFBF7]" />
-              </div>
-              <div className="col-span-2">
-                <label className="text-xs uppercase tracking-widest text-[#A39B8B] mb-1 block">Deskripsi</label>
-                <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows="2" className="w-full bg-[#0A0A0A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#FDFBF7]" />
-              </div>
-              <div className="col-span-2 flex gap-3 pt-4">
+
+              <div className="flex gap-3 pt-4 border-t border-[rgba(212,175,55,0.15)]">
                 <button type="button" onClick={() => setShowForm(false)} className="flex-1 border border-[rgba(212,175,55,0.3)] text-[#D4AF37] py-2.5 rounded-md text-sm uppercase tracking-widest hover:bg-[#111] transition-colors">Batal</button>
                 <button type="submit" data-testid="form-submit-btn" className="flex-1 bg-[#D4AF37] text-[#050505] py-2.5 rounded-md text-sm font-semibold uppercase tracking-widest hover:bg-[#FFD700] transition-colors">Simpan</button>
               </div>
