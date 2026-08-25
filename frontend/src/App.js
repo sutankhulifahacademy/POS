@@ -21,7 +21,7 @@ import Tables from "./pages/Tables";
 function Protected({ children, path }) {
   const { user, loading } = useAuth();
   const location = useLocation();
-  if (loading || user === null) return <div className="min-h-screen flex items-center justify-center bg-[#0A1128] text-[#94A3B8]">Memuat...</div>;
+  if (loading || user === null) return <div className="min-h-screen flex items-center justify-center bg-[#1A0810] text-[#C4A484]">Memuat...</div>;
   if (!user) return <Navigate to="/login" replace />;
   // Role check for specific path
   const targetPath = path || location.pathname;
@@ -33,7 +33,7 @@ function Protected({ children, path }) {
 
 function Public({ children }) {
   const { user, loading } = useAuth();
-  if (loading || user === null) return <div className="min-h-screen flex items-center justify-center bg-[#0A1128] text-[#94A3B8]">Memuat...</div>;
+  if (loading || user === null) return <div className="min-h-screen flex items-center justify-center bg-[#1A0810] text-[#C4A484]">Memuat...</div>;
   if (user) return <Navigate to={defaultLandingFor(user.role)} replace />;
   return children;
 }
@@ -77,7 +77,7 @@ function App() {
 
 function HomeRedirect() {
   const { user, loading } = useAuth();
-  if (loading || user === null) return <div className="min-h-screen flex items-center justify-center bg-[#0A1128] text-[#94A3B8]">Memuat...</div>;
+  if (loading || user === null) return <div className="min-h-screen flex items-center justify-center bg-[#1A0810] text-[#C4A484]">Memuat...</div>;
   if (!user) return <Navigate to="/login" replace />;
   return <Navigate to={defaultLandingFor(user.role)} replace />;
 }

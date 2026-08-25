@@ -39,32 +39,32 @@ export default function CrudList({ title, subtitle, endpoint, fields, testPrefix
   return (
     <div>
       <PageHeader title={title} subtitle={subtitle} actions={
-        <button onClick={openNew} data-testid={`${testPrefix}-add-btn`} className="flex items-center gap-2 bg-[#D4AF37] text-[#0A1128] px-5 py-2.5 rounded-md text-sm font-semibold uppercase tracking-wider hover:bg-[#FFD700] transition-colors">
+        <button onClick={openNew} data-testid={`${testPrefix}-add-btn`} className="flex items-center gap-2 bg-[#F4C842] text-[#1A0810] px-5 py-2.5 rounded-md text-sm font-semibold uppercase tracking-wider hover:bg-[#FFDD5C] transition-colors">
           <Plus size={16} strokeWidth={2} /> Tambah
         </button>
       } />
       <div className="p-8">
-        <div className="bg-[#14213D] gold-border rounded-lg overflow-hidden">
+        <div className="bg-[#331419] gold-border rounded-lg overflow-hidden">
           <table className="w-full">
             <thead>
-              <tr className="text-left text-xs uppercase tracking-wider text-[#94A3B8] border-b border-[rgba(212,175,55,0.15)]">
+              <tr className="text-left text-xs uppercase tracking-wider text-[#C4A484] border-b border-[rgba(244,200,66,0.15)]">
                 {fields.filter(f => f.showInList !== false).map((f) => <th key={f.key} className="px-6 py-4">{f.label}</th>)}
                 <th className="px-6 py-4 text-right">Aksi</th>
               </tr>
             </thead>
             <tbody>
-              {items.length === 0 && <tr><td colSpan={fields.length + 1} className="px-6 py-12 text-center text-[#94A3B8]">Belum ada data.</td></tr>}
+              {items.length === 0 && <tr><td colSpan={fields.length + 1} className="px-6 py-12 text-center text-[#C4A484]">Belum ada data.</td></tr>}
               {items.map((it) => (
-                <tr key={it.id} className="border-b border-[rgba(212,175,55,0.08)] last:border-0 hover:bg-[#1E2A4A] transition-colors">
+                <tr key={it.id} className="border-b border-[rgba(244,200,66,0.08)] last:border-0 hover:bg-[#4A1A22] transition-colors">
                   {fields.filter(f => f.showInList !== false).map((f) => (
                     <td key={f.key} className="px-6 py-3 text-sm text-[#F5F5F5]">
-                      {typeof it[f.key] === 'boolean' ? (it[f.key] ? '✓' : '—') : (it[f.key] || <span className="text-[#94A3B8]">—</span>)}
+                      {typeof it[f.key] === 'boolean' ? (it[f.key] ? '✓' : '—') : (it[f.key] || <span className="text-[#C4A484]">—</span>)}
                     </td>
                   ))}
                   <td className="px-6 py-3 text-right">
                     <div className="flex justify-end gap-2">
-                      <button onClick={() => openEdit(it)} data-testid={`${testPrefix}-edit-${it.id}`} className="p-2 text-[#94A3B8] hover:text-[#D4AF37]"><Edit3 size={15} strokeWidth={1.5} /></button>
-                      <button onClick={() => remove(it.id)} data-testid={`${testPrefix}-delete-${it.id}`} className="p-2 text-[#94A3B8] hover:text-[#8B0000]"><Trash2 size={15} strokeWidth={1.5} /></button>
+                      <button onClick={() => openEdit(it)} data-testid={`${testPrefix}-edit-${it.id}`} className="p-2 text-[#C4A484] hover:text-[#F4C842]"><Edit3 size={15} strokeWidth={1.5} /></button>
+                      <button onClick={() => remove(it.id)} data-testid={`${testPrefix}-delete-${it.id}`} className="p-2 text-[#C4A484] hover:text-[#8B0000]"><Trash2 size={15} strokeWidth={1.5} /></button>
                     </div>
                   </td>
                 </tr>
@@ -76,29 +76,29 @@ export default function CrudList({ title, subtitle, endpoint, fields, testPrefix
 
       {showForm && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setShowForm(false)}>
-          <div onClick={(e) => e.stopPropagation()} className="bg-[#0F1A3A] gold-border rounded-lg max-w-lg w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-[rgba(212,175,55,0.15)] flex items-center justify-between">
+          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-[rgba(244,200,66,0.15)] flex items-center justify-between">
               <h2 className="font-serif-luxury text-2xl text-[#F5F5F5]">{editing ? "Edit" : "Tambah"} {title}</h2>
-              <button onClick={() => setShowForm(false)} className="text-[#94A3B8] hover:text-[#F5F5F5]"><X size={20} /></button>
+              <button onClick={() => setShowForm(false)} className="text-[#C4A484] hover:text-[#F5F5F5]"><X size={20} /></button>
             </div>
             <form onSubmit={save} className="p-6 space-y-4">
               {fields.map((f) => (
                 <div key={f.key}>
-                  <label className="text-xs uppercase tracking-widest text-[#94A3B8] mb-1 block">{f.label} {f.required && "*"}</label>
+                  <label className="text-xs uppercase tracking-widest text-[#C4A484] mb-1 block">{f.label} {f.required && "*"}</label>
                   {f.type === "textarea" ? (
-                    <textarea value={form[f.key] || ""} onChange={(e) => setForm({ ...form, [f.key]: e.target.value })} rows="2" className="w-full bg-[#0F1A3A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" />
+                    <textarea value={form[f.key] || ""} onChange={(e) => setForm({ ...form, [f.key]: e.target.value })} rows="2" className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" />
                   ) : f.type === "checkbox" ? (
                     <label className="flex items-center gap-2 text-sm text-[#F5F5F5]">
-                      <input type="checkbox" checked={!!form[f.key]} onChange={(e) => setForm({ ...form, [f.key]: e.target.checked })} className="accent-[#D4AF37]" /> {f.label}
+                      <input type="checkbox" checked={!!form[f.key]} onChange={(e) => setForm({ ...form, [f.key]: e.target.checked })} className="accent-[#F4C842]" /> {f.label}
                     </label>
                   ) : (
-                    <input required={f.required} type={f.type || "text"} value={form[f.key] || ""} onChange={(e) => setForm({ ...form, [f.key]: e.target.value })} className="w-full bg-[#0F1A3A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" data-testid={`${testPrefix}-field-${f.key}`} />
+                    <input required={f.required} type={f.type || "text"} value={form[f.key] || ""} onChange={(e) => setForm({ ...form, [f.key]: e.target.value })} className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" data-testid={`${testPrefix}-field-${f.key}`} />
                   )}
                 </div>
               ))}
               <div className="flex gap-3 pt-4">
-                <button type="button" onClick={() => setShowForm(false)} className="flex-1 border border-[rgba(212,175,55,0.3)] text-[#D4AF37] py-2.5 rounded-md text-sm uppercase tracking-widest hover:bg-[#14213D] transition-colors">Batal</button>
-                <button type="submit" data-testid={`${testPrefix}-form-submit`} className="flex-1 bg-[#D4AF37] text-[#0A1128] py-2.5 rounded-md text-sm font-semibold uppercase tracking-widest hover:bg-[#FFD700] transition-colors">Simpan</button>
+                <button type="button" onClick={() => setShowForm(false)} className="flex-1 border border-[rgba(244,200,66,0.3)] text-[#F4C842] py-2.5 rounded-md text-sm uppercase tracking-widest hover:bg-[#331419] transition-colors">Batal</button>
+                <button type="submit" data-testid={`${testPrefix}-form-submit`} className="flex-1 bg-[#F4C842] text-[#1A0810] py-2.5 rounded-md text-sm font-semibold uppercase tracking-widest hover:bg-[#FFDD5C] transition-colors">Simpan</button>
               </div>
             </form>
           </div>

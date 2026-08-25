@@ -9,7 +9,7 @@ body {
   font-family: 'Manrope', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #0A1128;
+  background-color: #1A0810;
   color: #F5F5F5;
 }
 
@@ -19,31 +19,31 @@ body {
 
 @layer base {
   :root {
-    --background: 224 55% 10%;
+    --background: 351 55% 7%;
     --foreground: 0 0% 96%;
-    --card: 223 45% 14%;
+    --card: 351 45% 14%;
     --card-foreground: 0 0% 96%;
-    --popover: 223 45% 14%;
+    --popover: 351 45% 14%;
     --popover-foreground: 0 0% 96%;
-    --primary: 46 65% 52%;
-    --primary-foreground: 224 55% 10%;
-    --secondary: 223 40% 20%;
+    --primary: 45 88% 55%;
+    --primary-foreground: 351 55% 7%;
+    --secondary: 351 40% 22%;
     --secondary-foreground: 0 0% 96%;
-    --muted: 223 40% 20%;
-    --muted-foreground: 220 15% 65%;
-    --accent: 46 65% 52%;
-    --accent-foreground: 224 55% 10%;
+    --muted: 351 40% 22%;
+    --muted-foreground: 30 25% 68%;
+    --accent: 45 88% 55%;
+    --accent-foreground: 351 55% 7%;
     --destructive: 0 84% 55%;
     --destructive-foreground: 0 0% 96%;
-    --border: 46 65% 30%;
-    --input: 223 40% 20%;
-    --ring: 46 65% 52%;
+    --border: 45 88% 40%;
+    --input: 351 40% 22%;
+    --ring: 45 88% 55%;
     --radius: 0.5rem;
-    --chart-1: 46 65% 52%;
-    --chart-2: 224 76% 55%;
-    --chart-3: 220 30% 70%;
-    --chart-4: 25 80% 55%;
-    --chart-5: 46 80% 65%;
+    --chart-1: 45 88% 55%;
+    --chart-2: 0 75% 55%;
+    --chart-3: 30 60% 65%;
+    --chart-4: 15 80% 55%;
+    --chart-5: 45 88% 70%;
   }
   * {
     @apply border-border;
@@ -52,25 +52,25 @@ body {
     @apply bg-background text-foreground;
   }
   ::selection {
-    background-color: #D4AF37;
-    color: #0A1128;
+    background-color: #F4C842;
+    color: #1A0810;
   }
 }
 
 ::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: #0A1128; }
-::-webkit-scrollbar-thumb { background: rgba(212, 175, 55, 0.4); border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(212, 175, 55, 0.7); }
+::-webkit-scrollbar-track { background: #1A0810; }
+::-webkit-scrollbar-thumb { background: rgba(244, 200, 66, 0.4); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(244, 200, 66, 0.7); }
 
-.gold-glow { box-shadow: 0 0 24px rgba(212, 175, 55, 0.2); }
-.gold-border { border: 1px solid rgba(212, 175, 55, 0.25); }
-.gold-border-active { border: 1px solid rgba(212, 175, 55, 0.7); }
+.gold-glow { box-shadow: 0 0 24px rgba(244, 200, 66, 0.25); }
+.gold-border { border: 1px solid rgba(244, 200, 66, 0.28); }
+.gold-border-active { border: 1px solid rgba(244, 200, 66, 0.7); }
 
 .card-hover { transition: transform 0.2s ease, border-color 0.2s ease; }
-.card-hover:hover { transform: translateY(-2px); border-color: rgba(212, 175, 55, 0.7); }
+.card-hover:hover { transform: translateY(-2px); border-color: rgba(244, 200, 66, 0.7); }
 
 .grain {
-  background-image: radial-gradient(rgba(212, 175, 55, 0.04) 1px, transparent 1px);
+  background-image: radial-gradient(rgba(244, 200, 66, 0.05) 1px, transparent 1px);
   background-size: 3px 3px;
 }
 

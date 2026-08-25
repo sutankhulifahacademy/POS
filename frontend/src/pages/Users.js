@@ -53,20 +53,20 @@ export default function Users() {
     catch (err) { toast.error(err.response?.data?.detail || "Gagal"); }
   };
 
-  const roleColor = (r) => r === "admin" ? "text-[#D4AF37] bg-[#D4AF37]/10" : r === "manager" ? "text-[#2E8B57] bg-[#2E8B57]/10" : "text-[#94A3B8] bg-[#94A3B8]/10";
+  const roleColor = (r) => r === "admin" ? "text-[#F4C842] bg-[#F4C842]/10" : r === "manager" ? "text-[#2E8B57] bg-[#2E8B57]/10" : "text-[#C4A484] bg-[#C4A484]/10";
 
   return (
     <div>
       <PageHeader title="Manajemen Pengguna" subtitle="Undang kasir/manager, atur peran, dan reset password" actions={
-        <button onClick={openNew} data-testid="add-user-btn" className="flex items-center gap-2 bg-[#D4AF37] text-[#0A1128] px-5 py-2.5 rounded-md text-sm font-semibold uppercase tracking-wider hover:bg-[#FFD700] transition-colors">
+        <button onClick={openNew} data-testid="add-user-btn" className="flex items-center gap-2 bg-[#F4C842] text-[#1A0810] px-5 py-2.5 rounded-md text-sm font-semibold uppercase tracking-wider hover:bg-[#FFDD5C] transition-colors">
           <Plus size={16} /> Undang Pengguna
         </button>
       } />
       <div className="p-8">
-        <div className="bg-[#14213D] gold-border rounded-lg overflow-hidden">
+        <div className="bg-[#331419] gold-border rounded-lg overflow-hidden">
           <table className="w-full">
             <thead>
-              <tr className="text-left text-xs uppercase tracking-wider text-[#94A3B8] border-b border-[rgba(212,175,55,0.15)]">
+              <tr className="text-left text-xs uppercase tracking-wider text-[#C4A484] border-b border-[rgba(244,200,66,0.15)]">
                 <th className="px-6 py-4">Nama</th>
                 <th className="px-6 py-4">Email</th>
                 <th className="px-6 py-4">Peran</th>
@@ -75,20 +75,20 @@ export default function Users() {
               </tr>
             </thead>
             <tbody>
-              {users.length === 0 && <tr><td colSpan={5} className="px-6 py-12 text-center text-[#94A3B8]">Belum ada pengguna</td></tr>}
+              {users.length === 0 && <tr><td colSpan={5} className="px-6 py-12 text-center text-[#C4A484]">Belum ada pengguna</td></tr>}
               {users.map((u) => (
-                <tr key={u.id} className="border-b border-[rgba(212,175,55,0.08)] last:border-0 hover:bg-[#1E2A4A] transition-colors" data-testid={`user-row-${u.id}`}>
+                <tr key={u.id} className="border-b border-[rgba(244,200,66,0.08)] last:border-0 hover:bg-[#4A1A22] transition-colors" data-testid={`user-row-${u.id}`}>
                   <td className="px-6 py-3 text-sm text-[#F5F5F5]">{u.name}</td>
-                  <td className="px-6 py-3 text-sm text-[#94A3B8]">{u.email}</td>
+                  <td className="px-6 py-3 text-sm text-[#C4A484]">{u.email}</td>
                   <td className="px-6 py-3">
                     <span className={`text-[10px] uppercase tracking-widest px-2 py-1 rounded ${roleColor(u.role)}`}>{u.role}</span>
                   </td>
-                  <td className="px-6 py-3 text-xs text-[#94A3B8]">{new Date(u.created_at).toLocaleDateString("id-ID")}</td>
+                  <td className="px-6 py-3 text-xs text-[#C4A484]">{new Date(u.created_at).toLocaleDateString("id-ID")}</td>
                   <td className="px-6 py-3 text-right">
                     <div className="flex justify-end gap-2">
-                      <button onClick={() => openEdit(u)} data-testid={`edit-user-${u.id}`} className="p-2 text-[#94A3B8] hover:text-[#D4AF37] transition-colors" title="Edit peran"><UserCog size={15} strokeWidth={1.5} /></button>
-                      <button onClick={() => setResetting(u)} data-testid={`reset-user-${u.id}`} className="p-2 text-[#94A3B8] hover:text-[#D4AF37] transition-colors" title="Reset password"><KeyRound size={15} strokeWidth={1.5} /></button>
-                      <button onClick={() => remove(u.id, u.name)} data-testid={`delete-user-${u.id}`} className="p-2 text-[#94A3B8] hover:text-[#8B0000] transition-colors" title="Hapus"><Trash2 size={15} strokeWidth={1.5} /></button>
+                      <button onClick={() => openEdit(u)} data-testid={`edit-user-${u.id}`} className="p-2 text-[#C4A484] hover:text-[#F4C842] transition-colors" title="Edit peran"><UserCog size={15} strokeWidth={1.5} /></button>
+                      <button onClick={() => setResetting(u)} data-testid={`reset-user-${u.id}`} className="p-2 text-[#C4A484] hover:text-[#F4C842] transition-colors" title="Reset password"><KeyRound size={15} strokeWidth={1.5} /></button>
+                      <button onClick={() => remove(u.id, u.name)} data-testid={`delete-user-${u.id}`} className="p-2 text-[#C4A484] hover:text-[#8B0000] transition-colors" title="Hapus"><Trash2 size={15} strokeWidth={1.5} /></button>
                     </div>
                   </td>
                 </tr>
@@ -100,44 +100,44 @@ export default function Users() {
 
       {showForm && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setShowForm(false)}>
-          <div onClick={(e) => e.stopPropagation()} className="bg-[#0F1A3A] gold-border rounded-lg max-w-md w-full">
-            <div className="p-6 border-b border-[rgba(212,175,55,0.15)] flex items-center justify-between">
+          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-md w-full">
+            <div className="p-6 border-b border-[rgba(244,200,66,0.15)] flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Shield size={18} strokeWidth={1.5} className="text-[#D4AF37]" />
+                <Shield size={18} strokeWidth={1.5} className="text-[#F4C842]" />
                 <h2 className="font-serif-luxury text-2xl text-[#F5F5F5]">{editing ? "Edit Pengguna" : "Undang Pengguna Baru"}</h2>
               </div>
-              <button onClick={() => setShowForm(false)} className="text-[#94A3B8] hover:text-[#F5F5F5]"><X size={20} /></button>
+              <button onClick={() => setShowForm(false)} className="text-[#C4A484] hover:text-[#F5F5F5]"><X size={20} /></button>
             </div>
             <form onSubmit={submit} className="p-6 space-y-4" data-testid="user-form">
               <div>
-                <label className="text-xs uppercase tracking-widest text-[#94A3B8] mb-1 block">Nama</label>
-                <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full bg-[#0F1A3A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" data-testid="user-name" />
+                <label className="text-xs uppercase tracking-widest text-[#C4A484] mb-1 block">Nama</label>
+                <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" data-testid="user-name" />
               </div>
               <div>
-                <label className="text-xs uppercase tracking-widest text-[#94A3B8] mb-1 block">Email</label>
-                <input required type="email" value={form.email} disabled={!!editing} onChange={(e) => setForm({ ...form, email: e.target.value })} className="w-full bg-[#0F1A3A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#F5F5F5] disabled:opacity-50" data-testid="user-email" />
+                <label className="text-xs uppercase tracking-widest text-[#C4A484] mb-1 block">Email</label>
+                <input required type="email" value={form.email} disabled={!!editing} onChange={(e) => setForm({ ...form, email: e.target.value })} className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-[#F5F5F5] disabled:opacity-50" data-testid="user-email" />
               </div>
               <div>
-                <label className="text-xs uppercase tracking-widest text-[#94A3B8] mb-1 block">Peran</label>
-                <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} className="w-full bg-[#0F1A3A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" data-testid="user-role">
+                <label className="text-xs uppercase tracking-widest text-[#C4A484] mb-1 block">Peran</label>
+                <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" data-testid="user-role">
                   <option value="kasir">Kasir</option>
                   <option value="manager">Manager</option>
                   <option value="admin">Admin</option>
                 </select>
-                <p className="text-[10px] text-[#94A3B8] mt-1">
+                <p className="text-[10px] text-[#C4A484] mt-1">
                   Kasir: hanya POS & pelanggan · Manager: + produk, inventory, PO · Admin: full akses
                 </p>
               </div>
               {!editing && (
                 <div>
-                  <label className="text-xs uppercase tracking-widest text-[#94A3B8] mb-1 block">Password Awal</label>
-                  <input required type="text" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="w-full bg-[#0F1A3A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" placeholder="Min. 6 karakter" data-testid="user-password" />
-                  <p className="text-[10px] text-[#94A3B8] mt-1">Bagikan password ini ke pengguna, mereka dapat mengganti saat login.</p>
+                  <label className="text-xs uppercase tracking-widest text-[#C4A484] mb-1 block">Password Awal</label>
+                  <input required type="text" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" placeholder="Min. 6 karakter" data-testid="user-password" />
+                  <p className="text-[10px] text-[#C4A484] mt-1">Bagikan password ini ke pengguna, mereka dapat mengganti saat login.</p>
                 </div>
               )}
               <div className="flex gap-3 pt-4">
-                <button type="button" onClick={() => setShowForm(false)} className="flex-1 border border-[rgba(212,175,55,0.3)] text-[#D4AF37] py-2.5 rounded-md text-sm uppercase tracking-widest hover:bg-[#14213D] transition-colors">Batal</button>
-                <button type="submit" data-testid="user-submit-btn" className="flex-1 bg-[#D4AF37] text-[#0A1128] py-2.5 rounded-md text-sm font-semibold uppercase tracking-widest hover:bg-[#FFD700] transition-colors">{editing ? "Simpan" : "Undang"}</button>
+                <button type="button" onClick={() => setShowForm(false)} className="flex-1 border border-[rgba(244,200,66,0.3)] text-[#F4C842] py-2.5 rounded-md text-sm uppercase tracking-widest hover:bg-[#331419] transition-colors">Batal</button>
+                <button type="submit" data-testid="user-submit-btn" className="flex-1 bg-[#F4C842] text-[#1A0810] py-2.5 rounded-md text-sm font-semibold uppercase tracking-widest hover:bg-[#FFDD5C] transition-colors">{editing ? "Simpan" : "Undang"}</button>
               </div>
             </form>
           </div>
@@ -146,17 +146,17 @@ export default function Users() {
 
       {resetting && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setResetting(null)}>
-          <div onClick={(e) => e.stopPropagation()} className="bg-[#0F1A3A] gold-border rounded-lg max-w-sm w-full p-6">
+          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-sm w-full p-6">
             <div className="flex items-center gap-2 mb-4">
-              <KeyRound size={18} strokeWidth={1.5} className="text-[#D4AF37]" />
+              <KeyRound size={18} strokeWidth={1.5} className="text-[#F4C842]" />
               <h3 className="font-serif-luxury text-xl text-[#F5F5F5]">Reset Password</h3>
             </div>
-            <p className="text-sm text-[#94A3B8] mb-4">Reset password untuk <span className="text-[#F5F5F5]">{resetting.name}</span></p>
+            <p className="text-sm text-[#C4A484] mb-4">Reset password untuk <span className="text-[#F5F5F5]">{resetting.name}</span></p>
             <form onSubmit={doReset} className="space-y-3">
-              <input required type="text" value={newPass} onChange={(e) => setNewPass(e.target.value)} placeholder="Password baru (min. 6 karakter)" className="w-full bg-[#0F1A3A] border border-[rgba(212,175,55,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" data-testid="reset-password-input" />
+              <input required type="text" value={newPass} onChange={(e) => setNewPass(e.target.value)} placeholder="Password baru (min. 6 karakter)" className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" data-testid="reset-password-input" />
               <div className="flex gap-2">
-                <button type="button" onClick={() => setResetting(null)} className="flex-1 border border-[rgba(212,175,55,0.3)] text-[#D4AF37] py-2 rounded-md text-xs uppercase tracking-widest">Batal</button>
-                <button type="submit" data-testid="reset-password-submit" className="flex-1 bg-[#D4AF37] text-[#0A1128] py-2 rounded-md text-xs font-semibold uppercase tracking-widest">Reset</button>
+                <button type="button" onClick={() => setResetting(null)} className="flex-1 border border-[rgba(244,200,66,0.3)] text-[#F4C842] py-2 rounded-md text-xs uppercase tracking-widest">Batal</button>
+                <button type="submit" data-testid="reset-password-submit" className="flex-1 bg-[#F4C842] text-[#1A0810] py-2 rounded-md text-xs font-semibold uppercase tracking-widest">Reset</button>
               </div>
             </form>
           </div>

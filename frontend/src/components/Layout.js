@@ -3,7 +3,7 @@ import { useAuth } from "../context/AuthContext";
 import { LayoutDashboard, ShoppingCart, Package, Boxes, Users, Truck, Store, BarChart3, Settings, LogOut, ClipboardList, Clock, UserCog, ArrowRightLeft, Utensils } from "lucide-react";
 import { Toaster } from "sonner";
 
-const LOGO = "https://customer-assets-gfyr7b9c.emergentagent.net/job_inventory-hub-3002/artifacts/6ma1g7d1_ChatGPT%20Image%20Aug%2025%2C%202026%2C%2008_44_40%20AM.png";
+const LOGO = "https://customer-assets-gfyr7b9c.emergentagent.net/job_inventory-hub-3002/artifacts/3xyqa9jm_WhatsApp%20Image%202026-08-25%20at%2009.54.11.jpeg";
 
 // Role capability matrix
 // admin (owner) = full; manager = operational; kasir = POS only (no sidebar)
@@ -46,15 +46,15 @@ export default function Layout() {
   const visibleNav = NAV.filter(n => n.roles.includes(user?.role));
 
   return (
-    <div className="min-h-screen bg-[#0A1128] text-[#F5F5F5] flex">
-      <Toaster theme="dark" position="top-right" toastOptions={{ style: { background: '#111', border: '1px solid rgba(212,175,55,0.3)', color: '#F5F5F5' } }} />
-      <aside className="w-64 bg-[#0F1A3A] border-r border-[rgba(212,175,55,0.15)] flex flex-col fixed h-screen" data-testid="app-sidebar">
-        <div className="p-6 border-b border-[rgba(212,175,55,0.15)]">
+    <div className="min-h-screen bg-[#1A0810] text-[#F5F5F5] flex">
+      <Toaster theme="dark" position="top-right" toastOptions={{ style: { background: '#111', border: '1px solid rgba(244,200,66,0.3)', color: '#F5F5F5' } }} />
+      <aside className="w-64 bg-[#2A1015] border-r border-[rgba(244,200,66,0.15)] flex flex-col fixed h-screen" data-testid="app-sidebar">
+        <div className="p-6 border-b border-[rgba(244,200,66,0.15)]">
           <div className="flex flex-col items-center gap-3">
             <img src={LOGO} alt="Sutan Khulifah" className="w-16 h-16 object-contain" data-testid="brand-logo" />
             <div className="text-center">
-              <h1 className="font-serif-luxury text-lg text-[#D4AF37] leading-tight">SK POS</h1>
-              <p className="text-[10px] tracking-widest text-[#94A3B8] uppercase">POS ENTERPRISE</p>
+              <h1 className="font-serif-luxury text-lg text-[#F4C842] leading-tight">Republik Dimsum</h1>
+              <p className="text-[10px] tracking-widest text-[#C4A484] uppercase">Imperium</p>
             </div>
           </div>
         </div>
@@ -69,8 +69,8 @@ export default function Layout() {
                 className={({ isActive }) =>
                   `flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors ${
                     isActive
-                      ? "bg-[rgba(212,175,55,0.12)] text-[#D4AF37] border-l-2 border-[#D4AF37]"
-                      : "text-[#94A3B8] hover:text-[#F5F5F5] hover:bg-[#14213D]"
+                      ? "bg-[rgba(244,200,66,0.12)] text-[#F4C842] border-l-2 border-[#F4C842]"
+                      : "text-[#C4A484] hover:text-[#F5F5F5] hover:bg-[#331419]"
                   }`
                 }
               >
@@ -80,16 +80,16 @@ export default function Layout() {
             );
           })}
         </nav>
-        <div className="p-3 border-t border-[rgba(212,175,55,0.15)]">
+        <div className="p-3 border-t border-[rgba(244,200,66,0.15)]">
           <div className="px-3 py-2 mb-2">
-            <p className="text-xs text-[#94A3B8]">Masuk sebagai</p>
+            <p className="text-xs text-[#C4A484]">Masuk sebagai</p>
             <p className="text-sm text-[#F5F5F5] truncate" data-testid="user-name">{user?.name}</p>
-            <p className="text-[10px] text-[#D4AF37] uppercase tracking-wider" data-testid="user-role-badge">{ROLE_LABEL[user?.role] || user?.role}</p>
+            <p className="text-[10px] text-[#F4C842] uppercase tracking-wider" data-testid="user-role-badge">{ROLE_LABEL[user?.role] || user?.role}</p>
           </div>
           <button
             onClick={handleLogout}
             data-testid="logout-btn"
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm text-[#94A3B8] hover:text-[#F5F5F5] hover:bg-[#14213D] transition-colors"
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm text-[#C4A484] hover:text-[#F5F5F5] hover:bg-[#331419] transition-colors"
           >
             <LogOut size={17} strokeWidth={1.5} />
             <span>Keluar</span>
