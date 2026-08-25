@@ -1,0 +1,86 @@
+version: "3.9"
+
+# =====================================================================
+# Republik Dimsum Imperium — Full Stack Docker Compose
+# Jalankan dengan: docker compose up -d
+# Akses: http://localhost (frontend) & http://localhost:8001 (API)
+# =====================================================================
+
+services:
+  # ---------------- PostgreSQL 15 ----------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: rdi-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-posuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pospass}
+      POSTGRES_DB: ${POSTGRES_DB:-sutankhulifah_pos}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./backend/postgres_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-posuser} -d ${POSTGRES_DB:-sutankhulifah_pos}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - rdi-net
+
+  # ---------------- FastAPI Backend ----------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: rdi-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_URL: "postgresql+asyncpg://${POSTGRES_USER:-posuser}:${POSTGRES_PASSWORD:-pospass}@postgres:5432/${POSTGRES_DB:-sutankhulifah_pos}"
+      MONGO_URL: "mongodb://localhost:27017"
+      DB_NAME: "not_used_pg_active"
+      CORS_ORIGINS: "${CORS_ORIGINS:-http://localhost,http://localhost:3000}"
+      JWT_SECRET: "${JWT_SECRET:-ganti-dengan-string-acak-64-karakter-untuk-produksi}"
+      ADMIN_EMAIL: "${ADMIN_EMAIL:-owner@republikdimsum.id}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:-Owner@2026}"
+      MIDTRANS_SERVER_KEY: "${MIDTRANS_SERVER_KEY:-}"
+      MIDTRANS_BASE_URL: "${MIDTRANS_BASE_URL:-https://api.sandbox.midtrans.com}"
+    ports:
+      - "8001:8001"
+    networks:
+      - rdi-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/docs').read()"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  # ---------------- React Frontend (nginx) ----------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Public URL client-side akses backend. Ubah untuk domain production.
+        REACT_APP_BACKEND_URL: "${REACT_APP_BACKEND_URL:-http://localhost:8001}"
+    container_name: rdi-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+    networks:
+      - rdi-net
+
+volumes:
+  pg_data:
+    driver: local
+
+networks:
+  rdi-net:
+    driver: bridge

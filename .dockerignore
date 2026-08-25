@@ -1,0 +1,8 @@
+pg_data/
+node_modules/
+frontend/build/
+frontend/node_modules/
+backend/__pycache__/
+backend/.venv/
+.env
+*.log
