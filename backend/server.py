@@ -181,6 +181,14 @@ class OrderCheckoutIn(BaseModel):
 class QRISCreateIn(BaseModel):
     amount: int; description: Optional[str]="POS checkout"
 
+class ClockInIn(BaseModel):
+    photo: Optional[str] = ""
+    note: Optional[str] = ""
+
+class ClockOutIn(BaseModel):
+    photo: Optional[str] = ""
+    note: Optional[str] = ""
+
 # ============ HELPERS ============
 def _u(v):
     """Convert empty string to None for UUID columns."""
@@ -836,6 +844,44 @@ async def midtrans_webhook(request: Request):
         await q_exec("UPDATE qris_orders SET status=:s, fraud_status=:f, updated_at=NOW() WHERE order_id=:o",
                      s=str(data.get("transaction_status", "")), f=data.get("fraud_status"), o=order_id)
     return {"ok": True}
+
+# ============ ATTENDANCE (Absensi Karyawan) ============
+@api.get("/attendance/active")
+async def active_attendance(user=Depends(get_current_user)):
+    row = await q_one("SELECT * FROM attendance WHERE cashier_id=:c AND status='active' LIMIT 1", c=user["id"])
+    return clean(row)
+
+@api.get("/attendance")
+async def list_attendance(user=Depends(get_current_user), limit: int = 100, cashier_id: Optional[str] = None):
+    if cashier_id:
+        rows = await q_all("SELECT * FROM attendance WHERE cashier_id=:c ORDER BY clock_in_at DESC LIMIT :l", c=cashier_id, l=limit)
+    else:
+        rows = await q_all("SELECT * FROM attendance ORDER BY clock_in_at DESC LIMIT :l", l=limit)
+    return clean_list(rows)
+
+@api.post("/attendance/clock-in")
+async def clock_in(body: ClockInIn, user=Depends(get_current_user)):
+    existing = await q_one("SELECT id FROM attendance WHERE cashier_id=:c AND status='active'", c=user["id"])
+    if existing: raise HTTPException(400, "Anda sudah absen masuk. Absen keluar dulu.")
+    aid = new_id()
+    await q_exec("""INSERT INTO attendance (id, cashier_id, cashier_name, clock_in_at, clock_in_photo, clock_in_note, status)
+                    VALUES (:id, :ci, :cn, NOW(), :p, :n, 'active')""",
+                 id=aid, ci=user["id"], cn=user.get("name",""), p=body.photo or "", n=body.note or "")
+    return clean(await q_one("SELECT * FROM attendance WHERE id=:id", id=aid))
+
+@api.post("/attendance/clock-out")
+async def clock_out(body: ClockOutIn, user=Depends(get_current_user)):
+    active = await q_one("SELECT * FROM attendance WHERE cashier_id=:c AND status='active' LIMIT 1", c=user["id"])
+    if not active: raise HTTPException(400, "Tidak ada absen aktif")
+    duration = await q_one("""SELECT EXTRACT(EPOCH FROM (NOW() - clock_in_at))/60 AS mins
+                              FROM attendance WHERE id=:id""", id=active["id"])
+    mins = int(duration["mins"]) if duration else 0
+    active_shift = await q_one("SELECT id FROM shifts WHERE cashier_id=:c AND status='open' LIMIT 1", c=user["id"])
+    shift_id = str(active_shift["id"]) if active_shift else None
+    await q_exec("""UPDATE attendance SET status='completed', clock_out_at=NOW(), clock_out_photo=:p,
+                    clock_out_note=:n, duration_minutes=:d, shift_id=:sid WHERE id=:id""",
+                 id=active["id"], p=body.photo or "", n=body.note or "", d=mins, sid=_u(shift_id))
+    return clean(await q_one("SELECT * FROM attendance WHERE id=:id", id=active["id"]))
 
 # ============ STARTUP ============
 @app.on_event("startup")

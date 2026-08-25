@@ -17,6 +17,7 @@ import Shifts from "./pages/Shifts";
 import Users from "./pages/Karyawan";
 import Transfers from "./pages/Transfers";
 import Tables from "./pages/Tables";
+import Attendance from "./pages/Attendance";
 
 function Protected({ children, path }) {
   const { user, loading } = useAuth();
@@ -54,6 +55,7 @@ function App() {
           <Route element={<Protected><RoleAwareLayout /></Protected>}>
             <Route path="/dashboard" element={<Protected path="/dashboard"><Dashboard /></Protected>} />
             <Route path="/shifts" element={<Protected path="/shifts"><Shifts /></Protected>} />
+            <Route path="/attendance" element={<Protected path="/attendance"><Attendance /></Protected>} />
             <Route path="/tables" element={<Protected path="/tables"><Tables /></Protected>} />
             <Route path="/products" element={<Protected path="/products"><Products /></Protected>} />
             <Route path="/inventory" element={<Protected path="/inventory"><Inventory /></Protected>} />

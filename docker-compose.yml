@@ -77,8 +77,27 @@ services:
     networks:
       - rdi-net
 
+  # ---------------- Uptime Kuma (Health Dashboard) ----------------
+  # Akses: http://localhost:3001
+  # Setup awal: buat akun admin, lalu tambahkan monitor untuk:
+  #   - http://backend:8001/docs (backend health)
+  #   - http://frontend/ (frontend availability)
+  #   - postgres:5432 (TCP monitor untuk database)
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    container_name: rdi-uptime
+    restart: unless-stopped
+    volumes:
+      - uptime_data:/app/data
+    ports:
+      - "3001:3001"
+    networks:
+      - rdi-net
+
 volumes:
   pg_data:
+    driver: local
+  uptime_data:
     driver: local
 
 networks:

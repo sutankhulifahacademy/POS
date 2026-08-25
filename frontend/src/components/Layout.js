@@ -11,6 +11,7 @@ const NAV = [
   { to: "/dashboard",       label: "Dashboard",       icon: LayoutDashboard, testId: "nav-dashboard", roles: ["admin", "manager"] },
   { to: "/pos",             label: "Kasir (POS)",     icon: ShoppingCart,    testId: "nav-pos",       roles: ["admin", "manager", "kasir"] },
   { to: "/tables",          label: "Meja (Dine-In)",  icon: Utensils,        testId: "nav-tables",    roles: ["admin", "manager"] },
+  { to: "/attendance",      label: "Absensi",         icon: Clock,           testId: "nav-attendance",roles: ["admin", "manager", "kasir"] },
   { to: "/shifts",          label: "Shift",           icon: Clock,           testId: "nav-shifts",    roles: ["admin", "manager"] },
   { to: "/products",        label: "Produk",          icon: Package,         testId: "nav-products",  roles: ["admin", "manager"] },
   { to: "/inventory",       label: "Inventory",       icon: Boxes,           testId: "nav-inventory", roles: ["admin", "manager"] },
