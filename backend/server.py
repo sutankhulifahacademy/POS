@@ -193,16 +193,17 @@ class OrderCheckoutIn(BaseModel):
     payment_method: Literal["cash","card","qris","transfer"]="cash"
     amount_paid: float
 
-    card_type: Optional[str]=""
-    card_brand: Optional[str]=""
-    card_last4: Optional[str]=""
-    card_reference_no: Optional[str]=""
-    card_approval_code: Optional[str]=""
-    card_terminal_id: Optional[str]=""
+    customer_id: Optional[str] = ""
+    discount: float = 0.0
+    tax: float = 0.0
+    note: Optional[str] = ""
 
-    discount: float=0.0
-    tax: float=0.0
-    customer_id: Optional[str]=""
+    card_type: Optional[str] = ""
+    card_brand: Optional[str] = ""
+    card_last4: Optional[str] = ""
+    card_reference_no: Optional[str] = ""
+    card_approval_code: Optional[str] = ""
+    card_terminal_id: Optional[str] = ""
 class QRISCreateIn(BaseModel):
     amount: int; description: Optional[str]="POS checkout"
 

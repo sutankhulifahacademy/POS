@@ -73,23 +73,81 @@ export default function Tables() {
     setOrderItems(prev => {
       const ex = prev.find(i => i.product_id === p.id);
       if (ex) return prev.map(i => i.product_id === p.id ? { ...i, quantity: i.quantity + 1 } : i);
-      return [...prev, { product_id: p.id, name: p.name, price: p.price, quantity: 1 }];
+      return [
+        ...prev,
+        {
+          product_id: String(p.id),
+          name: p.name,
+          price: Number(p.price),
+          quantity: 1,
+          variant_name: "",
+          note: ""
+        }
+      ];
     });
   };
   const changeQty = (pid, d) => setOrderItems(prev => prev.map(i => i.product_id === pid ? { ...i, quantity: Math.max(0, i.quantity + d) } : i).filter(i => i.quantity > 0));
 
   const saveOrder = async () => {
-    if (orderItems.length === 0) return toast.error("Tambahkan minimal 1 item");
+    if (orderItems.length === 0) {
+      return toast.error("Tambahkan minimal 1 item");
+    }
+
     try {
       if (activeOrder) {
-        await api.put(`/orders/${activeOrder.id}/items`, { items: orderItems });
+
+        const payloadItems = orderItems.map(i => ({
+          product_id: String(i.product_id),
+          name: String(i.name || ""),
+          price: Number(i.price) || 0,
+          quantity: Number(i.quantity) || 0,
+          variant_name: String(i.variant_name || ""),
+          note: String(i.note || "")
+        }));
+
+        console.log("UPDATE ORDER PAYLOAD:", {
+          items: payloadItems
+        });
+
+        await api.put(
+          `/orders/${activeOrder.id}/items`,
+          { items: payloadItems }
+        );
+
         toast.success("Order diperbarui");
+
       } else {
-        await api.post("/orders", { table_id: openTable.id, guest_count: Number(guests), items: orderItems });
+
+        await api.post("/orders", {
+          table_id: openTable.id,
+          guest_count: Number(guests),
+          items: orderItems
+        });
+
         toast.success("Order dibuka");
       }
-      setOpenTable(null); setActiveOrder(null); setOrderItems([]); load();
-    } catch (err) { toast.error(err.response?.data?.detail || "Gagal"); }
+
+      setOpenTable(null);
+      setActiveOrder(null);
+      setOrderItems([]);
+      load();
+
+    } catch (err) {
+
+      const detail = err.response?.data?.detail;
+
+      const message =
+        typeof detail === "string"
+          ? detail
+          : Array.isArray(detail)
+            ? detail.map(x => x.msg || "Data tidak valid").join(", ")
+            : "Gagal menyimpan order";
+
+      console.error("UPDATE ORDER ERROR:", err.response?.data);
+      console.error("ORDER ITEMS:", orderItems);
+
+      toast.error(message);
+    }
   };
 
   const doCheckout = async () => {
@@ -149,7 +207,21 @@ export default function Tables() {
       setCardApprovalCode("");
       setCardTerminalId("");
       load();
-    } catch (err) { toast.error(err.response?.data?.detail || "Gagal"); }
+    } catch (err) {
+      const detail = err.response?.data?.detail;
+
+      const message =
+        typeof detail === "string"
+          ? detail
+          : Array.isArray(detail)
+            ? detail.map((x) => x.msg || "Data tidak valid").join(", ")
+            : "Gagal menyimpan order";
+
+      console.error("UPDATE ORDER ERROR:", err.response?.data);
+      console.error("ORDER ITEMS:", orderItems);
+
+      toast.error(message);
+    }
   };
 
   const cancelOrder = async () => {
