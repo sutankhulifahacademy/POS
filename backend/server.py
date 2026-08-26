@@ -484,64 +484,306 @@ async def get_sale(sale_id: str, user=Depends(get_current_user)):
     return clean(r)
 
 # ============ REPORTS ============
+# ============ REPORTS ============
 @api.get("/reports/dashboard")
-async def report_dashboard(user=Depends(get_current_user)):
-    today = datetime.now(timezone.utc).date()
+async def report_dashboard(
+    period: Literal["daily", "weekly", "monthly", "yearly"] = "weekly",
+    user=Depends(get_current_user)
+):
+    """
+    Dashboard reporting dengan periode:
+    - daily   : hari ini, chart per jam
+    - weekly  : 7 hari terakhir, chart per hari
+    - monthly : bulan berjalan, chart per hari
+    - yearly  : tahun berjalan, chart per bulan
+
+    Semua batas waktu menggunakan Asia/Jakarta.
+    """
+
+    from zoneinfo import ZoneInfo
+
+    jakarta = ZoneInfo("Asia/Jakarta")
+    now_local = datetime.now(jakarta)
+
+    # ---------------------------------------------------------
+    # PERIOD RANGE
+    # ---------------------------------------------------------
+    if period == "daily":
+        start_local = now_local.replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        end_local = start_local + timedelta(days=1)
+
+    elif period == "weekly":
+        # 7 hari termasuk hari ini
+        start_local = (
+            now_local.replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+            - timedelta(days=6)
+        )
+        end_local = now_local.replace(
+            hour=23, minute=59, second=59, microsecond=999999
+        ) + timedelta(microseconds=1)
+
+    elif period == "monthly":
+        start_local = now_local.replace(
+            day=1, hour=0, minute=0, second=0, microsecond=0
+        )
+
+        if start_local.month == 12:
+            end_local = start_local.replace(
+                year=start_local.year + 1,
+                month=1
+            )
+        else:
+            end_local = start_local.replace(
+                month=start_local.month + 1
+            )
+
+    else:  # yearly
+        start_local = now_local.replace(
+            month=1,
+            day=1,
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0
+        )
+        end_local = start_local.replace(
+            year=start_local.year + 1
+        )
+
+    # ---------------------------------------------------------
+    # SUMMARY
+    # ---------------------------------------------------------
     stats = await q_one("""
         SELECT
-          COALESCE(SUM(CASE WHEN DATE(created_at AT TIME ZONE 'UTC') = CAST(:t AS DATE) THEN total ELSE 0 END), 0) AS rev_today,
-          COALESCE(SUM(total), 0) AS rev_total,
-          COUNT(*) FILTER (WHERE DATE(created_at AT TIME ZONE 'UTC') = CAST(:t AS DATE)) AS tx_today,
-          COUNT(*) AS tx_total
-        FROM sales""", t=today)
-    items_today = await q_one("""
-        SELECT COALESCE(SUM((elem->>'quantity')::int), 0) AS c
-        FROM sales, jsonb_array_elements(items) elem
-        WHERE DATE(created_at AT TIME ZONE 'UTC') = CAST(:t AS DATE)""", t=today)
-    products_count = await q_one("SELECT COUNT(*) AS c FROM products")
-    customers_count = await q_one("SELECT COUNT(*) AS c FROM customers")
-    low_stock = await q_all("""SELECT * FROM products WHERE stock <= low_stock_threshold LIMIT 10""")
-    daily = await q_all("""
-        SELECT DATE(created_at AT TIME ZONE 'UTC') AS date, SUM(total) AS revenue
-        FROM sales GROUP BY DATE(created_at AT TIME ZONE 'UTC')
-        ORDER BY date DESC LIMIT 7""")
+            COALESCE(SUM(total), 0) AS revenue,
+            COUNT(*) AS transactions
+        FROM sales
+        WHERE created_at >= :start_at
+          AND created_at < :end_at
+    """,
+        start_at=start_local,
+        end_at=end_local
+    )
+
+    # ---------------------------------------------------------
+    # ITEMS SOLD
+    # ---------------------------------------------------------
+    items_period = await q_one("""
+        SELECT
+            COALESCE(
+                SUM(
+                    COALESCE((elem->>'quantity')::numeric, 0)
+                ),
+                0
+            ) AS items
+        FROM sales,
+             jsonb_array_elements(items) elem
+        WHERE created_at >= :start_at
+          AND created_at < :end_at
+    """,
+        start_at=start_local,
+        end_at=end_local
+    )
+
+    # ---------------------------------------------------------
+    # GLOBAL MASTER DATA
+    # ---------------------------------------------------------
+    products_count = await q_one("""
+        SELECT COUNT(*) AS c
+        FROM products
+    """)
+
+    customers_count = await q_one("""
+        SELECT COUNT(*) AS c
+        FROM customers
+    """)
+
+    # ---------------------------------------------------------
+    # LOW STOCK
+    # ---------------------------------------------------------
+    low_stock = await q_all("""
+        SELECT *
+        FROM products
+        WHERE stock <= low_stock_threshold
+        ORDER BY stock ASC
+        LIMIT 10
+    """)
+
+    # ---------------------------------------------------------
+    # CHART
+    # ---------------------------------------------------------
+    if period == "daily":
+
+        chart_rows = await q_all("""
+            SELECT
+                EXTRACT(
+                    HOUR FROM (created_at AT TIME ZONE 'Asia/Jakarta')
+                )::int AS bucket,
+                SUM(total) AS revenue,
+                COUNT(*) AS transactions
+            FROM sales
+            WHERE created_at >= :start_at
+              AND created_at < :end_at
+            GROUP BY bucket
+            ORDER BY bucket
+        """,
+            start_at=start_local,
+            end_at=end_local
+        )
+
+        chart = [
+            {
+                "label": f"{int(row['bucket']):02d}:00",
+                "revenue": float(row["revenue"] or 0),
+                "transactions": int(row["transactions"] or 0),
+            }
+            for row in chart_rows
+        ]
+
+    elif period in ("weekly", "monthly"):
+
+        chart_rows = await q_all("""
+            SELECT
+                DATE(created_at AT TIME ZONE 'Asia/Jakarta') AS bucket,
+                SUM(total) AS revenue,
+                COUNT(*) AS transactions
+            FROM sales
+            WHERE created_at >= :start_at
+              AND created_at < :end_at
+            GROUP BY bucket
+            ORDER BY bucket
+        """,
+            start_at=start_local,
+            end_at=end_local
+        )
+
+        chart = [
+            {
+                "label": str(row["bucket"]),
+                "revenue": float(row["revenue"] or 0),
+                "transactions": int(row["transactions"] or 0),
+            }
+            for row in chart_rows
+        ]
+
+    else:  # yearly
+
+        chart_rows = await q_all("""
+            SELECT
+                EXTRACT(
+                    MONTH FROM (created_at AT TIME ZONE 'Asia/Jakarta')
+                )::int AS bucket,
+                SUM(total) AS revenue,
+                COUNT(*) AS transactions
+            FROM sales
+            WHERE created_at >= :start_at
+              AND created_at < :end_at
+            GROUP BY bucket
+            ORDER BY bucket
+        """,
+            start_at=start_local,
+            end_at=end_local
+        )
+
+        month_names = [
+            "Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
+            "Jul", "Agu", "Sep", "Okt", "Nov", "Des"
+        ]
+
+        chart = [
+            {
+                "label": month_names[int(row["bucket"]) - 1],
+                "revenue": float(row["revenue"] or 0),
+                "transactions": int(row["transactions"] or 0),
+            }
+            for row in chart_rows
+        ]
+
+    # ---------------------------------------------------------
+    # TOP PRODUCTS - SESUAI PERIODE
+    # ---------------------------------------------------------
     top = await q_all("""
         SELECT
             elem->>'product_id' AS product_id,
-            COALESCE(elem->>'name', 'Produk Tanpa Nama') AS name,
             COALESCE(
-                SUM(COALESCE((elem->>'quantity')::numeric, 0)),
-                0
-            ) AS quantity,
+                elem->>'name',
+                'Produk Tanpa Nama'
+            ) AS name,
+
             COALESCE(
                 SUM(
-                    COALESCE((elem->>'price')::numeric, 0)
-                    * COALESCE((elem->>'quantity')::numeric, 0)
+                    COALESCE(
+                        (elem->>'quantity')::numeric,
+                        0
+                    )
+                ),
+                0
+            ) AS quantity,
+
+            COALESCE(
+                SUM(
+                    COALESCE(
+                        (elem->>'price')::numeric,
+                        0
+                    )
+                    *
+                    COALESCE(
+                        (elem->>'quantity')::numeric,
+                        0
+                    )
                 ),
                 0
             ) AS revenue
-        FROM sales, jsonb_array_elements(items) elem
-        GROUP BY elem->>'product_id', elem->>'name'
+
+        FROM sales,
+             jsonb_array_elements(items) elem
+
+        WHERE created_at >= :start_at
+          AND created_at < :end_at
+
+        GROUP BY
+            elem->>'product_id',
+            elem->>'name'
+
         ORDER BY revenue DESC
-        LIMIT 5""")
+        LIMIT 5
+    """,
+        start_at=start_local,
+        end_at=end_local
+    )
+
+    # ---------------------------------------------------------
+    # RESPONSE
+    # ---------------------------------------------------------
     return {
-        "revenue_today": float(stats["rev_today"]),
-        "revenue_total": float(stats["rev_total"]),
-        "transactions_today": stats["tx_today"],
-        "transactions_total": stats["tx_total"],
-        "items_sold_today": items_today["c"],
-        "products_count": products_count["c"],
-        "customers_count": customers_count["c"],
+        "period": period,
+
+        "period_start": start_local.isoformat(),
+        "period_end": end_local.isoformat(),
+
+        "revenue": float(stats["revenue"] or 0),
+        "transactions": int(stats["transactions"] or 0),
+        "items_sold": int(items_period["items"] or 0),
+
+        "products_count": int(products_count["c"] or 0),
+        "customers_count": int(customers_count["c"] or 0),
+
         "low_stock_count": len(low_stock),
         "low_stock_items": clean_list(low_stock),
-        "daily_revenue": [{"date": str(d["date"]), "revenue": float(d["revenue"])} for d in sorted(daily, key=lambda x: str(x["date"]))],
+
+        "chart": chart,
+
         "top_products": [
             {
-                "name": t["name"] or "Produk Tanpa Nama",
-                "quantity": int(t["quantity"] or 0),
-                "revenue": float(t["revenue"] or 0),
+                "name": item["name"] or "Produk Tanpa Nama",
+                "quantity": int(item["quantity"] or 0),
+                "revenue": float(item["revenue"] or 0),
             }
-            for t in top
+            for item in top
         ],
     }
 
