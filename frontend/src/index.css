@@ -1,0 +1,92 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Playfair+Display:wght@500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  font-family: 'Manrope', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #1A0810;
+  color: #F5F5F5;
+}
+
+.font-serif-luxury {
+  font-family: 'Playfair Display', serif;
+}
+
+@layer base {
+  :root {
+    --background: 351 55% 7%;
+    --foreground: 0 0% 96%;
+    --card: 351 45% 14%;
+    --card-foreground: 0 0% 96%;
+    --popover: 351 45% 14%;
+    --popover-foreground: 0 0% 96%;
+    --primary: 45 88% 55%;
+    --primary-foreground: 351 55% 7%;
+    --secondary: 351 40% 22%;
+    --secondary-foreground: 0 0% 96%;
+    --muted: 351 40% 22%;
+    --muted-foreground: 30 25% 68%;
+    --accent: 45 88% 55%;
+    --accent-foreground: 351 55% 7%;
+    --destructive: 0 84% 55%;
+    --destructive-foreground: 0 0% 96%;
+    --border: 45 88% 40%;
+    --input: 351 40% 22%;
+    --ring: 45 88% 55%;
+    --radius: 0.5rem;
+    --chart-1: 45 88% 55%;
+    --chart-2: 0 75% 55%;
+    --chart-3: 30 60% 65%;
+    --chart-4: 15 80% 55%;
+    --chart-5: 45 88% 70%;
+  }
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  ::selection {
+    background-color: #F4C842;
+    color: #1A0810;
+  }
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: #1A0810; }
+::-webkit-scrollbar-thumb { background: rgba(244, 200, 66, 0.4); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(244, 200, 66, 0.7); }
+
+.gold-glow { box-shadow: 0 0 24px rgba(244, 200, 66, 0.25); }
+.gold-border { border: 1px solid rgba(244, 200, 66, 0.28); }
+.gold-border-active { border: 1px solid rgba(244, 200, 66, 0.7); }
+
+.card-hover { transition: transform 0.2s ease, border-color 0.2s ease; }
+.card-hover:hover { transform: translateY(-2px); border-color: rgba(244, 200, 66, 0.7); }
+
+.grain {
+  background-image: radial-gradient(rgba(244, 200, 66, 0.05) 1px, transparent 1px);
+  background-size: 3px 3px;
+}
+
+.print-only { display: none; }
+
+@media print {
+  body * { visibility: hidden; }
+  #print-receipt, #print-receipt * { visibility: visible; }
+  #print-receipt {
+    display: block !important;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 80mm;
+    background: white !important;
+    color: black !important;
+  }
+  @page { size: 80mm auto; margin: 0; }
+}

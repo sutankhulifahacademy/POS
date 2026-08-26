@@ -1,0 +1,116 @@
+{
+  "theme_and_brand": {
+    "identity": "Sutan Khulifah Academy - Perjalanan Ruhani. Refleksi Kehidupan. Transformasi Diri. Luxury, spiritual, and elegant Point of Sale and Inventory Management SaaS.",
+    "theme_mode": "dark",
+    "colors": {
+      "background_base": "#050505",
+      "surface_card": "#111111",
+      "surface_hover": "#1A1A1A",
+      "primary_gold": "#D4AF37",
+      "primary_gold_hover": "#FFD700",
+      "text_primary": "#FDFBF7",
+      "text_secondary": "#A39B8B",
+      "border_subtle": "rgba(212, 175, 55, 0.2)",
+      "border_active": "rgba(212, 175, 55, 0.6)",
+      "success": "#2E8B57",
+      "danger": "#8B0000"
+    },
+    "typography": {
+      "headings": {
+        "font_family": "Cormorant Garamond, serif",
+        "description": "Used for main titles, auth screen greetings, and major section headers to evoke spiritual luxury and elegant aesthetics.",
+        "weights": [400, 600, 700]
+      },
+      "body_and_ui": {
+        "font_family": "Manrope, sans-serif",
+        "description": "Used for all POS data, inventory tables, dense dashboards, and numeric values. Clean and highly legible.",
+        "weights": [400, 500, 600]
+      }
+    }
+  },
+  "layouts_and_spacing": {
+    "philosophy": "High-density elegance. Ensure adequate spacing inside cards (p-6) but keep grid gaps tight (gap-4) for dashboard scanability.",
+    "pos_terminal_layout": {
+      "structure": "Split screen layout. Left 70% for Category Tabs and Product Bento Grid. Right 30% for Sticky Checkout/Cart Panel.",
+      "product_grid": "grid-cols-2 md:grid-cols-3 lg:grid-cols-4 with gap-4.",
+      "cart_panel": "Fixed height, solid surface with gold border-l. Flex-col with flex-1 for scrollable items, sticky bottom for totals and massive Gold Pay button."
+    },
+    "dashboard_layout": {
+      "structure": "Sidebar navigation (solid deep black with subtle gold accents) + main content area.",
+      "metrics_bento": "grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6. Use sharp edges or max 8px radius."
+    }
+  },
+  "components": {
+    "cards": {
+      "style": "Flat solid surfaces (#111111). NO card shadow in dark mode. 1px border using border_subtle.",
+      "radius": "rounded-lg (8px) maximum to keep it sharp and premium."
+    },
+    "buttons": {
+      "primary": "Solid Gold (#D4AF37) background, deep black (#050505) text. Hover: Bright Gold (#FFD700). Transition: transform 0.2s ease.",
+      "secondary": "Transparent background, 1px Gold border, Gold text. Hover: bg-gold/10.",
+      "radius": "rounded-md"
+    },
+    "inputs_and_forms": {
+      "style": "Solid dark background (#0A0A0A) with border_subtle. Focus state MUST have ring-1 ring-[#D4AF37]. Text text_primary.",
+      "radius": "rounded-md"
+    },
+    "tables": {
+      "style": "Shadcn tables. Header text text_secondary uppercase tracking-wider text-xs. Row borders border_subtle.",
+      "interactions": "Hover state on rows bg-[#1A1A1A]."
+    }
+  },
+  "motion_and_interaction": {
+    "hover_states": "All interactive elements must change color. Cards translate-y-[-2px] with border color shift to border_active.",
+    "transitions": "transition: all 0.2s ease-in-out is FORBIDDEN. Use targeted transitions (e.g., transition-colors, transition-transform).",
+    "pos_interactions": "Adding item to cart should have a micro-bounce effect or a subtle toast notification using Sonner."
+  },
+  "image_assets": {
+    "brand_logo": {
+      "url": "https://customer-assets-gfyr7b9c.emergentagent.net/job_inventory-hub-3002/artifacts/agyuw41m_logoSK.png",
+      "description": "Sutan Khulifah Academy main logo. Place prominently in Auth screen and Sidebar top."
+    },
+    "products_retail_elegant": [
+      {
+        "url": "https://images.unsplash.com/photo-1764779169349-a5adca68947c?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxNzV8MHwxfHNlYXJjaHw0fHxlbGVnYW50JTIwcmV0YWlsJTIwcHJvZHVjdHN8ZW58MHx8fHwxNzg3NTk2MDg4fDA&ixlib=rb-4.1.0&q=85",
+        "description": "Elegant clothing display for product placeholder"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1567958528086-8d8324137918?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxNzV8MHwxfHNlYXJjaHwzfHxlbGVnYW50JTIwcmV0YWlsJTIwcHJvZHVjdHN8ZW58MHx8fHwxNzg3NTk2MDg4fDA&ixlib=rb-4.1.0&q=85",
+        "description": "Elegant sandals/accessories placeholder"
+      }
+    ],
+    "store_interiors": [
+      {
+        "url": "https://images.pexels.com/photos/33257665/pexels-photo-33257665.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Luxury boutique interior for dashboard backgrounds or onboarding screen"
+      }
+    ],
+    "users_profiles": [
+      {
+        "url": "https://images.unsplash.com/photo-1580489944761-15a19d654956?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODh8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBwb3J0cmFpdHxlbnwwfHx8fDE3ODc0NTYxMjh8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Professional female profile (cashier/admin avatar)"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODh8MHwxfHNlYXJjaHwxfHxwcm9mZXNzaW9uYWwlMjBwb3J0cmFpdHxlbnwwfHx8fDE3ODc0NTYxMjh8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Professional male profile (manager avatar)"
+      }
+    ]
+  },
+  "iconography_and_libraries": {
+    "icons": "Use lucide-react. Ensure stroke-width is 1.5 for a finer, more elegant look.",
+    "charts": "Use recharts wrapped in Shadcn chart component. Colors must use primary_gold and ivory.",
+    "toasts": "Use Sonner for all POS success/error notifications. Styled to match dark/gold theme."
+  },
+  "main_agent_instructions": {
+    "universal_rules": [
+      "Target .js files only, do not output .tsx files.",
+      "NEVER use generic placeholder text or empty dummy images. Always use provided Unsplash URLs.",
+      "CRITICAL: All interactive elements (buttons, inputs, cart items, nav links) MUST include a data-testid attribute in kebab-case (e.g., data-testid='pos-checkout-btn').",
+      "CRITICAL: DO NOT use complete transparent background in header, overlays, or any surface that has content under it. Always apply a solid dark color or backdrop-blur with bg-[#050505]/90.",
+      "Avoid 'transition: all' in CSS. Specify properties like 'transition-colors' or 'transition-transform'.",
+      "Do not center-align standard form inputs or text content; left-align them for readability.",
+      "Do not over-round corners. The elegant luxury vibe requires max rounded-md or rounded-lg.",
+      "Implement both Auth flow (login with role selection), Onboarding, and full POS / Dashboard (Products, Inventory, Sales, multi-branch) layouts."
+    ]
+  }
+}
