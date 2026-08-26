@@ -22,6 +22,12 @@ export default function POS() {
   const [customerId, setCustomerId] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [amountPaid, setAmountPaid] = useState("");
+  const [cardType, setCardType] = useState("debit");
+  const [cardBrand, setCardBrand] = useState("");
+  const [cardLast4, setCardLast4] = useState("");
+  const [cardReferenceNo, setCardReferenceNo] = useState("");
+  const [cardApprovalCode, setCardApprovalCode] = useState("");
+  const [cardTerminalId, setCardTerminalId] = useState("");
   const [discount, setDiscount] = useState(0);
   const [processing, setProcessing] = useState(false);
   const [receipt, setReceipt] = useState(null);
@@ -134,16 +140,49 @@ export default function POS() {
     setProcessing(true);
     try {
       const { data } = await api.post("/sales", {
-        outlet_id: selectedOutlet,
-        items: cart.map((i) => ({ product_id: i.product_id, variant_name: i.variant_name, name: i.name, price: i.price, quantity: i.quantity })),
-        customer_id: customerId || "",
-        payment_method: paymentMethod,
-        amount_paid: paymentMethod === "cash" ? Number(amountPaid) : total,
-        discount: Number(discount) || 0,
-        tax: 0,
-      });
+      outlet_id: selectedOutlet,
+
+      items: cart.map((i) => ({
+        product_id: i.product_id,
+        variant_name: i.variant_name,
+        name: i.name,
+        price: i.price,
+        quantity: i.quantity
+      })),
+
+      customer_id: customerId || "",
+      payment_method: paymentMethod,
+
+      amount_paid:
+        paymentMethod === "cash"
+          ? Number(amountPaid)
+          : total,
+
+      card_type: paymentMethod === "card" ? cardType : "",
+      card_brand: paymentMethod === "card" ? cardBrand : "",
+      card_last4: paymentMethod === "card" ? cardLast4 : "",
+      card_reference_no: paymentMethod === "card" ? cardReferenceNo : "",
+      card_approval_code: paymentMethod === "card" ? cardApprovalCode : "",
+      card_terminal_id: paymentMethod === "card" ? cardTerminalId : "",
+
+      discount: Number(discount) || 0,
+      tax: 0,
+    });
       setReceipt(data);
-      setCart([]); setAmountPaid(""); setDiscount(0); setCustomerId("");
+
+      setCart([]);
+      setAmountPaid("");
+      setDiscount(0);
+      setCustomerId("");
+
+      // Reset detail pembayaran kartu
+      setCardType("debit");
+      setCardBrand("");
+      setCardLast4("");
+      setCardReferenceNo("");
+      setCardApprovalCode("");
+      setCardTerminalId("");
+
       toast.success("Transaksi berhasil");
       load();
     } catch (e) {
@@ -154,6 +193,15 @@ export default function POS() {
   const checkout = async () => {
     if (cart.length === 0) return toast.error("Keranjang kosong");
     if (paymentMethod === "cash" && Number(amountPaid) < total) return toast.error("Uang bayar kurang");
+    if (paymentMethod === "card") {
+      if (!cardReferenceNo.trim()) {
+        return toast.error("Nomor referensi kartu wajib diisi");
+      }
+
+      if (cardLast4 && cardLast4.length !== 4) {
+        return toast.error("4 digit terakhir kartu harus 4 angka");
+      }
+    }
     if (paymentMethod === "qris") {
       setShowQRIS(true);
       return;
@@ -231,7 +279,8 @@ export default function POS() {
         )}
       </div>
 
-      <aside className="w-96 bg-[#2A1015] border-l border-[rgba(244,200,66,0.2)] flex flex-col fixed right-0 top-0 h-screen" data-testid="pos-cart-panel">
+      <aside
+  className="w-96 bg-[#2A1015] border-l border-[rgba(244,200,66,0.2)] flex flex-col fixed right-0 top-0 h-screen z-40" data-testid="pos-cart-panel">
         <div className="p-6 border-b border-[rgba(244,200,66,0.15)] flex items-center gap-2">
           <ShoppingCart size={20} strokeWidth={1.5} className="text-[#F4C842]" />
           <h2 className="font-serif-luxury text-2xl text-[#F5F5F5]">Keranjang</h2>
@@ -255,7 +304,7 @@ export default function POS() {
             </div>
           ))}
         </div>
-        <div className="border-t border-[rgba(244,200,66,0.15)] p-6 space-y-3">
+        <div className="border-t border-[rgba(244,200,66,0.15)] p-6 space-y-3 max-h-[55vh] overflow-y-auto">
           <select value={customerId} onChange={(e) => setCustomerId(e.target.value)} className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]" data-testid="pos-customer-select">
             <option value="">Pelanggan (opsional)</option>
             {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -276,6 +325,102 @@ export default function POS() {
             <div>
               <label className="text-[10px] uppercase tracking-widest text-[#C4A484]">Uang Bayar</label>
               <input type="number" value={amountPaid} onChange={(e) => setAmountPaid(e.target.value)} placeholder="0" className="mt-1 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]" data-testid="pos-amount-paid" />
+            </div>
+          )}
+          {paymentMethod === "card" && (
+            <div className="space-y-3 bg-[#331419] border border-[rgba(244,200,66,0.15)] rounded-md p-4">
+              <div className="text-xs uppercase tracking-widest text-[#F4C842]">
+                Detail Pembayaran Kartu
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] uppercase tracking-widest text-[#C4A484]">
+                    Tipe Kartu
+                  </label>
+                  <select
+                    value={cardType}
+                    onChange={(e) => setCardType(e.target.value)}
+                    className="mt-1 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]"
+                  >
+                    <option value="debit">Debit</option>
+                    <option value="credit">Credit</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[10px] uppercase tracking-widest text-[#C4A484]">
+                    Bank / Brand
+                  </label>
+                  <input
+                    type="text"
+                    value={cardBrand}
+                    onChange={(e) => setCardBrand(e.target.value)}
+                    placeholder="BCA / Mandiri / Visa"
+                    className="mt-1 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] uppercase tracking-widest text-[#C4A484]">
+                    4 Digit Terakhir
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={4}
+                    inputMode="numeric"
+                    value={cardLast4}
+                    onChange={(e) =>
+                      setCardLast4(e.target.value.replace(/\D/g, "").slice(0, 4))
+                    }
+                    placeholder="4821"
+                    className="mt-1 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] uppercase tracking-widest text-[#C4A484]">
+                    No. Referensi *
+                  </label>
+                  <input
+                    type="text"
+                    value={cardReferenceNo}
+                    onChange={(e) => setCardReferenceNo(e.target.value)}
+                    placeholder="Nomor referensi EDC"
+                    className="mt-1 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] uppercase tracking-widest text-[#C4A484]">
+                    Approval Code
+                  </label>
+                  <input
+                    type="text"
+                    value={cardApprovalCode}
+                    onChange={(e) => setCardApprovalCode(e.target.value)}
+                    placeholder="Opsional"
+                    className="mt-1 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] uppercase tracking-widest text-[#C4A484]">
+                    Terminal EDC
+                  </label>
+                  <input
+                    type="text"
+                    value={cardTerminalId}
+                    onChange={(e) => setCardTerminalId(e.target.value)}
+                    placeholder="EDC-01"
+                    className="mt-1 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]"
+                  />
+                </div>
+              </div>
             </div>
           )}
           <div className="pt-3 space-y-1 border-t border-[rgba(244,200,66,0.15)]">

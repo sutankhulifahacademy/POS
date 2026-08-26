@@ -20,6 +20,12 @@ export default function Tables() {
   const [showCheckout, setShowCheckout] = useState(false);
   const [payMethod, setPayMethod] = useState("cash");
   const [amountPaid, setAmountPaid] = useState("");
+  const [cardType, setCardType] = useState("debit");
+  const [cardBrand, setCardBrand] = useState("");
+  const [cardLast4, setCardLast4] = useState("");
+  const [cardReferenceNo, setCardReferenceNo] = useState("");
+  const [cardApprovalCode, setCardApprovalCode] = useState("");
+  const [cardTerminalId, setCardTerminalId] = useState("");
   const [discount, setDiscount] = useState(0);
   const [customerId, setCustomerId] = useState("");
 
@@ -88,7 +94,23 @@ export default function Tables() {
 
   const doCheckout = async () => {
     const total = orderItems.reduce((s, i) => s + i.price * i.quantity, 0) - Number(discount || 0);
-    if (payMethod === "cash" && Number(amountPaid) < total) return toast.error("Uang bayar kurang");
+   if (payMethod === "card") {
+      if (!cardType) {
+        return toast.error("Pilih jenis kartu");
+      }
+
+      if (!cardBrand) {
+        return toast.error("Isi bank / brand kartu");
+      }
+
+      if (!/^\d{4}$/.test(cardLast4)) {
+        return toast.error("4 digit terakhir kartu harus diisi");
+      }
+
+      if (!cardReferenceNo.trim()) {
+        return toast.error("No. referensi kartu wajib diisi");
+      }
+    }
     try {
       // Save items first (in case edited)
       if (activeOrder) {
@@ -105,10 +127,27 @@ export default function Tables() {
         discount: Number(discount) || 0,
         tax: 0,
         customer_id: customerId,
+
+        card_type: payMethod === "card" ? cardType : "",
+        card_brand: payMethod === "card" ? cardBrand : "",
+        card_last4: payMethod === "card" ? cardLast4 : "",
+        card_reference_no: payMethod === "card" ? cardReferenceNo : "",
+        card_approval_code: payMethod === "card" ? cardApprovalCode : "",
+        card_terminal_id: payMethod === "card" ? cardTerminalId : "",
       });
       toast.success(`Selesai: ${data.invoice_no}`);
       setShowCheckout(false); setOpenTable(null); setActiveOrder(null); setOrderItems([]);
-      setAmountPaid(""); setDiscount(0); setPayMethod("cash"); setCustomerId("");
+      setAmountPaid("");
+      setDiscount(0);
+      setPayMethod("cash");
+      setCustomerId("");
+
+      setCardType("");
+      setCardBrand("");
+      setCardLast4("");
+      setCardReferenceNo("");
+      setCardApprovalCode("");
+      setCardTerminalId("");
       load();
     } catch (err) { toast.error(err.response?.data?.detail || "Gagal"); }
   };
@@ -308,6 +347,125 @@ export default function Tables() {
                 <div>
                   <label className="text-[10px] uppercase tracking-widest text-[#C4A484]">Uang Bayar</label>
                   <input type="number" value={amountPaid} onChange={(e) => setAmountPaid(e.target.value)} className="mt-1 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]" data-testid="dinein-amount" />
+                </div>
+              )}
+              {payMethod === "card" && (
+                <div className="space-y-3 border border-[rgba(244,200,66,0.2)] rounded-md p-4 bg-[#331419]">
+
+                  <div className="text-xs uppercase tracking-widest text-[#F4C842]">
+                    Detail Pembayaran Kartu
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+
+                    <div>
+                      <label className="text-[10px] uppercase tracking-widest text-[#C4A484]">
+                        Jenis Kartu
+                      </label>
+
+                      <select
+                        value={cardType}
+                        onChange={(e) => setCardType(e.target.value)}
+                        className="mt-1 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]"
+                      >
+                        <option value="">Pilih</option>
+                        <option value="debit">Debit</option>
+                        <option value="credit">Credit</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] uppercase tracking-widest text-[#C4A484]">
+                        Bank / Brand
+                      </label>
+
+                      <select
+                        value={cardBrand}
+                        onChange={(e) => setCardBrand(e.target.value)}
+                        className="mt-1 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]"
+                      >
+                        <option value="">Pilih</option>
+                        <option value="BCA">BCA</option>
+                        <option value="BRI">BRI</option>
+                        <option value="BNI">BNI</option>
+                        <option value="Mandiri">Mandiri</option>
+                        <option value="CIMB Niaga">CIMB Niaga</option>
+                        <option value="Danamon">Danamon</option>
+                        <option value="Permata">Permata</option>
+                        <option value="BTN">BTN</option>
+                        <option value="Visa">Visa</option>
+                        <option value="Mastercard">Mastercard</option>
+                        <option value="JCB">JCB</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-[#C4A484]">
+                      4 Digit Terakhir Kartu
+                    </label>
+
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={4}
+                      value={cardLast4}
+                      onChange={(e) =>
+                        setCardLast4(e.target.value.replace(/\D/g, "").slice(0, 4))
+                      }
+                      placeholder="Contoh: 1234"
+                      className="mt-1 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-[#C4A484]">
+                      No. Referensi
+                    </label>
+
+                    <input
+                      type="text"
+                      value={cardReferenceNo}
+                      onChange={(e) => setCardReferenceNo(e.target.value)}
+                      placeholder="Nomor referensi transaksi EDC"
+                      className="mt-1 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+
+                    <div>
+                      <label className="text-[10px] uppercase tracking-widest text-[#C4A484]">
+                        Approval Code
+                      </label>
+
+                      <input
+                        type="text"
+                        value={cardApprovalCode}
+                        onChange={(e) => setCardApprovalCode(e.target.value)}
+                        placeholder="Approval"
+                        className="mt-1 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] uppercase tracking-widest text-[#C4A484]">
+                        Terminal ID
+                      </label>
+
+                      <input
+                        type="text"
+                        value={cardTerminalId}
+                        onChange={(e) => setCardTerminalId(e.target.value)}
+                        placeholder="ID EDC"
+                        className="mt-1 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]"
+                      />
+                    </div>
+
+                  </div>
+
                 </div>
               )}
               <div className="border-t border-dashed border-[rgba(244,200,66,0.2)] pt-3 flex justify-between text-lg">

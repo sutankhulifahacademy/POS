@@ -130,9 +130,23 @@ class SupplierIn(BaseModel):
 class CartItem(BaseModel):
     product_id: str; variant_name: Optional[str]=""; name: str; price: float; quantity: int
 class SaleIn(BaseModel):
-    outlet_id: Optional[str]=""; customer_id: Optional[str]=""; items: List[CartItem]
-    payment_method: Literal["cash","card","qris","transfer"]="cash"; amount_paid: float
-    discount: float=0.0; tax: float=0.0; note: Optional[str]=""
+    outlet_id: Optional[str]=""
+    customer_id: Optional[str]=""
+    items: List[CartItem]
+
+    payment_method: Literal["cash","card","qris","transfer"]="cash"
+    amount_paid: float
+
+    card_type: Optional[str]=""
+    card_brand: Optional[str]=""
+    card_last4: Optional[str]=""
+    card_reference_no: Optional[str]=""
+    card_approval_code: Optional[str]=""
+    card_terminal_id: Optional[str]=""
+
+    discount: float=0.0
+    tax: float=0.0
+    note: Optional[str]=""
 class POItem(BaseModel):
     product_id: str; name: str; quantity: int; cost: float
 class POIn(BaseModel):
@@ -176,8 +190,19 @@ class OrderOpenIn(BaseModel):
 class OrderUpdateItemsIn(BaseModel):
     items: List[OrderItemIn]
 class OrderCheckoutIn(BaseModel):
-    payment_method: Literal["cash","card","qris","transfer"]="cash"; amount_paid: float
-    discount: float=0.0; tax: float=0.0; customer_id: Optional[str]=""
+    payment_method: Literal["cash","card","qris","transfer"]="cash"
+    amount_paid: float
+
+    card_type: Optional[str]=""
+    card_brand: Optional[str]=""
+    card_last4: Optional[str]=""
+    card_reference_no: Optional[str]=""
+    card_approval_code: Optional[str]=""
+    card_terminal_id: Optional[str]=""
+
+    discount: float=0.0
+    tax: float=0.0
+    customer_id: Optional[str]=""
 class QRISCreateIn(BaseModel):
     amount: int; description: Optional[str]="POS checkout"
 
@@ -448,11 +473,28 @@ async def create_sale(body: SaleIn, user=Depends(get_current_user)):
     shift_id = str(active_shift["id"]) if active_shift else None
     outlet_id = _u(body.outlet_id) or await _get_main_outlet_id()
     items_json = json.dumps([i.model_dump() for i in body.items])
-    await q_exec("""INSERT INTO sales (id, invoice_no, shift_id, outlet_id, customer_id, cashier_id, cashier_name,
-                                        items, subtotal, discount, tax, total, payment_method, amount_paid,
-                                        change_amount, source, note, created_at)
-                    VALUES (:id, :inv, :sid, :oid, :cid, :ci, :cn, CAST(:it AS jsonb), :sub, :disc, :tax, :tot,
-                            :pm, :paid, :chg, 'pos', :note, NOW())""",
+    await q_exec("""INSERT INTO sales (
+                        id, invoice_no, shift_id, outlet_id, customer_id, cashier_id, cashier_name,
+                        items, subtotal, discount, tax, total, payment_method,
+                        amount_paid, change_amount,
+                        card_type, card_brand, card_last4,
+                        card_reference_no, card_approval_code, card_terminal_id,
+                        source, note, created_at
+                    )
+                    VALUES (
+                        :id, :inv, :sid, :oid, :cid, :ci, :cn,
+                        CAST(:it AS jsonb), :sub, :disc, :tax, :tot, :pm,
+                        :paid, :chg,
+                        :ct, :cb, :cl4,
+                        :cr, :ca, :terminal,
+                        'pos', :note, NOW()
+                    )""",
+                ct=_u(body.card_type),
+                cb=_u(body.card_brand),
+                cl4=_u(body.card_last4),
+                cr=_u(body.card_reference_no),
+                ca=_u(body.card_approval_code),
+                terminal=_u(body.card_terminal_id),
                  id=sale_id, inv=invoice_no, sid=_u(shift_id), oid=_u(outlet_id), cid=_u(body.customer_id),
                  ci=user["id"], cn=user.get("name",""), it=items_json, sub=subtotal, disc=body.discount,
                  tax=body.tax, tot=total, pm=body.payment_method, paid=body.amount_paid, chg=change, note=body.note or "")
@@ -976,43 +1018,291 @@ async def update_order_items(order_id: str, body: OrderUpdateItemsIn, user=Depen
     return clean(await q_one("SELECT * FROM orders WHERE id=:id", id=order_id))
 
 @api.post("/orders/{order_id}/checkout")
-async def checkout_order(order_id: str, body: OrderCheckoutIn, user=Depends(get_current_user)):
-    order = await q_one("SELECT * FROM orders WHERE id=:id", id=order_id)
-    if not order or order["status"] != "open": raise HTTPException(400, "Order tidak aktif")
-    items = order["items"] if isinstance(order["items"], list) else json.loads(order["items"])
-    if not items: raise HTTPException(400, "Order kosong")
+async def checkout_order(
+    order_id: str,
+    body: OrderCheckoutIn,
+    user=Depends(get_current_user)
+):
+    order = await q_one(
+        "SELECT * FROM orders WHERE id=:id",
+        id=order_id
+    )
+
+    if not order or order["status"] != "open":
+        raise HTTPException(400, "Order tidak aktif")
+
+    items = (
+        order["items"]
+        if isinstance(order["items"], list)
+        else json.loads(order["items"])
+    )
+
+    if not items:
+        raise HTTPException(400, "Order kosong")
+
     subtotal = _calc_total(items)
     total = subtotal - body.discount + body.tax
-    if body.payment_method == "cash" and body.amount_paid < total: raise HTTPException(400, "Uang bayar kurang")
+
+    if total < 0:
+        total = 0
+
+    # Validasi pembayaran tunai
+    if body.payment_method == "cash" and body.amount_paid < total:
+        raise HTTPException(400, "Uang bayar kurang")
+
+    # Untuk non-tunai, nominal pembayaran harus dianggap sebesar total
+    amount_paid = (
+        body.amount_paid
+        if body.payment_method == "cash"
+        else total
+    )
+
+    # Validasi data kartu
+    if body.payment_method == "card":
+        if not body.card_type:
+            raise HTTPException(400, "Jenis kartu wajib diisi")
+
+        if not body.card_brand:
+            raise HTTPException(400, "Bank/brand kartu wajib diisi")
+
+        if not body.card_last4:
+            raise HTTPException(400, "4 digit terakhir kartu wajib diisi")
+
+        if not body.card_reference_no:
+            raise HTTPException(400, "No. referensi kartu wajib diisi")
+
+    # Validasi stok
     for it in items:
-        p = await q_one("SELECT stock, name FROM products WHERE id=:id", id=it["product_id"])
-        if not p or p["stock"] < it["quantity"]: raise HTTPException(400, f"Stok kurang untuk {it['name']}")
-    change = max(0, body.amount_paid - total)
+        p = await q_one(
+            "SELECT stock, name FROM products WHERE id=:id",
+            id=it["product_id"]
+        )
+
+        if not p or p["stock"] < it["quantity"]:
+            raise HTTPException(
+                400,
+                f"Stok kurang untuk {it['name']}"
+            )
+
+    change = max(0, amount_paid - total)
+
     sale_id = new_id()
-    invoice_no = f"INV-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{sale_id[:6].upper()}"
-    active_shift = await q_one("SELECT id FROM shifts WHERE cashier_id=:c AND status='open' LIMIT 1", c=user["id"])
-    shift_id = str(active_shift["id"]) if active_shift else None
-    outlet_id = str(order["outlet_id"]) if order.get("outlet_id") else await _get_main_outlet_id()
-    await q_exec("""INSERT INTO sales (id, invoice_no, shift_id, outlet_id, customer_id, cashier_id, cashier_name,
-                    items, subtotal, discount, tax, total, payment_method, amount_paid, change_amount,
-                    source, table_id, table_name, created_at)
-                    VALUES (:id, :inv, :sid, :oid, :cid, :ci, :cn, CAST(:it AS jsonb), :sub, :disc, :tax, :tot,
-                            :pm, :paid, :chg, 'dine-in', :tid, :tn, NOW())""",
-                 id=sale_id, inv=invoice_no, sid=_u(shift_id), oid=_u(outlet_id), cid=_u(body.customer_id),
-                 ci=user["id"], cn=user.get("name",""), it=json.dumps(items),
-                 sub=subtotal, disc=body.discount, tax=body.tax, tot=total, pm=body.payment_method,
-                 paid=body.amount_paid, chg=change, tid=_u(str(order["table_id"])), tn=order["table_name"])
+
+    invoice_no = (
+        f"INV-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+        f"-{sale_id[:6].upper()}"
+    )
+
+    active_shift = await q_one(
+        """
+        SELECT id
+        FROM shifts
+        WHERE cashier_id=:c
+          AND status='open'
+        LIMIT 1
+        """,
+        c=user["id"]
+    )
+
+    shift_id = (
+        str(active_shift["id"])
+        if active_shift
+        else None
+    )
+
+    outlet_id = (
+        str(order["outlet_id"])
+        if order.get("outlet_id")
+        else await _get_main_outlet_id()
+    )
+
+    # Simpan transaksi
+    await q_exec(
+        """
+        INSERT INTO sales (
+            id,
+            invoice_no,
+            shift_id,
+            outlet_id,
+            customer_id,
+            cashier_id,
+            cashier_name,
+            items,
+            subtotal,
+            discount,
+            tax,
+            total,
+            payment_method,
+            amount_paid,
+            change_amount,
+
+            card_type,
+            card_brand,
+            card_last4,
+            card_reference_no,
+            card_approval_code,
+            card_terminal_id,
+
+            source,
+            table_id,
+            table_name,
+            note,
+            created_at
+        )
+        VALUES (
+            :id,
+            :inv,
+            :sid,
+            :oid,
+            :cid,
+            :ci,
+            :cn,
+            CAST(:it AS jsonb),
+            :sub,
+            :disc,
+            :tax,
+            :tot,
+            :pm,
+            :paid,
+            :chg,
+
+            :ct,
+            :cb,
+            :cl4,
+            :cr,
+            :ca,
+            :terminal,
+
+            'dine-in',
+            :tid,
+            :tn,
+            :note,
+            NOW()
+        )
+        """,
+        id=sale_id,
+        inv=invoice_no,
+        sid=_u(shift_id),
+        oid=_u(outlet_id),
+        cid=_u(body.customer_id),
+
+        ci=user["id"],
+        cn=user.get("name", ""),
+
+        it=json.dumps(items),
+
+        sub=subtotal,
+        disc=body.discount,
+        tax=body.tax,
+        tot=total,
+
+        pm=body.payment_method,
+        paid=amount_paid,
+        chg=change,
+
+        # DATA KARTU
+        ct=_u(body.card_type) if body.payment_method == "card" else None,
+        cb=_u(body.card_brand) if body.payment_method == "card" else None,
+        cl4=_u(body.card_last4) if body.payment_method == "card" else None,
+        cr=_u(body.card_reference_no) if body.payment_method == "card" else None,
+        ca=_u(body.card_approval_code) if body.payment_method == "card" else None,
+        terminal=_u(body.card_terminal_id) if body.payment_method == "card" else None,
+
+        # DATA MEJA
+        tid=_u(str(order["table_id"])),
+        tn=order["table_name"],
+
+        note=_u(body.note)
+    )
+
+    # Kurangi stok
     for it in items:
-        await q_exec("UPDATE products SET stock=stock-:q WHERE id=:id", q=it["quantity"], id=it["product_id"])
+        await q_exec(
+            """
+            UPDATE products
+            SET stock = stock - :q,
+                updated_at = NOW()
+            WHERE id = :id
+            """,
+            q=it["quantity"],
+            id=it["product_id"]
+        )
+
         if outlet_id:
-            await _adjust_outlet_stock(it["product_id"], outlet_id, -it["quantity"])
-        await q_exec("""INSERT INTO stock_movements (id, product_id, product_name, delta, reason, note, outlet_id, user_id, created_at)
-                        VALUES (:id, :pid, :pn, :d, 'sale', :note, :oid, :u, NOW())""",
-                     id=new_id(), pid=it["product_id"], pn=it["name"], d=-it["quantity"],
-                     note=f"Sale {invoice_no}", oid=_u(outlet_id), u=user["id"])
-    await q_exec("UPDATE orders SET status='closed', closed_at=NOW(), sale_id=:sid WHERE id=:id", sid=sale_id, id=order_id)
-    await q_exec("UPDATE tables SET status='available' WHERE id=:id", id=order["table_id"])
-    row = await q_one("SELECT *, change_amount AS change FROM sales WHERE id=:id", id=sale_id)
+            await _adjust_outlet_stock(
+                it["product_id"],
+                outlet_id,
+                -it["quantity"]
+            )
+
+        await q_exec(
+            """
+            INSERT INTO stock_movements (
+                id,
+                product_id,
+                product_name,
+                delta,
+                reason,
+                note,
+                outlet_id,
+                user_id,
+                created_at
+            )
+            VALUES (
+                :id,
+                :pid,
+                :pn,
+                :d,
+                'sale',
+                :note,
+                :oid,
+                :u,
+                NOW()
+            )
+            """,
+            id=new_id(),
+            pid=it["product_id"],
+            pn=it["name"],
+            d=-it["quantity"],
+            note=f"Sale {invoice_no}",
+            oid=_u(outlet_id),
+            u=user["id"]
+        )
+
+    # Tutup order
+    await q_exec(
+        """
+        UPDATE orders
+        SET status='closed',
+            closed_at=NOW(),
+            sale_id=:sid
+        WHERE id=:id
+        """,
+        sid=sale_id,
+        id=order_id
+    )
+
+    # Bebaskan meja
+    await q_exec(
+        """
+        UPDATE tables
+        SET status='available'
+        WHERE id=:id
+        """,
+        id=order["table_id"]
+    )
+
+    # Ambil hasil transaksi
+    row = await q_one(
+        """
+        SELECT *,
+               change_amount AS change
+        FROM sales
+        WHERE id=:id
+        """,
+        id=sale_id
+    )
+
     return clean(row)
 
 @api.delete("/orders/{order_id}")
