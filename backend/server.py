@@ -1,4 +1,4 @@
-"""Sutan Khulifah POS - PostgreSQL backend (SQLAlchemy async + raw SQL for pragmatic clarity)."""
+﻿"""Sutan Khulifah POS - PostgreSQL backend (SQLAlchemy async + raw SQL for pragmatic clarity)."""
 from dotenv import load_dotenv
 from pathlib import Path
 
@@ -486,7 +486,7 @@ async def get_sale(sale_id: str, user=Depends(get_current_user)):
 # ============ REPORTS ============
 @api.get("/reports/dashboard")
 async def report_dashboard(user=Depends(get_current_user)):
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = datetime.now(timezone.utc).date()
     stats = await q_one("""
         SELECT
           COALESCE(SUM(CASE WHEN DATE(created_at AT TIME ZONE 'UTC') = CAST(:t AS DATE) THEN total ELSE 0 END), 0) AS rev_today,
@@ -506,12 +506,24 @@ async def report_dashboard(user=Depends(get_current_user)):
         FROM sales GROUP BY DATE(created_at AT TIME ZONE 'UTC')
         ORDER BY date DESC LIMIT 7""")
     top = await q_all("""
-        SELECT elem->>'product_id' AS product_id, elem->>'name' AS name,
-               SUM((elem->>'quantity')::int) AS quantity,
-               SUM((elem->>'price')::numeric * (elem->>'quantity')::int) AS revenue
+        SELECT
+            elem->>'product_id' AS product_id,
+            COALESCE(elem->>'name', 'Produk Tanpa Nama') AS name,
+            COALESCE(
+                SUM(COALESCE((elem->>'quantity')::numeric, 0)),
+                0
+            ) AS quantity,
+            COALESCE(
+                SUM(
+                    COALESCE((elem->>'price')::numeric, 0)
+                    * COALESCE((elem->>'quantity')::numeric, 0)
+                ),
+                0
+            ) AS revenue
         FROM sales, jsonb_array_elements(items) elem
         GROUP BY elem->>'product_id', elem->>'name'
-        ORDER BY revenue DESC LIMIT 5""")
+        ORDER BY revenue DESC
+        LIMIT 5""")
     return {
         "revenue_today": float(stats["rev_today"]),
         "revenue_total": float(stats["rev_total"]),
@@ -523,7 +535,14 @@ async def report_dashboard(user=Depends(get_current_user)):
         "low_stock_count": len(low_stock),
         "low_stock_items": clean_list(low_stock),
         "daily_revenue": [{"date": str(d["date"]), "revenue": float(d["revenue"])} for d in sorted(daily, key=lambda x: str(x["date"]))],
-        "top_products": [{"name": t["name"], "quantity": t["quantity"], "revenue": float(t["revenue"])} for t in top],
+        "top_products": [
+            {
+                "name": t["name"] or "Produk Tanpa Nama",
+                "quantity": int(t["quantity"] or 0),
+                "revenue": float(t["revenue"] or 0),
+            }
+            for t in top
+        ],
     }
 
 # ============ PURCHASE ORDERS ============
@@ -637,7 +656,7 @@ async def create_transfer(body: TransferIn, user=Depends(require_role("admin","m
             await q_exec("""INSERT INTO stock_movements (id, product_id, product_name, delta, reason, note, outlet_id, user_id, created_at)
                             VALUES (:id, :pid, :pn, :d, :r, :note, :oid, :u, NOW())""",
                          id=new_id(), pid=it.product_id, pn=it.name, d=delta, r=reason,
-                         note=f"{tno} {'→' if delta<0 else '←'} {other}", oid=_u(oid), u=user["id"])
+                         note=f"{tno} {'â†’' if delta<0 else 'â†'} {other}", oid=_u(oid), u=user["id"])
         await _adjust_outlet_stock(it.product_id, body.from_outlet_id, -it.quantity)
         await _adjust_outlet_stock(it.product_id, body.to_outlet_id, it.quantity)
     return clean(await q_one("SELECT * FROM stock_transfers WHERE id=:id", id=tid))
@@ -911,3 +930,5 @@ app.include_router(api)
 app.add_middleware(CORSMiddleware, allow_credentials=True,
                    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
                    allow_methods=["*"], allow_headers=["*"])
+
+

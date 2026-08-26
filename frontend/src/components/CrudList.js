@@ -58,7 +58,12 @@ export default function CrudList({ title, subtitle, endpoint, fields, testPrefix
                 <tr key={it.id} className="border-b border-[rgba(244,200,66,0.08)] last:border-0 hover:bg-[#4A1A22] transition-colors">
                   {fields.filter(f => f.showInList !== false).map((f) => (
                     <td key={f.key} className="px-6 py-3 text-sm text-[#F5F5F5]">
-                      {typeof it[f.key] === 'boolean' ? (it[f.key] ? '✓' : '—') : (it[f.key] || <span className="text-[#C4A484]">—</span>)}
+                     {typeof it[f.key] === "boolean"
+                        ? (it[f.key] ? "✓" : "—")
+                        : (it[f.key] || (
+                            <span className="text-[#C4A484]">—</span>
+                          ))
+                      }
                     </td>
                   ))}
                   <td className="px-6 py-3 text-right">
