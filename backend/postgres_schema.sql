@@ -11,16 +11,25 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- USERS
 -- =============================================
 CREATE TABLE IF NOT EXISTS users (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    email VARCHAR(255) UNIQUE NOT NULL,
-    name VARCHAR(255) NOT NULL,
-    role VARCHAR(20) NOT NULL CHECK (role IN ('admin', 'manager', 'kasir')),
-    password_hash TEXT NOT NULL,
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ
+    	id uuid DEFAULT uuid_generate_v4() NOT NULL,
+	email varchar(255) NOT NULL,
+	"name" varchar(255) NOT NULL,
+	"role" varchar(20) NOT NULL,
+	password_hash text NOT NULL,
+	is_active bool DEFAULT true NULL,
+	created_at timestamptz DEFAULT now() NULL,
+	updated_at timestamptz NULL,
+	phone varchar(50) NULL,
+	address text NULL,
+	job_title varchar(100) NULL,
+	photo text NULL,
+	ktp_image text NULL,
+	ktp_number varchar(100) NULL,
+	CONSTRAINT users_email_key UNIQUE (email),
+	CONSTRAINT users_pkey PRIMARY KEY (id),
+	CONSTRAINT users_role_check CHECK (((role)::text = ANY ((ARRAY['admin'::character varying, 'manager'::character varying, 'kasir'::character varying])::text[])))
 );
-CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_users_email ON public.users USING btree (email);
 
 -- =============================================
 -- BUSINESS PROFILE
@@ -119,30 +128,38 @@ CREATE INDEX idx_movements_created ON stock_movements(created_at DESC);
 -- SALES (invoice + line items as JSONB)
 -- =============================================
 CREATE TABLE IF NOT EXISTS sales (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    invoice_no VARCHAR(50) UNIQUE NOT NULL,
-    shift_id UUID,
-    outlet_id UUID,
-    customer_id UUID,
-    cashier_id UUID,
-    cashier_name VARCHAR(255),
-    items JSONB NOT NULL,
-    subtotal NUMERIC(14,2) NOT NULL,
-    discount NUMERIC(14,2) DEFAULT 0,
-    tax NUMERIC(14,2) DEFAULT 0,
-    total NUMERIC(14,2) NOT NULL,
-    payment_method VARCHAR(20),
-    amount_paid NUMERIC(14,2),
-    change_amount NUMERIC(14,2),
-    source VARCHAR(20) DEFAULT 'pos',
-    table_id UUID,
-    table_name VARCHAR(100),
-    note TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    id uuid DEFAULT uuid_generate_v4() NOT NULL,
+	invoice_no varchar(50) NOT NULL,
+	shift_id uuid NULL,
+	outlet_id uuid NULL,
+	customer_id uuid NULL,
+	cashier_id uuid NULL,
+	cashier_name varchar(255) NULL,
+	items jsonb NOT NULL,
+	subtotal numeric(14, 2) NOT NULL,
+	discount numeric(14, 2) DEFAULT 0 NULL,
+	tax numeric(14, 2) DEFAULT 0 NULL,
+	total numeric(14, 2) NOT NULL,
+	payment_method varchar(20) NULL,
+	amount_paid numeric(14, 2) NULL,
+	change_amount numeric(14, 2) NULL,
+	"source" varchar(20) DEFAULT 'pos'::character varying NULL,
+	table_id uuid NULL,
+	table_name varchar(100) NULL,
+	note text NULL,
+	created_at timestamptz DEFAULT now() NULL,
+	card_type varchar(20) NULL,
+	card_brand varchar(50) NULL,
+	card_last4 varchar(4) NULL,
+	card_reference_no varchar(100) NULL,
+	card_approval_code varchar(100) NULL,
+	card_terminal_id varchar(100) NULL,
+	CONSTRAINT sales_invoice_no_key UNIQUE (invoice_no),
+	CONSTRAINT sales_pkey PRIMARY KEY (id)
 );
-CREATE INDEX idx_sales_created ON sales(created_at DESC);
-CREATE INDEX idx_sales_outlet_created ON sales(outlet_id, created_at DESC);
-CREATE INDEX idx_sales_shift ON sales(shift_id);
+CREATE INDEX idx_sales_created ON public.sales USING btree (created_at DESC);
+CREATE INDEX idx_sales_outlet_created ON public.sales USING btree (outlet_id, created_at DESC);
+CREATE INDEX idx_sales_shift ON public.sales USING btree (shift_id);
 
 -- =============================================
 -- SHIFTS (kasir open/close)
@@ -284,3 +301,5 @@ CREATE TABLE IF NOT EXISTS qris_orders (
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ
 );
+
+
