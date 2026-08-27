@@ -1106,38 +1106,6 @@ async def create_sale(body: SaleIn, user=Depends(get_current_user)):
         )
 
     # =========================================================
-
-    await q_exec(
-        """
-        UPDATE orders
-        SET
-            status='closed',
-            closed_at=NOW(),
-            sale_id=:sid,
-            updated_at=NOW()
-        WHERE id=:id
-        """,
-        sid=sale_id,
-        id=order_id
-    )
-
-    # =========================================================
-    # BEBASKAN MEJA
-    # =========================================================
-
-    if order.get("table_id"):
-
-        await q_exec(
-            """
-            UPDATE tables
-            SET
-                status='available'
-            WHERE id=:id
-            """,
-            id=order["table_id"]
-        )
-
-    # =========================================================
     # AMBIL HASIL TRANSAKSI
     # =========================================================
 
@@ -2290,6 +2258,15 @@ async def clock_out(body: ClockOutIn, user=Depends(get_current_user)):
 # ============ STARTUP ============
 @app.on_event("startup")
 async def startup():
+    # Migrasi kolom pembayaran kartu & transfer untuk database lama
+    for col, coltype in (("card_type", "VARCHAR(20)"), ("card_brand", "VARCHAR(50)"),
+                         ("card_last4", "VARCHAR(4)"), ("card_reference_no", "VARCHAR(100)"),
+                         ("card_approval_code", "VARCHAR(100)"), ("card_terminal_id", "VARCHAR(100)"),
+                         ("transfer_bank", "VARCHAR(100)"), ("transfer_account_name", "VARCHAR(255)"),
+                         ("transfer_account_no", "VARCHAR(100)"), ("transfer_reference_no", "VARCHAR(100)"),
+                         ("transfer_sender_name", "VARCHAR(255)"), ("transfer_verified", "BOOLEAN DEFAULT FALSE"),
+                         ("payment_reference", "VARCHAR(100)")):
+        await q_exec(f"ALTER TABLE sales ADD COLUMN IF NOT EXISTS {col} {coltype}")
     # Seed admin
     existing = await q_one("SELECT id, password_hash FROM users WHERE email=:e", e=ADMIN_EMAIL.lower())
     if not existing:

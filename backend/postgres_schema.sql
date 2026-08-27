@@ -154,6 +154,13 @@ CREATE TABLE IF NOT EXISTS sales (
 	card_reference_no varchar(100) NULL,
 	card_approval_code varchar(100) NULL,
 	card_terminal_id varchar(100) NULL,
+	transfer_bank varchar(100) NULL,
+	transfer_account_name varchar(255) NULL,
+	transfer_account_no varchar(100) NULL,
+	transfer_reference_no varchar(100) NULL,
+	transfer_sender_name varchar(255) NULL,
+	transfer_verified boolean DEFAULT FALSE NULL,
+	payment_reference varchar(100) NULL,
 	CONSTRAINT sales_invoice_no_key UNIQUE (invoice_no),
 	CONSTRAINT sales_pkey PRIMARY KEY (id)
 );
