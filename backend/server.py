@@ -464,10 +464,17 @@ async def create_sale(body: SaleIn, user=Depends(get_current_user)):
         if not p: raise HTTPException(400, f"Product {it.name} not found")
         if p["stock"] < it.quantity: raise HTTPException(400, f"Insufficient stock for {p['name']}")
         subtotal += it.price * it.quantity
-    total = subtotal - body.discount + body.tax
+    total = max(0, subtotal - body.discount + body.tax)
     if body.payment_method == "cash" and body.amount_paid < total:
         raise HTTPException(400, "Insufficient payment amount")
-    change = max(0, body.amount_paid - total)
+    # Non-tunai (kartu/QRIS/transfer) selalu dibayar pas sebesar total
+    amount_paid = body.amount_paid if body.payment_method == "cash" else total
+    if body.payment_method == "card":
+        if not body.card_type: raise HTTPException(400, "Jenis kartu wajib diisi")
+        if not body.card_brand: raise HTTPException(400, "Bank/brand kartu wajib diisi")
+        if not body.card_last4: raise HTTPException(400, "4 digit terakhir kartu wajib diisi")
+        if not body.card_reference_no: raise HTTPException(400, "No. referensi kartu wajib diisi")
+    change = max(0, amount_paid - total)
     sale_id = new_id()
     invoice_no = f"INV-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{sale_id[:6].upper()}"
     active_shift = await q_one("SELECT id FROM shifts WHERE cashier_id=:c AND status='open' LIMIT 1", c=user["id"])
@@ -498,7 +505,7 @@ async def create_sale(body: SaleIn, user=Depends(get_current_user)):
                 terminal=_u(body.card_terminal_id),
                  id=sale_id, inv=invoice_no, sid=_u(shift_id), oid=_u(outlet_id), cid=_u(body.customer_id),
                  ci=user["id"], cn=user.get("name",""), it=items_json, sub=subtotal, disc=body.discount,
-                 tax=body.tax, tot=total, pm=body.payment_method, paid=body.amount_paid, chg=change, note=body.note or "")
+                 tax=body.tax, tot=total, pm=body.payment_method, paid=amount_paid, chg=change, note=body.note or "")
     for it in body.items:
         await q_exec("UPDATE products SET stock=stock-:q WHERE id=:id", q=it.quantity, id=it.product_id)
         if outlet_id:
