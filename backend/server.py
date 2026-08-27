@@ -1445,6 +1445,11 @@ async def clock_out(body: ClockOutIn, user=Depends(get_current_user)):
 # ============ STARTUP ============
 @app.on_event("startup")
 async def startup():
+    # Migrasi kolom pembayaran kartu untuk database lama
+    for col, coltype in (("card_type", "VARCHAR(20)"), ("card_brand", "VARCHAR(50)"),
+                         ("card_last4", "VARCHAR(4)"), ("card_reference_no", "VARCHAR(100)"),
+                         ("card_approval_code", "VARCHAR(100)"), ("card_terminal_id", "VARCHAR(100)")):
+        await q_exec(f"ALTER TABLE sales ADD COLUMN IF NOT EXISTS {col} {coltype}")
     # Seed admin
     existing = await q_one("SELECT id, password_hash FROM users WHERE email=:e", e=ADMIN_EMAIL.lower())
     if not existing:
