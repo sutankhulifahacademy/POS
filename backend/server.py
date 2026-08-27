@@ -1106,38 +1106,6 @@ async def create_sale(body: SaleIn, user=Depends(get_current_user)):
         )
 
     # =========================================================
-
-    await q_exec(
-        """
-        UPDATE orders
-        SET
-            status='closed',
-            closed_at=NOW(),
-            sale_id=:sid,
-            updated_at=NOW()
-        WHERE id=:id
-        """,
-        sid=sale_id,
-        id=order_id
-    )
-
-    # =========================================================
-    # BEBASKAN MEJA
-    # =========================================================
-
-    if order.get("table_id"):
-
-        await q_exec(
-            """
-            UPDATE tables
-            SET
-                status='available'
-            WHERE id=:id
-            """,
-            id=order["table_id"]
-        )
-
-    # =========================================================
     # AMBIL HASIL TRANSAKSI
     # =========================================================
 
