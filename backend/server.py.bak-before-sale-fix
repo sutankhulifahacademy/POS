@@ -1,4 +1,4 @@
-"""Sutan Khulifah POS - PostgreSQL backend (SQLAlchemy async + raw SQL for pragmatic clarity)."""
+﻿"""Sutan Khulifah POS - PostgreSQL backend (SQLAlchemy async + raw SQL for pragmatic clarity)."""
 from dotenv import load_dotenv
 from pathlib import Path
 
@@ -894,7 +894,9 @@ async def create_sale(body: SaleIn, user=Depends(get_current_user)):
         # ITEMS
         # =====================================================
 
-        it=json.dumps([item.model_dump() for item in body.items]),
+        it=json.dumps(
+            items
+        ),
 
         # =====================================================
         # TOTAL
@@ -902,9 +904,9 @@ async def create_sale(body: SaleIn, user=Depends(get_current_user)):
 
         sub=subtotal,
 
-        disc=body.discount,
+        disc=discount,
 
-        tax=body.tax,
+        tax=tax,
 
         tot=total,
 
@@ -1007,8 +1009,13 @@ async def create_sale(body: SaleIn, user=Depends(get_current_user)):
         # =====================================================
         # TABLE
         # =====================================================
-        tid=None,
-        tn=None,
+
+        tid=_u(
+            str(order["table_id"])
+        ),
+
+        tn=order["table_name"],
+
         # =====================================================
         # NOTE
         # =====================================================
@@ -1024,8 +1031,8 @@ async def create_sale(body: SaleIn, user=Depends(get_current_user)):
 
     for it in body.items:
 
-        product_id = it.product_id
-        quantity = int(it.quantity)
+        product_id = it["product_id"]
+        quantity = int(it["quantity"])
 
         # -----------------------------------------------------
         # GLOBAL STOCK
@@ -1089,7 +1096,7 @@ async def create_sale(body: SaleIn, user=Depends(get_current_user)):
 
             pid=product_id,
 
-            pn=it.name,
+            pn=it["name"],
 
             d=-quantity,
 
@@ -1105,6 +1112,8 @@ async def create_sale(body: SaleIn, user=Depends(get_current_user)):
             u=user["id"]
         )
 
+    # =========================================================
+    # TUTUP ORDER
     # =========================================================
 
     await q_exec(
@@ -1504,7 +1513,7 @@ async def receive_po(po_id: str, user=Depends(require_role("admin","manager"))):
             await _adjust_outlet_stock(it["product_id"], main, it["quantity"])
         await q_exec("""INSERT INTO stock_movements (id, product_id, product_name, delta, reason, note, outlet_id, user_id, created_at)
                         VALUES (:id, :pid, :pn, :d, 'purchase', :note, :oid, :u, NOW())""",
-                     id=new_id(), pid=it["product_id"], pn=it.name, d=it["quantity"],
+                     id=new_id(), pid=it["product_id"], pn=it["name"], d=it["quantity"],
                      note=f"PO {po['po_no']}", oid=_u(main), u=user["id"])
     await q_exec("UPDATE purchase_orders SET status='received', received_at=NOW() WHERE id=:id", id=po_id)
     return {"ok": True, "po_id": po_id}
@@ -1584,7 +1593,7 @@ async def create_transfer(body: TransferIn, user=Depends(require_role("admin","m
             await q_exec("""INSERT INTO stock_movements (id, product_id, product_name, delta, reason, note, outlet_id, user_id, created_at)
                             VALUES (:id, :pid, :pn, :d, :r, :note, :oid, :u, NOW())""",
                          id=new_id(), pid=it.product_id, pn=it.name, d=delta, r=reason,
-                         note=f"{tno} {'→' if delta<0 else '←'} {other}", oid=_u(oid), u=user["id"])
+                         note=f"{tno} {'â†’' if delta<0 else 'â†'} {other}", oid=_u(oid), u=user["id"])
         await _adjust_outlet_stock(it.product_id, body.from_outlet_id, -it.quantity)
         await _adjust_outlet_stock(it.product_id, body.to_outlet_id, it.quantity)
     return clean(await q_one("SELECT * FROM stock_transfers WHERE id=:id", id=tid))
@@ -1647,7 +1656,7 @@ async def open_order(body: OrderOpenIn, user=Depends(get_current_user)):
                     VALUES (:id, :ono, :tid, :tn, :oid, :g, CAST(:it AS jsonb), :tot, 'open', :ci, :cn, NOW())""",
                  id=oid, ono=f"ORD-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}",
                  tid=body.table_id, tn=table["name"], oid=_u(body.outlet_id or table.get("outlet_id")),
-                 g=body.guest_count, it=json.dumps([item.model_dump() for item in body.items]), tot=_calc_total(items),
+                 g=body.guest_count, it=json.dumps(items), tot=_calc_total(items),
                  ci=user["id"], cn=user.get("name",""))
     await q_exec("UPDATE tables SET status='occupied' WHERE id=:id", id=body.table_id)
     return clean(await q_one("SELECT * FROM orders WHERE id=:id", id=oid))
@@ -1658,7 +1667,7 @@ async def update_order_items(order_id: str, body: OrderUpdateItemsIn, user=Depen
     if not order or order["status"] != "open": raise HTTPException(400, "Order tidak aktif")
     items = [i.model_dump() for i in body.items]
     await q_exec("UPDATE orders SET items=CAST(:it AS jsonb), total=:t, updated_at=NOW() WHERE id=:id",
-                 it=json.dumps([item.model_dump() for item in body.items]), t=_calc_total(items), id=order_id)
+                 it=json.dumps(items), t=_calc_total(items), id=order_id)
     return clean(await q_one("SELECT * FROM orders WHERE id=:id", id=order_id))
 
 @api.post("/orders/{order_id}/checkout")
@@ -1952,7 +1961,7 @@ async def checkout_order(
         ci=user["id"],
         cn=user.get("name", ""),
 
-        it=json.dumps([item.model_dump() for item in body.items]),
+        it=json.dumps(items),
 
         sub=subtotal,
         disc=body.discount,
@@ -2063,7 +2072,7 @@ async def checkout_order(
 
         tid=_u(str(order["table_id"])),
 
-        tn=None,
+        tn=order["table_name"],
 
         note=_u(body.note)
     )
@@ -2115,7 +2124,7 @@ async def checkout_order(
             """,
             id=new_id(),
             pid=it["product_id"],
-            pn=it.name,
+            pn=it["name"],
             d=-it["quantity"],
             note=f"Sale {invoice_no}",
             oid=_u(outlet_id),
@@ -2290,15 +2299,6 @@ async def clock_out(body: ClockOutIn, user=Depends(get_current_user)):
 # ============ STARTUP ============
 @app.on_event("startup")
 async def startup():
-    # Migrasi kolom pembayaran kartu & transfer untuk database lama
-    for col, coltype in (("card_type", "VARCHAR(20)"), ("card_brand", "VARCHAR(50)"),
-                         ("card_last4", "VARCHAR(4)"), ("card_reference_no", "VARCHAR(100)"),
-                         ("card_approval_code", "VARCHAR(100)"), ("card_terminal_id", "VARCHAR(100)"),
-                         ("transfer_bank", "VARCHAR(100)"), ("transfer_account_name", "VARCHAR(255)"),
-                         ("transfer_account_no", "VARCHAR(100)"), ("transfer_reference_no", "VARCHAR(100)"),
-                         ("transfer_sender_name", "VARCHAR(255)"), ("transfer_verified", "BOOLEAN DEFAULT FALSE"),
-                         ("payment_reference", "VARCHAR(100)")):
-        await q_exec(f"ALTER TABLE sales ADD COLUMN IF NOT EXISTS {col} {coltype}")
     # Seed admin
     existing = await q_one("SELECT id, password_hash FROM users WHERE email=:e", e=ADMIN_EMAIL.lower())
     if not existing:
@@ -2324,17 +2324,6 @@ app.include_router(api)
 app.add_middleware(CORSMiddleware, allow_credentials=True,
                    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
                    allow_methods=["*"], allow_headers=["*"])
-
-
-
-
-
-
-
-
-
-
-
 
 
 

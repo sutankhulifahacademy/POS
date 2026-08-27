@@ -28,6 +28,12 @@ export default function POS() {
   const [cardReferenceNo, setCardReferenceNo] = useState("");
   const [cardApprovalCode, setCardApprovalCode] = useState("");
   const [cardTerminalId, setCardTerminalId] = useState("");
+  const [transferBank, setTransferBank] = useState("");
+  const [transferAccountName, setTransferAccountName] = useState("");
+  const [transferAccountNo, setTransferAccountNo] = useState("");
+  const [transferReferenceNo, setTransferReferenceNo] = useState("");
+  const [transferSenderName, setTransferSenderName] = useState("");
+  const [transferVerified, setTransferVerified] = useState(false);
   const [discount, setDiscount] = useState(0);
   const [processing, setProcessing] = useState(false);
   const [receipt, setReceipt] = useState(null);
@@ -164,6 +170,17 @@ export default function POS() {
       card_reference_no: paymentMethod === "card" ? cardReferenceNo : "",
       card_approval_code: paymentMethod === "card" ? cardApprovalCode : "",
       card_terminal_id: paymentMethod === "card" ? cardTerminalId : "",
+      transfer_bank: paymentMethod === "transfer" ? transferBank : "",
+      transfer_account_name:
+        paymentMethod === "transfer" ? transferAccountName : "",
+      transfer_account_no:
+        paymentMethod === "transfer" ? transferAccountNo : "",
+      transfer_reference_no:
+        paymentMethod === "transfer" ? transferReferenceNo : "",
+      transfer_sender_name:
+        paymentMethod === "transfer" ? transferSenderName : "",
+      transfer_verified:
+        paymentMethod === "transfer" ? transferVerified : false,
 
       discount: Number(discount) || 0,
       tax: 0,
@@ -182,6 +199,12 @@ export default function POS() {
       setCardReferenceNo("");
       setCardApprovalCode("");
       setCardTerminalId("");
+      setTransferBank("");
+      setTransferAccountName("");
+      setTransferAccountNo("");
+      setTransferReferenceNo("");
+      setTransferSenderName("");
+      setTransferVerified(false);
 
       toast.success("Transaksi berhasil");
       load();
@@ -200,6 +223,27 @@ export default function POS() {
 
       if (cardLast4 && cardLast4.length !== 4) {
         return toast.error("4 digit terakhir kartu harus 4 angka");
+      }
+    }
+    if (paymentMethod === "transfer") {
+      if (Number(amountPaid) !== total) {
+        return toast.error("Nominal transfer harus sama dengan total transaksi");
+      }
+
+      if (!transferBank.trim()) {
+        return toast.error("Bank transfer wajib diisi");
+      }
+
+      if (!transferReferenceNo.trim()) {
+        return toast.error("Nomor referensi transfer wajib diisi");
+      }
+
+      if (!transferSenderName.trim()) {
+        return toast.error("Nama pengirim wajib diisi");
+      }
+
+      if (!transferVerified) {
+        return toast.error("Transfer harus diverifikasi terlebih dahulu");
       }
     }
     if (paymentMethod === "qris") {
@@ -321,7 +365,7 @@ export default function POS() {
               <input type="number" value={discount} onChange={(e) => setDiscount(e.target.value)} className="mt-1 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]" data-testid="pos-discount-input" />
             </div>
           </div>
-          {paymentMethod === "cash" && (
+          {(paymentMethod === "cash" || paymentMethod === "transfer") && (
             <div>
               <label className="text-[10px] uppercase tracking-widest text-[#C4A484]">Uang Bayar</label>
               <input type="number" value={amountPaid} onChange={(e) => setAmountPaid(e.target.value)} placeholder="0" className="mt-1 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]" data-testid="pos-amount-paid" />
@@ -421,6 +465,102 @@ export default function POS() {
                   />
                 </div>
               </div>
+            </div>
+          )}
+
+          {paymentMethod === "transfer" && (
+            <div className="space-y-3 bg-[#331419] border border-[rgba(244,200,66,0.15)] rounded-md p-4">
+              <div className="text-xs uppercase tracking-widest text-[#F4C842]">
+                Detail Transfer Bank
+              </div>
+
+              <div>
+                <label className="text-[10px] uppercase tracking-widest text-[#C4A484]">
+                  Bank *
+                </label>
+
+                <input
+                  type="text"
+                  value={transferBank}
+                  onChange={(e) => setTransferBank(e.target.value)}
+                  placeholder="BCA / Mandiri / BRI"
+                  className="mt-1 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]"
+                  data-testid="pos-transfer-bank"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] uppercase tracking-widest text-[#C4A484]">
+                  Nama Pemilik Rekening Tujuan
+                </label>
+
+                <input
+                  type="text"
+                  value={transferAccountName}
+                  onChange={(e) => setTransferAccountName(e.target.value)}
+                  placeholder="Nama rekening tujuan"
+                  className="mt-1 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]"
+                  data-testid="pos-transfer-account-name"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] uppercase tracking-widest text-[#C4A484]">
+                  No. Rekening Tujuan
+                </label>
+
+                <input
+                  type="text"
+                  value={transferAccountNo}
+                  onChange={(e) => setTransferAccountNo(e.target.value)}
+                  placeholder="Nomor rekening"
+                  className="mt-1 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]"
+                  data-testid="pos-transfer-account-no"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] uppercase tracking-widest text-[#C4A484]">
+                  No. Referensi Transfer *
+                </label>
+
+                <input
+                  type="text"
+                  value={transferReferenceNo}
+                  onChange={(e) => setTransferReferenceNo(e.target.value)}
+                  placeholder="Nomor referensi / berita transfer"
+                  className="mt-1 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]"
+                  data-testid="pos-transfer-reference"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] uppercase tracking-widest text-[#C4A484]">
+                  Nama Pengirim *
+                </label>
+
+                <input
+                  type="text"
+                  value={transferSenderName}
+                  onChange={(e) => setTransferSenderName(e.target.value)}
+                  placeholder="Nama pengirim"
+                  className="mt-1 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]"
+                  data-testid="pos-transfer-sender"
+                />
+              </div>
+
+              <label className="flex items-center gap-2 text-xs text-[#C4A484] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={transferVerified}
+                  onChange={(e) => setTransferVerified(e.target.checked)}
+                  data-testid="pos-transfer-verified"
+                />
+
+                <span>
+                  Transfer sudah diverifikasi
+                </span>
+              </label>
             </div>
           )}
           <div className="pt-3 space-y-1 border-t border-[rgba(244,200,66,0.15)]">
