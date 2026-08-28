@@ -40,6 +40,7 @@ from .inventory import (
     ClockInIn,
     ClockOutIn,
 )
+from .roles import RoleCreate, RoleUpdate, PermissionUpdate, RolePermissionsUpdate
 
 __all__ = [
     # auth
@@ -60,4 +61,6 @@ __all__ = [
     "POItem", "POIn", "TransferItem", "TransferIn",
     "ShiftOpenIn", "ShiftCloseIn", "TableIn",
     "ClockInIn", "ClockOutIn",
+    # roles
+    "RoleCreate", "RoleUpdate", "PermissionUpdate", "RolePermissionsUpdate",
 ]

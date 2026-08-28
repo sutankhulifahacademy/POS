@@ -36,6 +36,7 @@ from models import (
     POItem, POIn, TransferItem, TransferIn,
     ShiftOpenIn, ShiftCloseIn, TableIn,
     ClockInIn, ClockOutIn,
+    RoleCreate, RoleUpdate, PermissionUpdate, RolePermissionsUpdate,
 )
 
 __all__ = [
@@ -64,4 +65,5 @@ __all__ = [
     "POItem", "POIn", "TransferItem", "TransferIn",
     "ShiftOpenIn", "ShiftCloseIn", "TableIn",
     "ClockInIn", "ClockOutIn",
+    "RoleCreate", "RoleUpdate", "PermissionUpdate", "RolePermissionsUpdate",
 ]

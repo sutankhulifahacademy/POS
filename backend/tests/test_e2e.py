@@ -265,9 +265,11 @@ def main():
     test("GET /orders", r.status_code == 200, f"Status {r.status_code}")
 
     if test_table and test_product:
+        # Find a free table (no active order)
+        free_table = next((t for t in tables if not t.get("active_order_id")), e2e_table_id and {"id": e2e_table_id} or test_table)
         # Open order
         r = requests.post(f"{BASE}/orders", headers=h, json={
-            "table_id": test_table["id"], "guest_count": 2,
+            "table_id": free_table["id"], "guest_count": 2,
             "items": [{"product_id": test_product["id"], "name": test_product["name"], "price": test_product["price"], "quantity": 2, "variant_name": "", "note": ""}]
         }, timeout=15)
         test("POST /orders (open)", r.status_code == 200, f"Status {r.status_code}: {r.text[:200]}")
@@ -472,6 +474,74 @@ def main():
     # Kasir should NOT create payment accounts
     r = requests.post(f"{BASE}/payment-accounts", headers=hk, json={"bank_name": "X", "account_name": "X", "account_no": "X"}, timeout=10)
     test("Kasir blocked from POST /payment-accounts", r.status_code == 403, f"Status {r.status_code}")
+
+    # ==========================================================
+    # 22. ROLES & PERMISSIONS
+    # ==========================================================
+    print("\n[22] ROLES & PERMISSIONS")
+    r = requests.get(f"{BASE}/roles/permission-tree", headers=h, timeout=10)
+    test("GET /roles/permission-tree", r.status_code == 200, f"Status {r.status_code}")
+    test("Permission tree has modules", len(r.json().get("tree", [])) > 0, "Empty tree")
+
+    r = requests.get(f"{BASE}/roles", headers=h, timeout=10)
+    test("GET /roles", r.status_code == 200, f"Status {r.status_code}")
+    test("Roles has admin/manager/kasir", len(r.json()) >= 3, f"Count: {len(r.json())}")
+
+    # Get my permissions
+    r = requests.get(f"{BASE}/roles/my-permissions", headers=h, timeout=10)
+    test("GET /roles/my-permissions", r.status_code == 200, f"Status {r.status_code}")
+    test("My permissions has role", "role" in r.json(), "No role key")
+    test("My permissions has permissions", "permissions" in r.json(), "No permissions key")
+
+    # Create custom role
+    r = requests.post(f"{BASE}/roles", headers=h, json={
+        "name": "e2e_supervisor", "label": "E2E Supervisor", "description": "Test role"
+    }, timeout=10)
+    test("POST /roles (create)", r.status_code == 200, f"Status {r.status_code}: {r.text[:200]}")
+
+    if r.status_code == 200:
+        role_id = r.json()["id"]
+
+        # Update role
+        r = requests.put(f"{BASE}/roles/{role_id}", headers=h, json={
+            "label": "E2E Supervisor Updated", "description": "Updated desc"
+        }, timeout=10)
+        test("PUT /roles/{id} (update)", r.status_code == 200, f"Status {r.status_code}")
+
+        # Update permissions
+        r = requests.put(f"{BASE}/roles/{role_id}/permissions", headers=h, json={
+            "permissions": [
+                {"module": "dashboard", "action": "view", "granted": True},
+                {"module": "pos", "action": "view", "granted": True},
+                {"module": "pos", "action": "create", "granted": True},
+                {"module": "reports", "action": "view", "granted": True},
+                {"module": "products", "action": "view", "granted": True},
+                {"module": "products", "action": "create", "granted": False},
+            ]
+        }, timeout=10)
+        test("PUT /roles/{id}/permissions", r.status_code == 200, f"Status {r.status_code}")
+
+        # Verify permissions saved
+        r = requests.get(f"{BASE}/roles/{role_id}", headers=h, timeout=10)
+        if r.status_code == 200:
+            perms = r.json().get("permissions", {})
+            test("Permission dashboard.view granted", perms.get("dashboard", {}).get("view") == True, f"Got: {perms.get('dashboard')}")
+            test("Permission products.create denied", perms.get("products", {}).get("create") == False, f"Got: {perms.get('products')}")
+
+        # Kasir cannot create roles
+        r = requests.post(f"{BASE}/roles", headers=hk, json={"name": "test", "label": "test"}, timeout=10)
+        test("Kasir blocked from POST /roles", r.status_code == 403, f"Status {r.status_code}")
+
+        # Delete custom role
+        r = requests.delete(f"{BASE}/roles/{role_id}", headers=h, timeout=10)
+        test("DELETE /roles/{id}", r.status_code == 200, f"Status {r.status_code}")
+
+    # Cannot delete system role
+    r = requests.get(f"{BASE}/roles", headers=h, timeout=10)
+    admin_role = next((r2 for r2 in r.json() if r2["name"] == "admin"), None)
+    if admin_role:
+        r = requests.delete(f"{BASE}/roles/{admin_role['id']}", headers=h, timeout=10)
+        test("Cannot delete system role", r.status_code == 400, f"Status {r.status_code}")
 
     # ==========================================================
     # CLEANUP
