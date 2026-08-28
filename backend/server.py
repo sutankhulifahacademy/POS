@@ -1,4 +1,4 @@
-"""Sutan Khulifah POS - PostgreSQL backend (SQLAlchemy async + raw SQL for pragmatic clarity)."""
+﻿"""Sutan Khulifah POS - PostgreSQL backend (SQLAlchemy async + raw SQL for pragmatic clarity)."""
 from dotenv import load_dotenv
 from pathlib import Path
 
@@ -8,6 +8,7 @@ load_dotenv(ROOT_DIR / '.env')
 import os, uuid, json, logging, base64, hashlib, hmac, io
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Literal, Any
+
 import jwt
 import bcrypt
 
@@ -16,6 +17,26 @@ from starlette.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy import text
+from database import (
+    q_one,
+    q_all,
+    q_exec,
+    transaction,
+    execute,
+    session_one,
+    close_database,
+)
+from utils import verify_password, hash_password, new_id, clean, clean_list, _u
+from routes.auth import router as auth_router
+from routes.auth import get_current_user, require_role
+
+from models import (
+    ProductCreate,
+    ProductUpdate,
+    SaleCreate,
+    PaymentAccountCreate,
+    PaymentAccountUpdate,
+)
 
 # ============ CONFIG ============
 JWT_ALGORITHM = "HS256"
@@ -24,103 +45,21 @@ POSTGRES_URL = os.environ["POSTGRES_URL"]
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@example.com")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
 
-engine = create_async_engine(POSTGRES_URL, pool_pre_ping=True, pool_size=10, max_overflow=20)
-
 app = FastAPI(title="Sutan Khulifah POS API (PostgreSQL)")
+
 api = APIRouter(prefix="/api")
+api.include_router(auth_router)
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ============ DB HELPERS ============
-async def q_all(sql: str, **params):
-    async with engine.begin() as conn:
-        r = await conn.execute(text(sql), params)
-        return [dict(m) for m in r.mappings().all()]
-
-async def q_one(sql: str, **params):
-    async with engine.begin() as conn:
-        r = await conn.execute(text(sql), params)
-        row = r.mappings().first()
-        return dict(row) if row else None
-
-async def q_exec(sql: str, **params):
-    async with engine.begin() as conn:
-        r = await conn.execute(text(sql), params)
-        return r
-
-def now_iso():
-    return datetime.now(timezone.utc).isoformat()
-
-def new_id():
-    return str(uuid.uuid4())
-
-def _serialize(v):
-    """Convert non-JSON-serializable values (UUID, datetime) to str."""
-    if isinstance(v, uuid.UUID):
-        return str(v)
-    if isinstance(v, datetime):
-        return v.isoformat()
-    return v
-
-def clean(row):
-    if row is None:
-        return None
-    return {k: _serialize(v) for k, v in row.items()}
-
-def clean_list(rows):
-    return [clean(r) for r in rows]
-
-def hash_password(pw): return bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode()
-def verify_password(pw, hashed):
-    try: return bcrypt.checkpw(pw.encode(), hashed.encode())
-    except Exception: return False
-
-def create_token(uid, email, role):
-    return jwt.encode({"sub": uid, "email": email, "role": role,
-                       "exp": datetime.now(timezone.utc) + timedelta(hours=12),
-                       "type": "access"}, JWT_SECRET, algorithm=JWT_ALGORITHM)
-
-async def get_current_user(request: Request):
-    token = request.cookies.get("access_token") or ""
-    if not token:
-        auth = request.headers.get("Authorization", "")
-        if auth.startswith("Bearer "): token = auth[7:]
-    if not token:
-        raise HTTPException(401, "Not authenticated")
-    try:
-        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        user = await q_one("SELECT id, email, name, role, is_active FROM users WHERE id = :id", id=payload["sub"])
-        if not user: raise HTTPException(401, "User not found")
-        return clean(user)
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(401, "Token expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(401, "Invalid token")
-
-def require_role(*roles):
-    async def dep(user: dict = Depends(get_current_user)):
-        if user["role"] not in roles: raise HTTPException(403, "Forbidden")
-        return user
-    return dep
-
 # ============ MODELS ============
-class RegisterIn(BaseModel):
-    email: EmailStr; password: str; name: str; role: Literal["admin","manager","kasir"]="kasir"
-class LoginIn(BaseModel):
-    email: EmailStr; password: str
 class BusinessIn(BaseModel):
     name: str; business_type: Literal["retail","fnb","fashion","general"]; currency: str="IDR"; tax_rate: float=0.0; address: Optional[str]=""
 class OutletIn(BaseModel):
     name: str; address: Optional[str]=""; phone: Optional[str]=""; is_main: bool=False
 class CategoryIn(BaseModel):
     name: str; color: Optional[str]="#F4C842"
-class VariantIn(BaseModel):
-    name: str; sku: Optional[str]=""; price: float; stock: int=0
-class ProductIn(BaseModel):
-    name: str; sku: str; barcode: Optional[str]=""; category_id: Optional[str]=""; price: float
-    cost: float=0.0; stock: int=0; low_stock_threshold: int=5; unit: str="pcs"
-    image_url: Optional[str]=""; description: Optional[str]=""; is_active: bool=True
-    variants: Optional[List[VariantIn]]=[]
 class StockAdjustIn(BaseModel):
     product_id: str; delta: int; reason: str; note: Optional[str]=""
 class CustomerIn(BaseModel):
@@ -212,6 +151,7 @@ class OrderOpenIn(BaseModel):
 class OrderUpdateItemsIn(BaseModel):
     items: List[OrderItemIn]
 class OrderCheckoutIn(BaseModel):
+    outlet_id: Optional[str] = ""
     customer_id: Optional[str] = ""
 
     payment_method: Literal[
@@ -260,44 +200,6 @@ class ClockInIn(BaseModel):
 class ClockOutIn(BaseModel):
     photo: Optional[str] = ""
     note: Optional[str] = ""
-
-# ============ HELPERS ============
-def _u(v):
-    """Convert empty string to None for UUID columns."""
-    return None if not v or v == "" else v
-
-# ============ AUTH ============
-@api.post("/auth/register")
-async def register(body: RegisterIn, response: Response):
-    email = body.email.lower()
-    exists = await q_one("SELECT id FROM users WHERE email = :e", e=email)
-    if exists: raise HTTPException(400, "Email already registered")
-    uid = new_id()
-    await q_exec("""INSERT INTO users (id, email, name, role, password_hash, is_active, created_at)
-                    VALUES (:id, :e, :n, :r, :h, TRUE, NOW())""",
-                 id=uid, e=email, n=body.name, r=body.role, h=hash_password(body.password))
-    tok = create_token(uid, email, body.role)
-    response.set_cookie("access_token", tok, httponly=True, secure=True, samesite="none", max_age=43200, path="/")
-    return {"id": uid, "email": email, "name": body.name, "role": body.role, "token": tok}
-
-@api.post("/auth/login")
-async def login(body: LoginIn, response: Response):
-    email = body.email.lower()
-    u = await q_one("SELECT id, email, name, role, password_hash FROM users WHERE email = :e", e=email)
-    if not u or not verify_password(body.password, u["password_hash"]):
-        raise HTTPException(401, "Invalid email or password")
-    tok = create_token(str(u["id"]), u["email"], u["role"])
-    response.set_cookie("access_token", tok, httponly=True, secure=True, samesite="none", max_age=43200, path="/")
-    return {"id": str(u["id"]), "email": u["email"], "name": u["name"], "role": u["role"], "token": tok}
-
-@api.post("/auth/logout")
-async def logout(response: Response):
-    response.delete_cookie("access_token", path="/")
-    return {"ok": True}
-
-@api.get("/auth/me")
-async def me(user=Depends(get_current_user)):
-    return user
 
 # ============ BUSINESS ============
 @api.get("/business")
@@ -363,7 +265,7 @@ async def update_user(user_id: str, body: UserUpdateIn, user=Depends(require_rol
     sets = ", ".join(f"{k}=:{k}" for k in updates.keys())
     updates["id"] = user_id
     r = await q_exec(f"UPDATE users SET {sets}, updated_at=NOW() WHERE id=:id", **updates)
-    if r.rowcount == 0: raise HTTPException(404, "User not found")
+    if r == 0: raise HTTPException(404, "User not found")
     return clean(await q_one("SELECT id, email, name, role, is_active FROM users WHERE id=:id", id=user_id))
 
 @api.post("/users/{user_id}/reset-password")
@@ -371,14 +273,14 @@ async def reset_pw(user_id: str, body: PasswordResetIn, user=Depends(require_rol
     if len(body.new_password) < 6: raise HTTPException(400, "Password minimal 6 karakter")
     r = await q_exec("UPDATE users SET password_hash=:h, updated_at=NOW() WHERE id=:id",
                      h=hash_password(body.new_password), id=user_id)
-    if r.rowcount == 0: raise HTTPException(404, "User not found")
+    if r == 0: raise HTTPException(404, "User not found")
     return {"ok": True}
 
 @api.delete("/users/{user_id}")
 async def delete_user(user_id: str, user=Depends(require_role("admin"))):
     if str(user_id) == str(user["id"]): raise HTTPException(400, "Tidak bisa menghapus akun sendiri")
     r = await q_exec("DELETE FROM users WHERE id=:id", id=user_id)
-    if r.rowcount == 0: raise HTTPException(404, "User not found")
+    if r == 0: raise HTTPException(404, "User not found")
     return {"ok": True}
 
 # ============ CRUD FACTORY ============
@@ -400,19 +302,19 @@ def make_crud(path, table, model_cls, cols, role_write=("admin", "manager")):
         d = body.model_dump()
         sets = ", ".join([f"{c}=:{c}" for c in cols])
         r = await q_exec(f"UPDATE {table} SET {sets}, updated_at=NOW() WHERE id=:id", id=item_id, **{c: d.get(c) for c in cols})
-        if r.rowcount == 0: raise HTTPException(404, "Not found")
+        if r == 0: raise HTTPException(404, "Not found")
         return clean(await q_one(f"SELECT * FROM {table} WHERE id=:id", id=item_id))
     @api.delete(f"/{path}/{{item_id}}")
     async def _delete(item_id: str, user=Depends(require_role(*role_write))):
         r = await q_exec(f"DELETE FROM {table} WHERE id=:id", id=item_id)
-        if r.rowcount == 0: raise HTTPException(404, "Not found")
+        if r == 0: raise HTTPException(404, "Not found")
         return {"ok": True}
 
 make_crud("outlets", "outlets", OutletIn, ["name", "address", "phone", "is_main"])
 make_crud("categories", "categories", CategoryIn, ["name", "color"])
 make_crud("customers", "customers", CustomerIn, ["name", "phone", "email", "address"], role_write=("admin","manager","kasir"))
 make_crud("suppliers", "suppliers", SupplierIn, ["name", "contact_person", "phone", "email", "address"])
-make_crud("tables", "tables", TableIn, ["name", "capacity", "outlet_id", "zone"])
+# tables: pakai route eksplisit di bawah (lihat section TABLES) yang include active_order_id
 
 # ============ PRODUCTS ============
 @api.get("/products")
@@ -427,11 +329,11 @@ async def product_by_barcode(code: str, user=Depends(get_current_user)):
     return clean(p)
 
 @api.post("/products")
-async def create_product(body: ProductIn, user=Depends(require_role("admin","manager"))):
+async def create_product(body: ProductCreate, user=Depends(require_role("admin","manager"))):
     exists = await q_one("SELECT id FROM products WHERE sku=:s", s=body.sku)
     if exists: raise HTTPException(400, "SKU already exists")
     pid = new_id()
-    variants_json = json.dumps([v.model_dump() for v in (body.variants or [])])
+    variants_json = json.dumps(body.variants or [])
     await q_exec("""INSERT INTO products (id, name, sku, barcode, category_id, price, cost, stock, low_stock_threshold,
                                            unit, image_url, description, is_active, variants, created_at)
                     VALUES (:id, :n, :s, :b, :ci, :p, :c, :st, :lt, :u, :img, :d, :a, CAST(:v AS jsonb), NOW())""",
@@ -446,21 +348,112 @@ async def create_product(body: ProductIn, user=Depends(require_role("admin","man
     return clean(await q_one("SELECT * FROM products WHERE id=:id", id=pid))
 
 @api.put("/products/{product_id}")
-async def update_product(product_id: str, body: ProductIn, user=Depends(require_role("admin","manager"))):
-    variants_json = json.dumps([v.model_dump() for v in (body.variants or [])])
-    r = await q_exec("""UPDATE products SET name=:n, sku=:s, barcode=:b, category_id=:ci, price=:p, cost=:c,
-                        stock=:st, low_stock_threshold=:lt, unit=:u, image_url=:img, description=:d, is_active=:a,
-                        variants=CAST(:v AS jsonb), updated_at=NOW() WHERE id=:id""",
-                     id=product_id, n=body.name, s=body.sku, b=body.barcode or "", ci=_u(body.category_id),
-                     p=body.price, c=body.cost, st=body.stock, lt=body.low_stock_threshold, u=body.unit,
-                     img=body.image_url or "", d=body.description or "", a=body.is_active, v=variants_json)
-    if r.rowcount == 0: raise HTTPException(404, "Product not found")
-    return clean(await q_one("SELECT * FROM products WHERE id=:id", id=product_id))
+async def update_product(
+    product_id: str,
+    body: ProductUpdate,
+    user=Depends(require_role("admin", "manager"))
+):
+    data = body.model_dump(exclude_none=True)
+
+    if not data:
+        raise HTTPException(400, "Tidak ada data yang diubah")
+
+    # Pastikan product ada
+    existing = await q_one(
+        "SELECT * FROM products WHERE id=:id",
+        id=product_id
+    )
+
+    if not existing:
+        raise HTTPException(404, "Product not found")
+
+    # Validasi SKU jika SKU diubah
+    if "sku" in data and data["sku"] != existing["sku"]:
+        duplicate = await q_one(
+            """
+            SELECT id
+            FROM products
+            WHERE sku=:sku
+              AND id<>:id
+            LIMIT 1
+            """,
+            sku=data["sku"],
+            id=product_id
+        )
+
+        if duplicate:
+            raise HTTPException(400, "SKU already exists")
+
+    updates = []
+    params = {
+        "id": product_id
+    }
+
+    field_mapping = {
+        "name": "name",
+        "sku": "sku",
+        "barcode": "barcode",
+        "price": "price",
+        "cost": "cost",
+        "stock": "stock",
+        "low_stock_threshold": "low_stock_threshold",
+        "unit": "unit",
+        "image_url": "image_url",
+        "description": "description",
+        "is_active": "is_active",
+    }
+
+    for field, column in field_mapping.items():
+        if field in data:
+            updates.append(f"{column}=:{field}")
+            params[field] = data[field]
+
+    if "category_id" in data:
+        updates.append("category_id=:category_id")
+        params["category_id"] = _u(data["category_id"])
+
+    if "variants" in data:
+        updates.append("variants=CAST(:variants AS jsonb)")
+        params["variants"] = json.dumps(data["variants"])
+
+    if not updates:
+        raise HTTPException(400, "Tidak ada data yang valid untuk diubah")
+
+    updates.append("updated_at=NOW()")
+
+    sql = f"""
+        UPDATE products
+        SET {", ".join(updates)}
+        WHERE id=:id
+    """
+
+    await q_exec(sql, **params)
+
+    return clean(
+        await q_one(
+            "SELECT * FROM products WHERE id=:id",
+            id=product_id
+        )
+    )
 
 @api.delete("/products/{product_id}")
-async def delete_product(product_id: str, user=Depends(require_role("admin","manager"))):
-    r = await q_exec("DELETE FROM products WHERE id=:id", id=product_id)
-    if r.rowcount == 0: raise HTTPException(404, "Not found")
+async def delete_product(
+    product_id: str,
+    user=Depends(require_role("admin", "manager"))
+):
+    existing = await q_one(
+        "SELECT id FROM products WHERE id=:id",
+        id=product_id
+    )
+
+    if not existing:
+        raise HTTPException(404, "Product not found")
+
+    await q_exec(
+        "DELETE FROM products WHERE id=:id",
+        id=product_id
+    )
+
     return {"ok": True}
 
 # ============ INVENTORY ============
@@ -502,21 +495,31 @@ async def list_movements(user=Depends(get_current_user), limit: int = 200):
     return clean_list(rows)
 
 # ============ SALES ============
-@api.post("/sales")
-async def create_sale(body: SaleIn, user=Depends(get_current_user)):
-    if not body.items: raise HTTPException(400, "Cart is empty")
-    subtotal = 0.0
-    for it in body.items:
-        p = await q_one("SELECT id, name, stock FROM products WHERE id=:id", id=it.product_id)
-        if not p: raise HTTPException(400, f"Product {it.name} not found")
-        if p["stock"] < it.quantity: raise HTTPException(400, f"Insufficient stock for {p['name']}")
-        subtotal += it.price * it.quantity
-    total = subtotal - body.discount + body.tax
-    # =========================================================
-    # VALIDASI PAYMENT METHOD
-    # =========================================================
 
-    if body.payment_method not in {
+def _validate_sale_total(subtotal: float, discount: float, tax: float) -> float:
+    """
+    Hitung total transaksi dengan aman.
+    Total tidak boleh negatif.
+    """
+    total = float(subtotal) - float(discount) + float(tax)
+    return max(0.0, total)
+
+
+def _validate_payment(
+    payment_method: str,
+    total: float,
+    amount_paid: float,
+    body
+):
+    """
+    Validasi semua metode pembayaran.
+
+    Return:
+        amount_paid
+        change_amount
+    """
+
+    if payment_method not in {
         "cash",
         "card",
         "qris",
@@ -528,32 +531,27 @@ async def create_sale(body: SaleIn, user=Depends(get_current_user)):
         )
 
     # =========================================================
-    # DEFAULT
-    # =========================================================
-
-    amount_paid = 0
-    change = 0
-
-    # =========================================================
     # CASH
     # =========================================================
 
-    if body.payment_method == "cash":
+    if payment_method == "cash":
 
-        if body.amount_paid < total:
+        if float(amount_paid) < total:
             raise HTTPException(
                 400,
-                "Insufficient payment amount"
+                "Uang bayar kurang"
             )
 
-        amount_paid = body.amount_paid
-        change = max(0, body.amount_paid - total)
+        paid = float(amount_paid)
+        change = max(0.0, paid - total)
+
+        return paid, change
 
     # =========================================================
     # CARD
     # =========================================================
 
-    if body.payment_method == "card":
+    if payment_method == "card":
 
         if not body.card_type:
             raise HTTPException(
@@ -573,13 +571,15 @@ async def create_sale(body: SaleIn, user=Depends(get_current_user)):
                 "4 digit terakhir kartu wajib diisi"
             )
 
-        if len(str(body.card_last4)) != 4:
+        card_last4 = str(body.card_last4)
+
+        if len(card_last4) != 4:
             raise HTTPException(
                 400,
                 "4 digit terakhir kartu harus tepat 4 digit"
             )
 
-        if not str(body.card_last4).isdigit():
+        if not card_last4.isdigit():
             raise HTTPException(
                 400,
                 "4 digit terakhir kartu harus berupa angka"
@@ -591,23 +591,21 @@ async def create_sale(body: SaleIn, user=Depends(get_current_user)):
                 "No. referensi kartu wajib diisi"
             )
 
-        amount_paid = total
-        change = 0
+        return total, 0.0
 
     # =========================================================
     # QRIS
     # =========================================================
 
-    if body.payment_method == "qris":
+    if payment_method == "qris":
 
-        amount_paid = total
-        change = 0
+        return total, 0.0
 
     # =========================================================
     # TRANSFER
     # =========================================================
 
-    if body.payment_method == "transfer":
+    if payment_method == "transfer":
 
         if not body.transfer_bank:
             raise HTTPException(
@@ -633,433 +631,373 @@ async def create_sale(body: SaleIn, user=Depends(get_current_user)):
                 "Nama pengirim wajib diisi"
             )
 
-        amount_paid = total
-        change = 0
-    # GENERATE SALE ID
-    # =========================================================
+        # Transfer dianggap masuk sesuai nominal transaksi.
+        # Verifikasi tidak boleh dipaksa dari frontend.
+        return total, 0.0
 
-    sale_id = new_id()
-
-    # =========================================================
-    # GENERATE INVOICE
-    # =========================================================
-
-    invoice_no = (
-        f"INV-"
-        f"{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
-        f"-"
-        f"{sale_id[:6].upper()}"
+    raise HTTPException(
+        400,
+        "Metode pembayaran tidak valid"
     )
 
-    # =========================================================
-    # GENERATE TRANSFER REFERENCE
-    #
-    # Format:
-    #
-    # TRF-{TABLE}-{YYYYMMDD}-{SALE_ID}
-    #
-    # Contoh:
-    #
-    # TRF-A05-20260826-8F31AC
-    # =========================================================
 
-    transfer_reference_no = None
+def _build_payment_values(body, transfer_reference_no=None):
+    """
+    Menyiapkan field payment untuk tabel sales.
+    Field yang tidak relevan dibuat NULL.
+    """
 
-    if body.payment_method == "transfer":
+    payment_method = body.payment_method
 
-        table_name = "TAKEAWAY"
-
-        # Hilangkan karakter yang tidak perlu
-        table_code = (
-            table_name
-            .replace(" ", "")
-            .replace("/", "-")
-            .replace("\\", "-")
-        )
-
-        if not table_code:
-            table_code = "TAKEAWAY"
-
-        transfer_reference_no = (
-            f"TRF-"
-            f"{table_code}-"
-            f"{datetime.now(timezone.utc).strftime('%Y%m%d')}-"
-            f"{sale_id[:6].upper()}"
-        )
-
-    # =========================================================
-    # ACTIVE SHIFT
-    # =========================================================
-
-    active_shift = await q_one(
-        """
-        SELECT id
-        FROM shifts
-        WHERE cashier_id=:c
-          AND status='open'
-        LIMIT 1
-        """,
-        c=user["id"]
-    )
-
-    shift_id = (
-        str(active_shift["id"])
-        if active_shift
-        else None
-    )
-
-    # =========================================================
-    # OUTLET
-    # =========================================================
-
-    outlet_id = _u(body.outlet_id) or await _get_main_outlet_id()
-
-    # =========================================================
-    # TRANSFER VERIFICATION
-    #
-    # Transfer baru selalu FALSE.
-    #
-    # Tidak boleh menerima status verified dari frontend.
-    # =========================================================
-
-    transfer_verified = False
-
-    # =========================================================
-    # PAYMENT REFERENCE
-    # =========================================================
-
-    payment_reference = None
-
-    if body.payment_method == "transfer":
-
-        payment_reference = (
-            transfer_reference_no
-        )
-
-    if body.payment_method == "card":
-
-        payment_reference = _u(
-            body.card_reference_no
-        )
-
-    # =========================================================
-    # SIMPAN SALES
-    # =========================================================
-
-    await q_exec(
-        """
-        INSERT INTO sales (
-            id,
-            invoice_no,
-            shift_id,
-            outlet_id,
-            customer_id,
-            cashier_id,
-            cashier_name,
-
-            items,
-            subtotal,
-            discount,
-            tax,
-            total,
-
-            payment_method,
-            amount_paid,
-            change_amount,
-
-            -- =================================================
-            -- CARD
-            -- =================================================
-
-            card_type,
-            card_brand,
-            card_last4,
-            card_reference_no,
-            card_approval_code,
-            card_terminal_id,
-
-            -- =================================================
-            -- TRANSFER
-            -- =================================================
-
-            transfer_bank,
-            transfer_account_name,
-            transfer_account_no,
-            transfer_reference_no,
-            transfer_sender_name,
-            transfer_verified,
-
-            -- =================================================
-            -- GENERAL PAYMENT
-            -- =================================================
-
-            payment_reference,
-
-            -- =================================================
-            -- DINE IN
-            -- =================================================
-
-            source,
-            table_id,
-            table_name,
-            note,
-            created_at
-        )
-
-        VALUES (
-            :id,
-            :inv,
-            :sid,
-            :oid,
-            :cid,
-            :ci,
-            :cn,
-
-            CAST(:it AS jsonb),
-            :sub,
-            :disc,
-            :tax,
-            :tot,
-
-            :pm,
-            :paid,
-            :chg,
-
-            -- CARD
-
-            :ct,
-            :cb,
-            :cl4,
-            :cr,
-            :ca,
-            :terminal,
-
-            -- TRANSFER
-
-            :tb,
-            :tan,
-            :ta,
-            :tr,
-            :tsn,
-            :tv,
-
-            -- GENERAL PAYMENT
-
-            :payment_ref,
-
-            -- DINE IN
-
-            'dine-in',
-            :tid,
-            :tn,
-            :note,
-            NOW()
-        )
-        """,
-
-        # =====================================================
-        # IDENTITAS TRANSAKSI
-        # =====================================================
-
-        id=sale_id,
-
-        inv=invoice_no,
-
-        # =====================================================
-        # SHIFT / OUTLET
-        # =====================================================
-
-        sid=_u(shift_id),
-
-        oid=_u(outlet_id),
-
-        # =====================================================
-        # CUSTOMER
-        # =====================================================
-
-        cid=_u(body.customer_id),
-
-        # =====================================================
-        # CASHIER
-        # =====================================================
-
-        ci=user["id"],
-
-        cn=user.get(
-            "name",
-            ""
-        ),
-
-        # =====================================================
-        # ITEMS
-        # =====================================================
-
-        it=json.dumps([item.model_dump() for item in body.items]),
-
-        # =====================================================
-        # TOTAL
-        # =====================================================
-
-        sub=subtotal,
-
-        disc=body.discount,
-
-        tax=body.tax,
-
-        tot=total,
-
-        # =====================================================
-        # PAYMENT
-        # =====================================================
-
-        pm=body.payment_method,
-
-        paid=amount_paid,
-
-        chg=change,
-
-        # =====================================================
-        # CARD
-        # =====================================================
-
-        ct=(
+    return {
+        "ct": (
             _u(body.card_type)
-            if body.payment_method == "card"
+            if payment_method == "card"
             else None
         ),
 
-        cb=(
+        "cb": (
             _u(body.card_brand)
-            if body.payment_method == "card"
+            if payment_method == "card"
             else None
         ),
 
-        cl4=(
+        "cl4": (
             _u(body.card_last4)
-            if body.payment_method == "card"
+            if payment_method == "card"
             else None
         ),
 
-        cr=(
+        "cr": (
             _u(body.card_reference_no)
-            if body.payment_method == "card"
+            if payment_method == "card"
             else None
         ),
 
-        ca=(
+        "ca": (
             _u(body.card_approval_code)
-            if body.payment_method == "card"
+            if payment_method == "card"
             else None
         ),
 
-        terminal=(
+        "terminal": (
             _u(body.card_terminal_id)
-            if body.payment_method == "card"
+            if payment_method == "card"
             else None
         ),
 
-        # =====================================================
-        # TRANSFER
-        # =====================================================
-
-        tb=(
+        "tb": (
             _u(body.transfer_bank)
-            if body.payment_method == "transfer"
+            if payment_method == "transfer"
             else None
         ),
 
-        tan=(
+        "tan": (
             _u(body.transfer_account_name)
-            if body.payment_method == "transfer"
+            if payment_method == "transfer"
             else None
         ),
 
-        ta=(
+        "ta": (
             _u(body.transfer_account_no)
-            if body.payment_method == "transfer"
+            if payment_method == "transfer"
             else None
         ),
 
-        tr=(
+        "tr": (
             transfer_reference_no
-            if body.payment_method == "transfer"
+            if payment_method == "transfer"
             else None
         ),
 
-        tsn=(
+        "tsn": (
             _u(body.transfer_sender_name)
-            if body.payment_method == "transfer"
+            if payment_method == "transfer"
             else None
         ),
 
-        tv=(
-            transfer_verified
-            if body.payment_method == "transfer"
-            else False
+        # Jangan menerima status verified dari frontend.
+        "tv": False,
+
+        "payment_ref": (
+            transfer_reference_no
+            if payment_method == "transfer"
+            else (
+                _u(body.card_reference_no)
+                if payment_method == "card"
+                else None
+            )
         ),
+    }
 
-        # =====================================================
-        # GENERAL PAYMENT REFERENCE
-        # =====================================================
 
-        payment_ref=payment_reference,
+async def _validate_and_get_sale_items(items):
+    """
+    Validasi item transaksi dan stok.
 
-        # =====================================================
-        # TABLE
-        # =====================================================
-        tid=None,
-        tn=None,
-        # =====================================================
-        # NOTE
-        # =====================================================
+    Return:
+        list item yang sudah dinormalisasi
+        subtotal
+    """
 
-        note=_u(
-            body.note
+    if not items:
+        raise HTTPException(
+            400,
+            "Cart is empty"
         )
-    )
 
-    # =========================================================
-    # KURANGI STOK
-    # =========================================================
+    normalized_items = []
+    subtotal = 0.0
 
-    for it in body.items:
+    for item in items:
 
-        product_id = it.product_id
-        quantity = int(it.quantity)
+        if isinstance(item, BaseModel):
+            data = item.model_dump()
+        else:
+            data = dict(item)
 
-        # -----------------------------------------------------
+        product_id = str(
+            data.get("product_id") or ""
+        )
+
+        if not product_id:
+            raise HTTPException(
+                400,
+                "Product ID tidak valid"
+            )
+
+        quantity = int(
+            data.get("quantity") or 0
+        )
+
+        if quantity <= 0:
+            raise HTTPException(
+                400,
+                "Quantity harus lebih besar dari 0"
+            )
+
+        product = await q_one(
+            """
+            SELECT
+                id,
+                name,
+                stock
+            FROM products
+            WHERE id=:id
+            """,
+            id=product_id
+        )
+
+        if not product:
+            raise HTTPException(
+                400,
+                f"Product {data.get('name', product_id)} not found"
+            )
+
+        if int(product["stock"]) < quantity:
+            raise HTTPException(
+                400,
+                f"Insufficient stock for {product['name']}"
+            )
+
+        price = float(
+            data.get("price") or 0
+        )
+
+        # Gunakan nama dari product jika frontend kosong.
+        name = (
+            data.get("name")
+            or product["name"]
+        )
+
+        data["product_id"] = product_id
+        data["name"] = name
+        data["price"] = price
+        data["quantity"] = quantity
+        data["variant_name"] = (
+            data.get("variant_name")
+            or ""
+        )
+
+        subtotal += price * quantity
+
+        normalized_items.append(data)
+
+    return normalized_items, subtotal
+
+
+async def _deduct_sale_stock(
+    session,
+    items,
+    invoice_no,
+    outlet_id,
+    user_id
+):
+    """
+    Kurangi stock global + outlet stock + buat stock movement.
+
+    Semua operasi menggunakan session yang sama agar menjadi
+    bagian dari transaction sales.
+    """
+
+    for item in items:
+
+        product_id = item["product_id"]
+        quantity = int(item["quantity"])
+
+        if quantity <= 0:
+            raise HTTPException(
+                400,
+                "Quantity harus lebih besar dari 0"
+            )
+
+        # =====================================================
         # GLOBAL STOCK
-        # -----------------------------------------------------
+        # =====================================================
 
-        await q_exec(
+        result = await execute(
+            session,
             """
             UPDATE products
             SET
                 stock = stock - :q,
                 updated_at = NOW()
             WHERE id = :id
+              AND stock >= :q
             """,
             q=quantity,
             id=product_id
         )
 
-        # -----------------------------------------------------
+        if result.rowcount == 0:
+            raise HTTPException(
+                400,
+                f"Stok tidak cukup untuk {item['name']}"
+            )
+
+        # =====================================================
         # OUTLET STOCK
-        # -----------------------------------------------------
+        # =====================================================
 
         if outlet_id:
 
-            await _adjust_outlet_stock(
-                product_id,
-                outlet_id,
-                -quantity
+            outlet_stock = await session_one(
+                session,
+                """
+                SELECT
+                    id,
+                    quantity
+                FROM outlet_stocks
+                WHERE product_id = :p
+                  AND outlet_id = :o
+                FOR UPDATE
+                """,
+                p=product_id,
+                o=outlet_id
             )
 
-        # -----------------------------------------------------
-        # STOCK MOVEMENT
-        # -----------------------------------------------------
+            if not outlet_stock:
 
-        await q_exec(
+                # -------------------------------------------------
+                # Jika outlet stock belum ada:
+                #
+                # Hanya main outlet yang boleh diinisialisasi.
+                #
+                # products.stock SUDAH dikurangi di atas.
+                # Jadi JANGAN melakukan:
+                #
+                #     base + (-quantity)
+                #
+                # karena itu menyebabkan double deduction.
+                # -------------------------------------------------
+
+                main_outlet_id = await _get_main_outlet_id()
+
+                if str(outlet_id) != str(main_outlet_id):
+                    raise HTTPException(
+                        400,
+                        f"Stok outlet untuk {item['name']} belum tersedia"
+                    )
+
+                # Ambil stock global setelah deduction.
+                current_product = await session_one(
+                    session,
+                    """
+                    SELECT stock
+                    FROM products
+                    WHERE id = :id
+                    FOR UPDATE
+                    """,
+                    id=product_id
+                )
+
+                if not current_product:
+                    raise HTTPException(
+                        400,
+                        f"Product {item['name']} not found"
+                    )
+
+                outlet_quantity = int(
+                    current_product["stock"]
+                )
+
+                await execute(
+                    session,
+                    """
+                    INSERT INTO outlet_stocks (
+                        product_id,
+                        outlet_id,
+                        quantity,
+                        updated_at
+                    )
+                    VALUES (
+                        :p,
+                        :o,
+                        :q,
+                        NOW()
+                    )
+                    """,
+                    p=product_id,
+                    o=outlet_id,
+                    q=outlet_quantity
+                )
+
+            else:
+
+                # -------------------------------------------------
+                # Outlet stock harus cukup.
+                # -------------------------------------------------
+
+                current_quantity = int(
+                    outlet_stock["quantity"] or 0
+                )
+
+                if current_quantity < quantity:
+                    raise HTTPException(
+                        400,
+                        f"Stok outlet tidak cukup untuk {item['name']}"
+                    )
+
+                await execute(
+                    session,
+                    """
+                    UPDATE outlet_stocks
+                    SET
+                        quantity = quantity - :q,
+                        updated_at = NOW()
+                    WHERE id = :id
+                      AND quantity >= :q
+                    """,
+                    q=quantity,
+                    id=outlet_stock["id"]
+                )
+
+        # =====================================================
+        # STOCK MOVEMENT
+        # =====================================================
+
+        await execute(
+            session,
             """
             INSERT INTO stock_movements (
                 id,
@@ -1084,63 +1022,405 @@ async def create_sale(body: SaleIn, user=Depends(get_current_user)):
                 NOW()
             )
             """,
-
             id=new_id(),
-
             pid=product_id,
-
-            pn=it.name,
-
+            pn=item["name"],
             d=-quantity,
-
-            note=(
-                f"Sale "
-                f"{invoice_no}"
-            ),
-
-            oid=_u(
-                outlet_id
-            ),
-
-            u=user["id"]
+            note=f"Sale {invoice_no}",
+            oid=_u(outlet_id),
+            u=user_id
         )
 
+
+async def _insert_sale(
+    session,
+    *,
+    sale_id,
+    invoice_no,
+    shift_id,
+    outlet_id,
+    customer_id,
+    user,
+    items,
+    subtotal,
+    discount,
+    tax,
+    total,
+    payment_method,
+    amount_paid,
+    change_amount,
+    body,
+    source="pos",
+    table_id=None,
+    table_name=None,
+    transfer_reference_no=None
+):
+    """
+    Insert transaksi sales menggunakan session transaction.
+
+    Tidak melakukan commit sendiri.
+    """
+
+    payment_values = _build_payment_values(
+        body,
+        transfer_reference_no
+    )
+
+    await execute(
+        session,
+        """
+        INSERT INTO sales (
+            id,
+            invoice_no,
+            shift_id,
+            outlet_id,
+            customer_id,
+            cashier_id,
+            cashier_name,
+
+            items,
+            subtotal,
+            discount,
+            tax,
+            total,
+
+            payment_method,
+            amount_paid,
+            change_amount,
+
+            card_type,
+            card_brand,
+            card_last4,
+            card_reference_no,
+            card_approval_code,
+            card_terminal_id,
+
+            transfer_bank,
+            transfer_account_name,
+            transfer_account_no,
+            transfer_reference_no,
+            transfer_sender_name,
+            transfer_verified,
+
+            payment_reference,
+
+            source,
+            table_id,
+            table_name,
+            note,
+            created_at
+        )
+        VALUES (
+            :id,
+            :inv,
+            :sid,
+            :oid,
+            :cid,
+            :ci,
+            :cn,
+
+            CAST(:it AS jsonb),
+            :sub,
+            :disc,
+            :tax,
+            :tot,
+
+            :pm,
+            :paid,
+            :chg,
+
+            :ct,
+            :cb,
+            :cl4,
+            :cr,
+            :ca,
+            :terminal,
+
+            :tb,
+            :tan,
+            :ta,
+            :tr,
+            :tsn,
+            :tv,
+
+            :payment_ref,
+
+            :source,
+            :tid,
+            :tn,
+            :note,
+            NOW()
+        )
+        """,
+
+        id=sale_id,
+        inv=invoice_no,
+
+        sid=_u(shift_id),
+        oid=_u(outlet_id),
+        cid=_u(customer_id),
+
+        ci=user["id"],
+        cn=user.get("name", ""),
+
+        it=json.dumps(items),
+
+        sub=subtotal,
+        disc=discount,
+        tax=tax,
+        tot=total,
+
+        pm=payment_method,
+        paid=amount_paid,
+        chg=change_amount,
+
+        ct=payment_values["ct"],
+        cb=payment_values["cb"],
+        cl4=payment_values["cl4"],
+        cr=payment_values["cr"],
+        ca=payment_values["ca"],
+        terminal=payment_values["terminal"],
+
+        tb=payment_values["tb"],
+        tan=payment_values["tan"],
+        ta=payment_values["ta"],
+        tr=payment_values["tr"],
+        tsn=payment_values["tsn"],
+        tv=payment_values["tv"],
+
+        payment_ref=payment_values["payment_ref"],
+
+        source=source,
+        tid=_u(table_id),
+        tn=_u(table_name),
+        note=_u(getattr(body, "note", None))
+    )
+
+
+@api.post("/sales")
+async def create_sale(
+    body: SaleCreate,
+    user=Depends(get_current_user)
+):
+    """
+    Transaksi POS biasa / takeaway.
+
+    Endpoint ini TIDAK berhubungan dengan orders/meja.
+
+    Dine-in menggunakan:
+        /orders/{order_id}/checkout
+
+    Sales + stock + outlet stock + stock movement
+    diproses dalam satu database transaction.
+    """
+
+    # =========================================================
+    # VALIDASI ITEMS + STOCK
     # =========================================================
 
-    await q_exec(
-        """
-        UPDATE orders
-        SET
-            status='closed',
-            closed_at=NOW(),
-            sale_id=:sid,
-            updated_at=NOW()
-        WHERE id=:id
-        """,
-        sid=sale_id,
-        id=order_id
+    items, subtotal = await _validate_and_get_sale_items(
+        body.items
     )
 
     # =========================================================
-    # BEBASKAN MEJA
+    # TOTAL
     # =========================================================
 
-    if order.get("table_id"):
+    total = _validate_sale_total(
+        subtotal,
+        body.discount,
+        body.tax
+    )
 
-        await q_exec(
-            """
-            UPDATE tables
-            SET
-                status='available'
-            WHERE id=:id
-            """,
-            id=order["table_id"]
+    # =========================================================
+    # PAYMENT
+    # =========================================================
+
+    amount_paid, change = _validate_payment(
+        body.payment_method,
+        total,
+        body.amount_paid,
+        body
+    )
+
+    # =========================================================
+    # SALE ID
+    # =========================================================
+
+    sale_id = new_id()
+
+    # =========================================================
+    # INVOICE
+    # =========================================================
+
+    invoice_no = (
+        f"INV-"
+        f"{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+        f"-"
+        f"{sale_id[:6].upper()}"
+    )
+
+    # =========================================================
+    # TRANSFER REFERENCE
+    # =========================================================
+
+    transfer_reference_no = None
+
+    if body.payment_method == "transfer":
+
+        transfer_reference_no = (
+            f"TRF-"
+            f"TAKEAWAY-"
+            f"{datetime.now(timezone.utc).strftime('%Y%m%d')}"
+            f"-"
+            f"{sale_id[:6].upper()}"
         )
 
     # =========================================================
-    # AMBIL HASIL TRANSAKSI
+    # ACTIVE SHIFT
     # =========================================================
 
+    active_shift = await q_one(
+        """
+        SELECT id
+        FROM shifts
+        WHERE cashier_id = :c
+          AND status = 'open'
+        LIMIT 1
+        """,
+        c=user["id"]
+    )
+
+    shift_id = (
+        str(active_shift["id"])
+        if active_shift
+        else None
+    )
+
+    # =========================================================
+    # OUTLET
+    # =========================================================
+
+    outlet_id = (
+        _u(body.outlet_id)
+        or await _get_main_outlet_id()
+    )
+
+    # =========================================================
+    # ATOMIC TRANSACTION
+    # =========================================================
+    #
+    # Sales INSERT
+    #     +
+    # Global stock
+    #     +
+    # Outlet stock
+    #     +
+    # Stock movement
+    #
+    # SEMUANYA commit bersama.
+    #
+    # Jika salah satu gagal → rollback semua.
+    # =========================================================
+
+    async with transaction() as session:
+
+        # -----------------------------------------------------
+        # INSERT SALES
+        # -----------------------------------------------------
+
+        await _insert_sale(
+            session=session,
+            sale_id=sale_id,
+            invoice_no=invoice_no,
+            shift_id=shift_id,
+            outlet_id=outlet_id,
+            customer_id=body.customer_id,
+            user=user,
+            items=items,
+            subtotal=subtotal,
+            discount=body.discount,
+            tax=body.tax,
+            total=total,
+            payment_method=body.payment_method,
+            amount_paid=amount_paid,
+            change_amount=change,
+            body=body,
+            source="pos",
+            table_id=None,
+            table_name=None,
+            transfer_reference_no=transfer_reference_no
+        )
+
+        # -----------------------------------------------------
+        # DEDUCT STOCK
+        # -----------------------------------------------------
+
+        await _deduct_sale_stock(
+            session=session,
+            items=items,
+            invoice_no=invoice_no,
+            outlet_id=outlet_id,
+            user_id=user["id"]
+        )
+
+        # Tidak ada commit di sini.
+        #
+        # transaction() akan commit otomatis jika seluruh
+        # operasi berhasil.
+        #
+        # Jika terjadi HTTPException / error:
+        # transaction() akan rollback semuanya.
+
+    # =========================================================
+    # RETURN
+    # =========================================================
+
+    row = await q_one(
+        """
+        SELECT
+            *,
+            change_amount AS change
+        FROM sales
+        WHERE id = :id
+        """,
+        id=sale_id
+    )
+
+    if not row:
+        raise HTTPException(
+            500,
+            "Sale berhasil diproses tetapi data transaksi tidak ditemukan"
+        )
+
+    return clean(row)
+
+
+@api.get("/sales")
+async def list_sales(
+    user=Depends(get_current_user),
+    limit: int = 200
+):
+    rows = await q_all(
+        """
+        SELECT
+            *,
+            change_amount AS change
+        FROM sales
+        ORDER BY created_at DESC
+        LIMIT :l
+        """,
+        l=limit
+    )
+
+    return clean_list(rows)
+
+
+@api.get("/sales/{sale_id}")
+async def get_sale(
+    sale_id: str,
+    user=Depends(get_current_user)
+):
     row = await q_one(
         """
         SELECT
@@ -1152,24 +1432,16 @@ async def create_sale(body: SaleIn, user=Depends(get_current_user)):
         id=sale_id
     )
 
-    # =========================================================
-    # RETURN
-    # =========================================================
+    if not row:
+        raise HTTPException(
+            404,
+            "Not found"
+        )
 
     return clean(row)
 
-@api.get("/sales")
-async def list_sales(user=Depends(get_current_user), limit: int = 200):
-    rows = await q_all("SELECT *, change_amount AS change FROM sales ORDER BY created_at DESC LIMIT :l", l=limit)
-    return clean_list(rows)
 
-@api.get("/sales/{sale_id}")
-async def get_sale(sale_id: str, user=Depends(get_current_user)):
-    r = await q_one("SELECT *, change_amount AS change FROM sales WHERE id=:id", id=sale_id)
-    if not r: raise HTTPException(404, "Not found")
-    return clean(r)
 
-# ============ REPORTS ============
 # ============ REPORTS ============
 @api.get("/reports/dashboard")
 async def report_dashboard(
@@ -1504,7 +1776,7 @@ async def receive_po(po_id: str, user=Depends(require_role("admin","manager"))):
             await _adjust_outlet_stock(it["product_id"], main, it["quantity"])
         await q_exec("""INSERT INTO stock_movements (id, product_id, product_name, delta, reason, note, outlet_id, user_id, created_at)
                         VALUES (:id, :pid, :pn, :d, 'purchase', :note, :oid, :u, NOW())""",
-                     id=new_id(), pid=it["product_id"], pn=it.name, d=it["quantity"],
+                     id=new_id(), pid=it["product_id"], pn=it["name"], d=it["quantity"],
                      note=f"PO {po['po_no']}", oid=_u(main), u=user["id"])
     await q_exec("UPDATE purchase_orders SET status='received', received_at=NOW() WHERE id=:id", id=po_id)
     return {"ok": True, "po_id": po_id}
@@ -1512,7 +1784,7 @@ async def receive_po(po_id: str, user=Depends(require_role("admin","manager"))):
 @api.delete("/purchase-orders/{po_id}")
 async def delete_po(po_id: str, user=Depends(require_role("admin","manager"))):
     r = await q_exec("DELETE FROM purchase_orders WHERE id=:id AND status='draft'", id=po_id)
-    if r.rowcount == 0: raise HTTPException(400, "Cannot delete: not draft or not found")
+    if r == 0: raise HTTPException(400, "Cannot delete: not draft or not found")
     return {"ok": True}
 
 # ============ SHIFTS ============
@@ -1584,7 +1856,7 @@ async def create_transfer(body: TransferIn, user=Depends(require_role("admin","m
             await q_exec("""INSERT INTO stock_movements (id, product_id, product_name, delta, reason, note, outlet_id, user_id, created_at)
                             VALUES (:id, :pid, :pn, :d, :r, :note, :oid, :u, NOW())""",
                          id=new_id(), pid=it.product_id, pn=it.name, d=delta, r=reason,
-                         note=f"{tno} {'→' if delta<0 else '←'} {other}", oid=_u(oid), u=user["id"])
+                         note=f"{tno} {'â†’' if delta<0 else 'â†'} {other}", oid=_u(oid), u=user["id"])
         await _adjust_outlet_stock(it.product_id, body.from_outlet_id, -it.quantity)
         await _adjust_outlet_stock(it.product_id, body.to_outlet_id, it.quantity)
     return clean(await q_one("SELECT * FROM stock_transfers WHERE id=:id", id=tid))
@@ -1596,7 +1868,8 @@ async def list_tables(user=Depends(get_current_user)):
         (SELECT id FROM orders WHERE table_id=t.id AND status='open' LIMIT 1) AS active_order_id,
         COALESCE((SELECT total FROM orders WHERE table_id=t.id AND status='open' LIMIT 1), 0) AS active_order_total
         FROM tables t ORDER BY name""")
-    return clean_list(rows)
+    result = clean_list(rows)
+    return result
 
 @api.post("/tables")
 async def create_table(body: TableIn, user=Depends(require_role("admin","manager"))):
@@ -1611,7 +1884,7 @@ async def update_table(table_id: str, body: TableIn, user=Depends(require_role("
     r = await q_exec("""UPDATE tables SET name=:n, capacity=:c, outlet_id=:oid, zone=:z, updated_at=NOW()
                         WHERE id=:id""", id=table_id, n=body.name, c=body.capacity,
                      oid=_u(body.outlet_id), z=body.zone or "Utama")
-    if r.rowcount == 0: raise HTTPException(404, "Not found")
+    if r == 0: raise HTTPException(404, "Not found")
     return clean(await q_one("SELECT * FROM tables WHERE id=:id", id=table_id))
 
 @api.delete("/tables/{table_id}")
@@ -1619,7 +1892,7 @@ async def delete_table(table_id: str, user=Depends(require_role("admin","manager
     active = await q_one("SELECT id FROM orders WHERE table_id=:t AND status='open'", t=table_id)
     if active: raise HTTPException(400, "Meja masih memiliki order terbuka")
     r = await q_exec("DELETE FROM tables WHERE id=:id", id=table_id)
-    if r.rowcount == 0: raise HTTPException(404, "Not found")
+    if r == 0: raise HTTPException(404, "Not found")
     return {"ok": True}
 
 # ============ ORDERS (Dine-in) ============
@@ -1952,7 +2225,7 @@ async def checkout_order(
         ci=user["id"],
         cn=user.get("name", ""),
 
-        it=json.dumps([item.model_dump() for item in body.items]),
+        it=json.dumps(items),
 
         sub=subtotal,
         disc=body.discount,
@@ -2115,7 +2388,7 @@ async def checkout_order(
             """,
             id=new_id(),
             pid=it["product_id"],
-            pn=it.name,
+            pn=it["name"],
             d=-it["quantity"],
             note=f"Sale {invoice_no}",
             oid=_u(outlet_id),
@@ -2165,6 +2438,39 @@ async def cancel_order(order_id: str, user=Depends(get_current_user)):
     if order["status"] != "open": raise HTTPException(400, "Order sudah selesai")
     await q_exec("UPDATE orders SET status='cancelled', closed_at=NOW() WHERE id=:id", id=order_id)
     await q_exec("UPDATE tables SET status='available' WHERE id=:id", id=order["table_id"])
+    return {"ok": True}
+
+# ============ PAYMENT ACCOUNTS (Bank tujuan transfer) ============
+@api.get("/payment-accounts")
+async def list_payment_accounts(user=Depends(get_current_user)):
+    rows = await q_all("SELECT * FROM payment_accounts ORDER BY is_active DESC, bank_name ASC, created_at DESC")
+    return clean_list(rows)
+
+@api.post("/payment-accounts")
+async def create_payment_account(body: PaymentAccountCreate, user=Depends(require_role("admin", "manager"))):
+    aid = new_id()
+    await q_exec("""INSERT INTO payment_accounts (id, bank_name, account_name, account_no, outlet_id, is_active, created_at, updated_at)
+                    VALUES (:id, :b, :an, :no, :o, :ia, NOW(), NOW())""",
+                 id=aid, b=body.bank_name, an=body.account_name, no=body.account_no,
+                 o=_u(body.outlet_id), ia=body.is_active)
+    return clean(await q_one("SELECT * FROM payment_accounts WHERE id=:id", id=aid))
+
+@api.put("/payment-accounts/{account_id}")
+async def update_payment_account(account_id: str, body: PaymentAccountUpdate, user=Depends(require_role("admin", "manager"))):
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not updates: raise HTTPException(400, "No updates")
+    if "outlet_id" in updates:
+        updates["outlet_id"] = _u(updates["outlet_id"])
+    sets = ", ".join(f"{k}=:{k}" for k in updates.keys())
+    updates["id"] = account_id
+    r = await q_exec(f"UPDATE payment_accounts SET {sets}, updated_at=NOW() WHERE id=:id", **updates)
+    if r == 0: raise HTTPException(404, "Payment account not found")
+    return clean(await q_one("SELECT * FROM payment_accounts WHERE id=:id", id=account_id))
+
+@api.delete("/payment-accounts/{account_id}")
+async def delete_payment_account(account_id: str, user=Depends(require_role("admin", "manager"))):
+    r = await q_exec("DELETE FROM payment_accounts WHERE id=:id", id=account_id)
+    if r == 0: raise HTTPException(404, "Payment account not found")
     return {"ok": True}
 
 # ============ PER-OUTLET STOCK ============
@@ -2309,29 +2615,17 @@ async def startup():
 
 @app.on_event("shutdown")
 async def shutdown():
-    await engine.dispose()
+    await close_database()
 
 app.include_router(api)
-app.add_middleware(CORSMiddleware, allow_credentials=True,
-                   allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
-                   allow_methods=["*"], allow_headers=["*"])
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+app.add_middleware(
+    CORSMiddleware,
+    allow_credentials=True,
+    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 
