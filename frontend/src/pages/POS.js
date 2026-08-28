@@ -2,11 +2,12 @@ import { useEffect, useState, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import api, { formatIDR } from "../lib/api";
 import { toast, Toaster } from "sonner";
-import { Search, Plus, Minus, Trash2, ShoppingCart, Package as PackageIcon, ScanLine, Printer, Clock, LogOut } from "lucide-react";
+import { Search, Plus, Minus, Trash2, ShoppingCart, Package as PackageIcon, ScanLine, Printer, Clock, LogOut, Utensils } from "lucide-react";
 import BarcodeScanner from "../components/BarcodeScanner";
 import Receipt, { printReceipt } from "../components/Receipt";
 import QRISPayment from "../components/QRISPayment";
 import { useAuth } from "../context/AuthContext";
+import Tables from "./Tables";
 
 export default function POS() {
   const { user, logout } = useAuth();
@@ -34,6 +35,7 @@ export default function POS() {
   const [transferReferenceNo, setTransferReferenceNo] = useState("");
   const [transferSenderName, setTransferSenderName] = useState("");
   const [transferVerified, setTransferVerified] = useState(false);
+  const [paymentAccounts, setPaymentAccounts] = useState([]);
   const [discount, setDiscount] = useState(0);
   const [processing, setProcessing] = useState(false);
   const [receipt, setReceipt] = useState(null);
@@ -41,16 +43,17 @@ export default function POS() {
   const [variantPick, setVariantPick] = useState(null);
   const [activeShift, setActiveShift] = useState(null);
   const [showQRIS, setShowQRIS] = useState(false);
+  const [activeTab, setActiveTab] = useState("pos"); // "pos" | "dinein"
   const nav = useNavigate();
   const bufferRef = useRef({ chars: "", lastTs: 0 });
 
   const load = async () => {
-    const [p, c, cu, s, o] = await Promise.all([
+    const [p, c, cu, s, o, pa] = await Promise.all([
       api.get("/products"), api.get("/categories"), api.get("/customers"),
-      api.get("/shifts/active"), api.get("/outlets"),
+      api.get("/shifts/active"), api.get("/outlets"), api.get("/payment-accounts"),
     ]);
     setProducts(p.data); setCategories(c.data); setCustomers(cu.data);
-    setActiveShift(s.data); setOutlets(o.data);
+    setActiveShift(s.data); setOutlets(o.data); setPaymentAccounts(pa.data || []);
     // Default outlet: main
     if (!selectedOutlet) {
       const main = o.data.find(x => x.is_main) || o.data[0];
@@ -258,11 +261,28 @@ export default function POS() {
   return (
     <div className="min-h-screen flex bg-[#1A0810]">
       <Toaster theme="dark" position="top-right" toastOptions={{ style: { background: '#111', border: '1px solid rgba(244,200,66,0.3)', color: '#F5F5F5' } }} />
-      <div className="flex-1 p-8 pb-32 mr-96">
+      <div className={activeTab === "pos" ? "flex-1 p-8 pb-32 mr-96" : "flex-1 p-8"}>
         <div className="mb-6 flex items-start justify-between">
           <div>
             <p className="text-xs tracking-[0.3em] text-[#F4C842] uppercase">Terminal Kasir</p>
             <h1 className="font-serif-luxury text-4xl text-[#F5F5F5]">Point of Sale</h1>
+            {/* Tab switcher */}
+            <div className="flex gap-2 mt-3">
+              <button
+                onClick={() => setActiveTab("pos")}
+                data-testid="pos-tab-pos"
+                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === "pos" ? "bg-[#F4C842] text-[#1A0810]" : "bg-[#331419] text-[#C4A484] hover:text-[#F5F5F5]"}`}
+              >
+                <ShoppingCart size={15} strokeWidth={1.5} /> POS / Takeaway
+              </button>
+              <button
+                onClick={() => setActiveTab("dinein")}
+                data-testid="pos-tab-dinein"
+                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === "dinein" ? "bg-[#F4C842] text-[#1A0810]" : "bg-[#331419] text-[#C4A484] hover:text-[#F5F5F5]"}`}
+              >
+                <Utensils size={15} strokeWidth={1.5} /> Dine-In
+              </button>
+            </div>
           </div>
           <div className="flex gap-2 items-center flex-wrap justify-end">
             <div className="flex items-center gap-2 bg-[#331419] gold-border rounded-md px-3 py-2 text-xs">
@@ -280,15 +300,25 @@ export default function POS() {
             ) : (
               <button onClick={() => nav("/shifts")} data-testid="pos-open-shift-cta" className="flex items-center gap-2 bg-[#331419] border border-[#8B0000] text-[#F5F5F5] px-3 py-2 rounded-md text-xs hover:bg-[#4A1A22]"><Clock size={14} /> Buka Shift</button>
             )}
-            <button onClick={() => setShowScanner(true)} data-testid="pos-scan-btn" className="flex items-center gap-2 bg-[#F4C842] text-[#1A0810] px-4 py-2 rounded-md text-xs font-semibold uppercase tracking-wider hover:bg-[#FFDD5C] transition-colors">
-              <ScanLine size={14} strokeWidth={2} /> Scan
-            </button>
+            {activeTab === "pos" && (
+              <button onClick={() => setShowScanner(true)} data-testid="pos-scan-btn" className="flex items-center gap-2 bg-[#F4C842] text-[#1A0810] px-4 py-2 rounded-md text-xs font-semibold uppercase tracking-wider hover:bg-[#FFDD5C] transition-colors">
+                <ScanLine size={14} strokeWidth={2} /> Scan
+              </button>
+            )}
             <button onClick={async () => { await logout(); nav("/login"); }} data-testid="pos-logout-btn" className="flex items-center gap-2 bg-[#331419] border border-[rgba(244,200,66,0.3)] text-[#C4A484] hover:text-[#F5F5F5] px-3 py-2 rounded-md text-xs uppercase tracking-wider transition-colors">
               <LogOut size={14} strokeWidth={1.5} /> Keluar
             </button>
           </div>
         </div>
 
+        {/* Dine-In tab content */}
+        {activeTab === "dinein" && (
+          <Tables embedded />
+        )}
+
+        {/* POS tab content */}
+        {activeTab === "pos" && (
+          <>
         <div className="mb-6 relative">
           <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#C4A484]" strokeWidth={1.5} />
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari nama / SKU / scan barcode (USB)..." className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md pl-12 pr-4 py-3 text-[#F5F5F5] focus:outline-none focus:ring-1 focus:ring-[#F4C842]" data-testid="pos-search-input" />
@@ -321,8 +351,11 @@ export default function POS() {
             })}
           </div>
         )}
+          </>
+        )}
       </div>
 
+      {activeTab === "pos" && (
       <aside
   className="w-96 bg-[#2A1015] border-l border-[rgba(244,200,66,0.2)] flex flex-col fixed right-0 top-0 h-screen z-40" data-testid="pos-cart-panel">
         <div className="p-6 border-b border-[rgba(244,200,66,0.15)] flex items-center gap-2">
@@ -476,17 +509,39 @@ export default function POS() {
 
               <div>
                 <label className="text-[10px] uppercase tracking-widest text-[#C4A484]">
-                  Bank *
+                  Bank Tujuan *
                 </label>
 
-                <input
-                  type="text"
+                <select
                   value={transferBank}
-                  onChange={(e) => setTransferBank(e.target.value)}
-                  placeholder="BCA / Mandiri / BRI"
+                  onChange={(e) => {
+                    const acc = paymentAccounts.find(a => a.bank_name === e.target.value);
+                    setTransferBank(e.target.value);
+                    if (acc) {
+                      setTransferAccountName(acc.account_name || "");
+                      setTransferAccountNo(acc.account_no || "");
+                    } else {
+                      setTransferAccountName("");
+                      setTransferAccountNo("");
+                    }
+                  }}
                   className="mt-1 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]"
                   data-testid="pos-transfer-bank"
-                />
+                >
+                  <option value="">Pilih Bank Tujuan</option>
+                  {paymentAccounts
+                    .filter(a => a.is_active)
+                    .map(a => (
+                      <option key={a.id} value={a.bank_name}>
+                        {a.bank_name} — {a.account_no}
+                      </option>
+                    ))}
+                </select>
+                {paymentAccounts.filter(a => a.is_active).length === 0 && (
+                  <p className="text-[10px] text-[#8B0000] mt-1">
+                    Belum ada bank terdaftar. Tambahkan di menu Pengaturan / Payment Accounts.
+                  </p>
+                )}
               </div>
 
               <div>
@@ -497,9 +552,9 @@ export default function POS() {
                 <input
                   type="text"
                   value={transferAccountName}
-                  onChange={(e) => setTransferAccountName(e.target.value)}
-                  placeholder="Nama rekening tujuan"
-                  className="mt-1 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]"
+                  readOnly
+                  placeholder="Terisi otomatis dari bank terpilih"
+                  className="mt-1 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#C4A484] cursor-not-allowed"
                   data-testid="pos-transfer-account-name"
                 />
               </div>
@@ -512,9 +567,9 @@ export default function POS() {
                 <input
                   type="text"
                   value={transferAccountNo}
-                  onChange={(e) => setTransferAccountNo(e.target.value)}
-                  placeholder="Nomor rekening"
-                  className="mt-1 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]"
+                  readOnly
+                  placeholder="Terisi otomatis dari bank terpilih"
+                  className="mt-1 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#C4A484] cursor-not-allowed"
                   data-testid="pos-transfer-account-no"
                 />
               </div>
@@ -574,6 +629,7 @@ export default function POS() {
           </button>
         </div>
       </aside>
+      )}
 
       {variantPick && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setVariantPick(null)}>

@@ -6,7 +6,7 @@ import { toast } from "sonner";
 
 const emptyTable = { name: "", capacity: 2, zone: "Utama" };
 
-export default function Tables() {
+export default function Tables({ embedded = false }) {
   const [tables, setTables] = useState([]);
   const [products, setProducts] = useState([]);
   const [customers, setCustomers] = useState([]);
@@ -28,10 +28,23 @@ export default function Tables() {
   const [cardTerminalId, setCardTerminalId] = useState("");
   const [discount, setDiscount] = useState(0);
   const [customerId, setCustomerId] = useState("");
+  const [transferBank, setTransferBank] = useState("");
+  const [transferAccountName, setTransferAccountName] = useState("");
+  const [transferAccountNo, setTransferAccountNo] = useState("");
+  const [transferReferenceNo, setTransferReferenceNo] = useState("");
+  const [transferSenderName, setTransferSenderName] = useState("");
+  const [transferVerified, setTransferVerified] = useState(false);
+  const [paymentAccounts, setPaymentAccounts] = useState([]);
 
   const load = async () => {
-    const [t, p, c] = await Promise.all([api.get("/tables"), api.get("/products"), api.get("/customers")]);
+    const [t, p, c, pa] = await Promise.all([
+      api.get("/tables"),
+      api.get("/products"),
+      api.get("/customers"),
+      api.get("/payment-accounts"),
+    ]);
     setTables(t.data); setProducts(p.data); setCustomers(c.data);
+    setPaymentAccounts(pa.data || []);
   };
   useEffect(() => { load(); }, []);
 
@@ -52,20 +65,34 @@ export default function Tables() {
 
   const beginOrder = async (table) => {
     if (table.active_order_id) {
-      const { data } = await api.get(`/orders?status=open`);
-      const order = data.find(o => o.id === table.active_order_id);
-      if (order) {
-        setActiveOrder(order);
-        setOrderItems(order.items);
-        setGuests(order.guest_count);
-        setOpenTable(table);
+      try {
+        const { data } = await api.get(`/orders?status=open`);
+        const order = data.find(o => o.id === table.active_order_id);
+        if (order) {
+          setActiveOrder(order);
+          // Normalize items: pastikan field quantity (bukan qty), variant_name, note
+          const items = (order.items || []).map(i => ({
+            product_id: String(i.product_id),
+            name: String(i.name || ""),
+            price: Number(i.price) || 0,
+            quantity: Number(i.quantity ?? i.qty ?? 1),
+            variant_name: String(i.variant_name || ""),
+            note: String(i.note || "")
+          }));
+          setOrderItems(items);
+          setGuests(order.guest_count || 1);
+          setOpenTable(table);
+          return;
+        }
+      } catch (err) {
+        console.error("beginOrder error:", err);
       }
-    } else {
-      setActiveOrder(null);
-      setOrderItems([]);
-      setGuests(1);
-      setOpenTable(table);
     }
+    // Tidak ada order aktif atau gagal load → buka order baru
+    setActiveOrder(null);
+    setOrderItems([]);
+    setGuests(1);
+    setOpenTable(table);
   };
 
   const addItem = (p) => {
@@ -93,38 +120,45 @@ export default function Tables() {
       return toast.error("Tambahkan minimal 1 item");
     }
 
+    const payloadItems = orderItems.map(i => ({
+      product_id: String(i.product_id),
+      name: String(i.name || ""),
+      price: Number(i.price) || 0,
+      quantity: Number(i.quantity) || 0,
+      variant_name: String(i.variant_name || ""),
+      note: String(i.note || "")
+    }));
+
     try {
       if (activeOrder) {
-
-        const payloadItems = orderItems.map(i => ({
-          product_id: String(i.product_id),
-          name: String(i.name || ""),
-          price: Number(i.price) || 0,
-          quantity: Number(i.quantity) || 0,
-          variant_name: String(i.variant_name || ""),
-          note: String(i.note || "")
-        }));
-
-        console.log("UPDATE ORDER PAYLOAD:", {
-          items: payloadItems
-        });
-
-        await api.put(
-          `/orders/${activeOrder.id}/items`,
-          { items: payloadItems }
-        );
-
+        await api.put(`/orders/${activeOrder.id}/items`, { items: payloadItems });
         toast.success("Order diperbarui");
-
       } else {
-
-        await api.post("/orders", {
-          table_id: openTable.id,
-          guest_count: Number(guests),
-          items: orderItems
-        });
-
-        toast.success("Order dibuka");
+        // Cek apakah meja sudah punya order terbuka
+        try {
+          const { data: newOrder } = await api.post("/orders", {
+            table_id: openTable.id,
+            guest_count: Number(guests),
+            items: payloadItems
+          });
+          setActiveOrder(newOrder);
+          toast.success("Order dibuka");
+        } catch (err) {
+          if (err.response?.status === 400 && err.response?.data?.detail?.includes("order terbuka")) {
+            // Meja sudah punya order → cari & update items
+            const { data: openOrders } = await api.get("/orders?status=open");
+            const existing = openOrders.find(o => o.table_id === openTable.id);
+            if (existing) {
+              await api.put(`/orders/${existing.id}/items`, { items: payloadItems });
+              setActiveOrder(existing);
+              toast.success("Order diperbarui");
+            } else {
+              throw err;
+            }
+          } else {
+            throw err;
+          }
+        }
       }
 
       setOpenTable(null);
@@ -133,19 +167,13 @@ export default function Tables() {
       load();
 
     } catch (err) {
-
       const detail = err.response?.data?.detail;
-
       const message =
         typeof detail === "string"
           ? detail
           : Array.isArray(detail)
             ? detail.map(x => x.msg || "Data tidak valid").join(", ")
             : "Gagal menyimpan order";
-
-      console.error("UPDATE ORDER ERROR:", err.response?.data);
-      console.error("ORDER ITEMS:", orderItems);
-
       toast.error(message);
     }
   };
@@ -169,16 +197,42 @@ export default function Tables() {
         return toast.error("No. referensi kartu wajib diisi");
       }
     }
+    if (payMethod === "transfer") {
+      if (!transferBank.trim()) {
+        return toast.error("Bank tujuan wajib dipilih");
+      }
+      if (!transferReferenceNo.trim()) {
+        return toast.error("No. referensi transfer wajib diisi");
+      }
+      if (!transferSenderName.trim()) {
+        return toast.error("Nama pengirim wajib diisi");
+      }
+      if (!transferVerified) {
+        return toast.error("Transfer harus diverifikasi terlebih dahulu");
+      }
+    }
     try {
       // Save items first (in case edited)
+      let oid;
       if (activeOrder) {
         await api.put(`/orders/${activeOrder.id}/items`, { items: orderItems });
+        oid = activeOrder.id;
       } else {
-        // Open then checkout
-        const { data } = await api.post("/orders", { table_id: openTable.id, guest_count: Number(guests), items: orderItems });
-        setActiveOrder(data);
+        // Cek apakah meja sudah punya order terbuka
+        const { data: openOrders } = await api.get("/orders?status=open");
+        const existing = openOrders.find(o => o.table_id === openTable.id);
+        if (existing) {
+          // Order sudah ada → update items saja
+          await api.put(`/orders/${existing.id}/items`, { items: orderItems });
+          oid = existing.id;
+          setActiveOrder(existing);
+        } else {
+          // Buka order baru
+          const { data } = await api.post("/orders", { table_id: openTable.id, guest_count: Number(guests), items: orderItems });
+          oid = data.id;
+          setActiveOrder(data);
+        }
       }
-      const oid = activeOrder?.id || (await api.get("/orders?status=open")).data.find(o => o.table_id === openTable.id)?.id;
       const { data } = await api.post(`/orders/${oid}/checkout`, {
         payment_method: payMethod,
         amount_paid: payMethod === "cash" ? Number(amountPaid) : total,
@@ -192,6 +246,13 @@ export default function Tables() {
         card_reference_no: payMethod === "card" ? cardReferenceNo : "",
         card_approval_code: payMethod === "card" ? cardApprovalCode : "",
         card_terminal_id: payMethod === "card" ? cardTerminalId : "",
+
+        transfer_bank: payMethod === "transfer" ? transferBank : "",
+        transfer_account_name: payMethod === "transfer" ? transferAccountName : "",
+        transfer_account_no: payMethod === "transfer" ? transferAccountNo : "",
+        transfer_reference_no: payMethod === "transfer" ? transferReferenceNo : "",
+        transfer_sender_name: payMethod === "transfer" ? transferSenderName : "",
+        transfer_verified: payMethod === "transfer" ? transferVerified : false,
       });
       toast.success(`Selesai: ${data.invoice_no}`);
       setShowCheckout(false); setOpenTable(null); setActiveOrder(null); setOrderItems([]);
@@ -206,6 +267,13 @@ export default function Tables() {
       setCardReferenceNo("");
       setCardApprovalCode("");
       setCardTerminalId("");
+
+      setTransferBank("");
+      setTransferAccountName("");
+      setTransferAccountNo("");
+      setTransferReferenceNo("");
+      setTransferSenderName("");
+      setTransferVerified(false);
       load();
     } catch (err) {
       const detail = err.response?.data?.detail;
@@ -237,12 +305,14 @@ export default function Tables() {
 
   return (
     <div>
-      <PageHeader title="Manajemen Meja" subtitle="Peta meja & alur dine-in untuk mode restoran / cafe" actions={
-        <button onClick={() => setShowForm(true)} data-testid="add-table-btn" className="flex items-center gap-2 bg-[#F4C842] text-[#1A0810] px-5 py-2.5 rounded-md text-sm font-semibold uppercase tracking-wider hover:bg-[#FFDD5C] transition-colors">
-          <Plus size={16} /> Tambah Meja
-        </button>
-      } />
-      <div className="p-8 space-y-8">
+      {!embedded && (
+        <PageHeader title="Manajemen Meja" subtitle="Peta meja & alur dine-in untuk mode restoran / cafe" actions={
+          <button onClick={() => setShowForm(true)} data-testid="add-table-btn" className="flex items-center gap-2 bg-[#F4C842] text-[#1A0810] px-5 py-2.5 rounded-md text-sm font-semibold uppercase tracking-wider hover:bg-[#FFDD5C] transition-colors">
+            <Plus size={16} /> Tambah Meja
+          </button>
+        } />
+      )}
+      <div className={embedded ? "space-y-8" : "p-8 space-y-8"}>
         {tables.length === 0 && (
           <div className="bg-[#331419] gold-border rounded-lg p-12 text-center">
             <MapPin size={40} strokeWidth={1.2} className="mx-auto mb-3 text-[#F4C842] opacity-40" />
@@ -396,7 +466,7 @@ export default function Tables() {
       {/* Checkout modal */}
       {showCheckout && openTable && (
         <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#2A1015] gold-border rounded-lg max-w-md w-full p-6">
+          <div className="bg-[#2A1015] gold-border rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto p-6">
             <h3 className="font-serif-luxury text-2xl text-[#F5F5F5] mb-4">Bayar - Meja {openTable.name}</h3>
             <div className="space-y-3">
               <select value={customerId} onChange={(e) => setCustomerId(e.target.value)} className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]">
@@ -538,6 +608,115 @@ export default function Tables() {
 
                   </div>
 
+                </div>
+              )}
+              {payMethod === "transfer" && (
+                <div className="space-y-3 bg-[#331419] border border-[rgba(244,200,66,0.15)] rounded-md p-4">
+                  <div className="text-xs uppercase tracking-widest text-[#F4C842]">
+                    Detail Transfer Bank
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-[#C4A484]">
+                      Bank Tujuan *
+                    </label>
+                    <select
+                      value={transferBank}
+                      onChange={(e) => {
+                        const acc = paymentAccounts.find(a => a.bank_name === e.target.value);
+                        setTransferBank(e.target.value);
+                        if (acc) {
+                          setTransferAccountName(acc.account_name || "");
+                          setTransferAccountNo(acc.account_no || "");
+                        } else {
+                          setTransferAccountName("");
+                          setTransferAccountNo("");
+                        }
+                      }}
+                      className="mt-1 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]"
+                      data-testid="dinein-transfer-bank"
+                    >
+                      <option value="">Pilih Bank Tujuan</option>
+                      {paymentAccounts
+                        .filter(a => a.is_active)
+                        .map(a => (
+                          <option key={a.id} value={a.bank_name}>
+                            {a.bank_name} — {a.account_no}
+                          </option>
+                        ))}
+                    </select>
+                    {paymentAccounts.filter(a => a.is_active).length === 0 && (
+                      <p className="text-[10px] text-[#8B0000] mt-1">
+                        Belum ada bank terdaftar. Tambahkan di menu Pengaturan / Payment Accounts.
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-[#C4A484]">
+                      Nama Pemilik Rekening Tujuan
+                    </label>
+                    <input
+                      type="text"
+                      value={transferAccountName}
+                      readOnly
+                      placeholder="Terisi otomatis dari bank terpilih"
+                      className="mt-1 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#C4A484] cursor-not-allowed"
+                      data-testid="dinein-transfer-account-name"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-[#C4A484]">
+                      No. Rekening Tujuan
+                    </label>
+                    <input
+                      type="text"
+                      value={transferAccountNo}
+                      readOnly
+                      placeholder="Terisi otomatis dari bank terpilih"
+                      className="mt-1 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#C4A484] cursor-not-allowed"
+                      data-testid="dinein-transfer-account-no"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-[#C4A484]">
+                      No. Referensi Transfer *
+                    </label>
+                    <input
+                      type="text"
+                      value={transferReferenceNo}
+                      onChange={(e) => setTransferReferenceNo(e.target.value)}
+                      placeholder="Nomor referensi / berita transfer"
+                      className="mt-1 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]"
+                      data-testid="dinein-transfer-reference"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-[#C4A484]">
+                      Nama Pengirim *
+                    </label>
+                    <input
+                      type="text"
+                      value={transferSenderName}
+                      onChange={(e) => setTransferSenderName(e.target.value)}
+                      placeholder="Nama pengirim"
+                      className="mt-1 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]"
+                      data-testid="dinein-transfer-sender"
+                    />
+                  </div>
+
+                  <label className="flex items-center gap-2 text-xs text-[#C4A484] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={transferVerified}
+                      onChange={(e) => setTransferVerified(e.target.checked)}
+                      data-testid="dinein-transfer-verified"
+                    />
+                    <span>Transfer sudah diverifikasi</span>
+                  </label>
                 </div>
               )}
               <div className="border-t border-dashed border-[rgba(244,200,66,0.2)] pt-3 flex justify-between text-lg">

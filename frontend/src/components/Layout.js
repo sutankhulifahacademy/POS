@@ -6,7 +6,7 @@ import { Toaster } from "sonner";
 const LOGO = "https://customer-assets-gfyr7b9c.emergentagent.net/job_inventory-hub-3002/artifacts/3xyqa9jm_WhatsApp%20Image%202026-08-25%20at%2009.54.11.jpeg";
 
 // Role capability matrix
-// admin (owner) = full; manager = operational; kasir = POS only (no sidebar)
+// admin (owner) = full; manager = operational; kasir = POS only (POS + Dine-In tabs, no sidebar)
 const NAV = [
   { to: "/dashboard",       label: "Dashboard",       icon: LayoutDashboard, testId: "nav-dashboard", roles: ["admin", "manager"] },
   { to: "/pos",             label: "Kasir (POS)",     icon: ShoppingCart,    testId: "nav-pos",       roles: ["admin", "manager", "kasir"] },

@@ -154,8 +154,19 @@ CREATE TABLE IF NOT EXISTS sales (
 	card_reference_no varchar(100) NULL,
 	card_approval_code varchar(100) NULL,
 	card_terminal_id varchar(100) NULL,
+	transfer_bank varchar(50) NULL,
+	transfer_account_name varchar(255) NULL,
+	transfer_account_no varchar(100) NULL,
+	transfer_reference_no varchar(100) NULL,
+	transfer_sender_name varchar(255) NULL,
+	transfer_verified bool DEFAULT false NULL,
+	transfer_verified_at timestamptz NULL,
+	transfer_verified_by uuid NULL,
+	payment_reference varchar(100) NULL,
+	payment_account_id uuid NULL,
 	CONSTRAINT sales_invoice_no_key UNIQUE (invoice_no),
-	CONSTRAINT sales_pkey PRIMARY KEY (id)
+	CONSTRAINT sales_pkey PRIMARY KEY (id),
+	CONSTRAINT sales_payment_account_id_fkey FOREIGN KEY (payment_account_id) REFERENCES public.payment_accounts(id) ON DELETE SET NULL
 );
 CREATE INDEX idx_sales_created ON public.sales USING btree (created_at DESC);
 CREATE INDEX idx_sales_outlet_created ON public.sales USING btree (outlet_id, created_at DESC);
@@ -303,3 +314,15 @@ CREATE TABLE IF NOT EXISTS qris_orders (
 );
 
 
+CREATE TABLE IF NOT EXISTS public.payment_accounts (
+id uuid DEFAULT uuid_generate_v4() NOT NULL,
+bank_name varchar(100) NOT NULL,
+account_name varchar(255) NOT NULL,
+account_no varchar(100) NOT NULL,
+outlet_id uuid NULL,
+is_active bool DEFAULT true NOT NULL,
+created_at timestamptz DEFAULT now() NULL,
+updated_at timestamptz DEFAULT now() NULL,
+CONSTRAINT payment_accounts_pkey PRIMARY KEY (id),
+CONSTRAINT payment_accounts_outlet_id_fkey FOREIGN KEY (outlet_id) REFERENCES public.outlets(id) ON DELETE SET NULL
+);
