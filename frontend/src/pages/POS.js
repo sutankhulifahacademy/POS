@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import api, { formatIDR } from "../lib/api";
 import { toast, Toaster } from "sonner";
-import { Search, Plus, Minus, Trash2, ShoppingCart, Package as PackageIcon, ScanLine, Printer, Clock, LogOut, Utensils } from "lucide-react";
+import { Search, Plus, Minus, Trash2, ShoppingCart, Package as PackageIcon, ScanLine, Printer, Clock, LogOut, Utensils, LayoutDashboard } from "lucide-react";
 import BarcodeScanner from "../components/BarcodeScanner";
 import Receipt, { printReceipt } from "../components/Receipt";
 import QRISPayment from "../components/QRISPayment";
@@ -36,6 +36,8 @@ export default function POS() {
   const [transferSenderName, setTransferSenderName] = useState("");
   const [transferVerified, setTransferVerified] = useState(false);
   const [paymentAccounts, setPaymentAccounts] = useState([]);
+  const [cardBrands, setCardBrands] = useState([]);
+  const [cardBrandOther, setCardBrandOther] = useState("");
   const [discount, setDiscount] = useState(0);
   const [processing, setProcessing] = useState(false);
   const [receipt, setReceipt] = useState(null);
@@ -48,12 +50,14 @@ export default function POS() {
   const bufferRef = useRef({ chars: "", lastTs: 0 });
 
   const load = async () => {
-    const [p, c, cu, s, o, pa] = await Promise.all([
+    const [p, c, cu, s, o, pa, cb] = await Promise.all([
       api.get("/products"), api.get("/categories"), api.get("/customers"),
       api.get("/shifts/active"), api.get("/outlets"), api.get("/payment-accounts"),
+      api.get("/card-brands"),
     ]);
     setProducts(p.data); setCategories(c.data); setCustomers(cu.data);
     setActiveShift(s.data); setOutlets(o.data); setPaymentAccounts(pa.data || []);
+    setCardBrands(cb.data || []);
     // Default outlet: main
     if (!selectedOutlet) {
       const main = o.data.find(x => x.is_main) || o.data[0];
@@ -148,6 +152,17 @@ export default function POS() {
   const finalizeSale = async () => {
     setProcessing(true);
     try {
+      // Resolve card brand: if "Lainnya", save new brand to backend
+      let finalCardBrand = cardBrand;
+      if (paymentMethod === "card" && cardBrand === "__other__" && cardBrandOther.trim()) {
+        const trimmed = cardBrandOther.trim();
+        try {
+          await api.post("/card-brands", { name: trimmed });
+          setCardBrands(prev => prev.find(b => b.name === trimmed) ? prev : [...prev, { id: "temp", name: trimmed, is_active: true }]);
+        } catch (e) { /* ignore — brand may already exist */ }
+        finalCardBrand = trimmed;
+      }
+
       const { data } = await api.post("/sales", {
       outlet_id: selectedOutlet,
 
@@ -168,7 +183,7 @@ export default function POS() {
           : total,
 
       card_type: paymentMethod === "card" ? cardType : "",
-      card_brand: paymentMethod === "card" ? cardBrand : "",
+      card_brand: paymentMethod === "card" ? finalCardBrand : "",
       card_last4: paymentMethod === "card" ? cardLast4 : "",
       card_reference_no: paymentMethod === "card" ? cardReferenceNo : "",
       card_approval_code: paymentMethod === "card" ? cardApprovalCode : "",
@@ -305,6 +320,11 @@ export default function POS() {
                 <ScanLine size={14} strokeWidth={2} /> Scan
               </button>
             )}
+            {(user?.role === "admin" || user?.role === "manager") && (
+              <button onClick={() => nav("/dashboard")} data-testid="pos-dashboard-btn" className="flex items-center gap-2 bg-[#331419] border border-[rgba(244,200,66,0.3)] text-[#F4C842] hover:text-[#FFDD5C] px-3 py-2 rounded-md text-xs uppercase tracking-wider transition-colors">
+                <LayoutDashboard size={14} strokeWidth={1.5} /> Dashboard
+              </button>
+            )}
             <button onClick={async () => { await logout(); nav("/login"); }} data-testid="pos-logout-btn" className="flex items-center gap-2 bg-[#331419] border border-[rgba(244,200,66,0.3)] text-[#C4A484] hover:text-[#F5F5F5] px-3 py-2 rounded-md text-xs uppercase tracking-wider transition-colors">
               <LogOut size={14} strokeWidth={1.5} /> Keluar
             </button>
@@ -429,13 +449,27 @@ export default function POS() {
                   <label className="text-[10px] uppercase tracking-widest text-[#C4A484]">
                     Bank / Brand
                   </label>
-                  <input
-                    type="text"
+                  <select
                     value={cardBrand}
-                    onChange={(e) => setCardBrand(e.target.value)}
-                    placeholder="BCA / Mandiri / Visa"
+                    onChange={(e) => {
+                      setCardBrand(e.target.value);
+                      if (e.target.value !== "__other__") setCardBrandOther("");
+                    }}
                     className="mt-1 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]"
-                  />
+                  >
+                    <option value="">Pilih</option>
+                    {cardBrands.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+                    <option value="__other__">+ Lainnya...</option>
+                  </select>
+                  {cardBrand === "__other__" && (
+                    <input
+                      type="text"
+                      value={cardBrandOther}
+                      onChange={(e) => setCardBrandOther(e.target.value)}
+                      placeholder="Ketik nama bank/brand"
+                      className="mt-2 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]"
+                    />
+                  )}
                 </div>
               </div>
 

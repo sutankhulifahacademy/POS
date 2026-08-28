@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { LayoutDashboard, ShoppingCart, Package, Boxes, Users, Truck, Store, BarChart3, Settings, LogOut, ClipboardList, Clock, UserCog, ArrowRightLeft, Utensils } from "lucide-react";
+import { LayoutDashboard, ShoppingCart, Package, Boxes, Users, Truck, Store, BarChart3, Settings, LogOut, ClipboardList, Clock, UserCog, ArrowRightLeft, Utensils, CreditCard } from "lucide-react";
 import { Toaster } from "sonner";
 
 const LOGO = "https://customer-assets-gfyr7b9c.emergentagent.net/job_inventory-hub-3002/artifacts/3xyqa9jm_WhatsApp%20Image%202026-08-25%20at%2009.54.11.jpeg";
@@ -23,6 +23,7 @@ const NAV = [
   { to: "/reports",         label: "Laporan",         icon: BarChart3,       testId: "nav-reports",   roles: ["admin", "manager"] },
   { to: "/users",           label: "Karyawan",        icon: UserCog,         testId: "nav-users",     roles: ["admin", "manager"] },
   { to: "/settings",        label: "Pengaturan",      icon: Settings,        testId: "nav-settings",  roles: ["admin"] },
+  { to: "/payment-accounts",label: "Rekening Bank",   icon: CreditCard,      testId: "nav-payment-accounts", roles: ["admin", "manager"] },
 ];
 
 // Exported so router / App.js can reuse the same matrix for route protection

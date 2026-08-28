@@ -15,6 +15,8 @@ docker exec rdi-frontend sh -c "true" 2>$null  # noop just to ensure docker work
 docker exec rdi-backend sh -c "rm -rf /app/models && mv /app/models_tmp /app/models"
 docker cp "$backend\routes" "rdi-backend:/app/routes_tmp"
 docker exec rdi-backend sh -c "rm -rf /app/routes && mv /app/routes_tmp /app/routes"
+docker cp "$backend\services" "rdi-backend:/app/services_tmp"
+docker exec rdi-backend sh -c "rm -rf /app/services && mv /app/services_tmp /app/services"
 
 Write-Host "[2/2] Restarting rdi-backend..." -ForegroundColor Cyan
 docker restart rdi-backend

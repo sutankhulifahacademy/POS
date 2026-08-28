@@ -21,3 +21,7 @@ class PaymentAccountUpdate(BaseModel):
     account_no: Optional[str] = None
     outlet_id: Optional[str] = None
     is_active: Optional[bool] = None
+
+
+class CardBrandCreate(BaseModel):
+    name: str

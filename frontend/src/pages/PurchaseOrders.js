@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import api, { formatIDR } from "../lib/api";
 import PageHeader from "../components/PageHeader";
-import { Plus, X, PackageCheck, Trash2 } from "lucide-react";
+import { Plus, X, PackageCheck, Trash2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 
 export default function PurchaseOrders() {
@@ -58,6 +58,26 @@ export default function PurchaseOrders() {
     if (!window.confirm("Hapus PO draft?")) return;
     try { await api.delete(`/purchase-orders/${id}`); load(); }
     catch (err) { toast.error(err.response?.data?.detail || "Gagal"); }
+  };
+
+  const reject = async (id) => {
+    if (!window.confirm("Tolak PO ini? Status akan berubah menjadi cancelled.")) return;
+    try {
+      await api.post(`/purchase-orders/${id}/reject`);
+      toast.success("PO ditolak");
+      setDetail(null);
+      load();
+    } catch (err) { toast.error(err.response?.data?.detail || "Gagal"); }
+  };
+
+  const receiveFromDetail = async (id) => {
+    if (!window.confirm("Terima barang & tambahkan stok?")) return;
+    try {
+      await api.post(`/purchase-orders/${id}/receive`);
+      toast.success("Barang diterima, stok bertambah");
+      setDetail(null);
+      load();
+    } catch (err) { toast.error(err.response?.data?.detail || "Gagal"); }
   };
 
   return (
@@ -165,31 +185,69 @@ export default function PurchaseOrders() {
 
       {detail && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setDetail(null)}>
-          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-lg w-full p-8">
-            <h3 className="font-serif-luxury text-2xl text-[#F4C842]">{detail.po_no}</h3>
-            <p className="text-xs text-[#C4A484] mb-4">{detail.supplier_name} · {new Date(detail.created_at).toLocaleString("id-ID")}</p>
-            <table className="w-full text-sm mb-4">
-              <thead>
-                <tr className="text-[#C4A484] text-xs uppercase border-b border-[rgba(244,200,66,0.15)]">
-                  <th className="py-2 text-left">Item</th>
-                  <th className="py-2 text-right">Qty</th>
-                  <th className="py-2 text-right">Modal</th>
-                  <th className="py-2 text-right">Subtotal</th>
-                </tr>
-              </thead>
-              <tbody>
-                {detail.items.map((i, idx) => (
-                  <tr key={idx} className="border-b border-[rgba(244,200,66,0.08)]">
-                    <td className="py-2 text-[#F5F5F5]">{i.name}</td>
-                    <td className="py-2 text-right text-[#C4A484]">{i.quantity}</td>
-                    <td className="py-2 text-right text-[#C4A484]">{formatIDR(i.cost)}</td>
-                    <td className="py-2 text-right text-[#F5F5F5]">{formatIDR(i.quantity * i.cost)}</td>
+          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-[rgba(244,200,66,0.15)] flex items-center justify-between">
+              <div>
+                <h3 className="font-serif-luxury text-2xl text-[#F4C842]">{detail.po_no}</h3>
+                <p className="text-xs text-[#C4A484] mt-1">{detail.supplier_name} · {new Date(detail.created_at).toLocaleString("id-ID")}</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className={`text-xs uppercase tracking-wider px-3 py-1.5 rounded ${
+                  detail.status === "received" ? "bg-[#2E8B57]/20 text-[#2E8B57]" :
+                  detail.status === "cancelled" ? "bg-[#8B0000]/20 text-[#8B0000]" :
+                  "bg-[#F4C842]/20 text-[#F4C842]"
+                }`}>{detail.status}</span>
+                <button onClick={() => setDetail(null)} className="text-[#C4A484] hover:text-[#F5F5F5]"><X size={20} /></button>
+              </div>
+            </div>
+            <div className="p-6">
+              {detail.note && (
+                <div className="mb-4 p-3 bg-[#331419] rounded-md border border-[rgba(244,200,66,0.1)]">
+                  <p className="text-[10px] uppercase tracking-widest text-[#C4A484] mb-1">Catatan</p>
+                  <p className="text-sm text-[#F5F5F5]">{detail.note}</p>
+                </div>
+              )}
+              <table className="w-full text-sm mb-4">
+                <thead>
+                  <tr className="text-[#C4A484] text-xs uppercase border-b border-[rgba(244,200,66,0.15)]">
+                    <th className="py-2 text-left">Item</th>
+                    <th className="py-2 text-right">Qty</th>
+                    <th className="py-2 text-right">Modal</th>
+                    <th className="py-2 text-right">Subtotal</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="flex justify-between text-lg text-[#F4C842] font-semibold border-t border-dashed border-[rgba(244,200,66,0.2)] pt-3"><span>Total</span><span>{formatIDR(detail.total)}</span></div>
-            <button onClick={() => setDetail(null)} className="mt-6 w-full bg-[#F4C842] text-[#1A0810] py-2.5 rounded-md text-sm font-semibold uppercase tracking-widest hover:bg-[#FFDD5C] transition-colors">Tutup</button>
+                </thead>
+                <tbody>
+                  {detail.items.map((i, idx) => {
+                    const itemName = i.name || i.product_name || "—";
+                    const itemCost = Number(i.cost || i.price || 0);
+                    return (
+                      <tr key={idx} className="border-b border-[rgba(244,200,66,0.08)]">
+                        <td className="py-2.5 text-[#F5F5F5]">{itemName}</td>
+                        <td className="py-2.5 text-right text-[#C4A484]">{i.quantity}</td>
+                        <td className="py-2.5 text-right text-[#C4A484]">{formatIDR(itemCost)}</td>
+                        <td className="py-2.5 text-right text-[#F5F5F5]">{formatIDR(i.quantity * itemCost)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <div className="flex justify-between text-lg text-[#F4C842] font-semibold border-t border-dashed border-[rgba(244,200,66,0.2)] pt-3 mb-6">
+                <span>Total</span>
+                <span>{formatIDR(detail.total)}</span>
+              </div>
+              {detail.status === "draft" ? (
+                <div className="flex gap-3">
+                  <button onClick={() => reject(detail.id)} data-testid="po-detail-reject" className="flex-1 flex items-center justify-center gap-2 border border-[#8B0000] text-[#8B0000] py-2.5 rounded-md text-sm uppercase tracking-widest hover:bg-[#8B0000]/10 transition-colors">
+                    <XCircle size={16} strokeWidth={1.5} /> Tolak
+                  </button>
+                  <button onClick={() => receiveFromDetail(detail.id)} data-testid="po-detail-receive" className="flex-1 flex items-center justify-center gap-2 bg-[#2E8B57] text-white py-2.5 rounded-md text-sm font-semibold uppercase tracking-widest hover:bg-[#3EA867] transition-colors">
+                    <PackageCheck size={16} strokeWidth={1.5} /> Terima Barang
+                  </button>
+                </div>
+              ) : (
+                <button onClick={() => setDetail(null)} className="w-full bg-[#F4C842] text-[#1A0810] py-2.5 rounded-md text-sm font-semibold uppercase tracking-widest hover:bg-[#FFDD5C] transition-colors">Tutup</button>
+              )}
+            </div>
           </div>
         </div>
       )}

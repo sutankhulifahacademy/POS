@@ -35,16 +35,20 @@ export default function Tables({ embedded = false }) {
   const [transferSenderName, setTransferSenderName] = useState("");
   const [transferVerified, setTransferVerified] = useState(false);
   const [paymentAccounts, setPaymentAccounts] = useState([]);
+  const [cardBrands, setCardBrands] = useState([]);
+  const [cardBrandOther, setCardBrandOther] = useState("");
 
   const load = async () => {
-    const [t, p, c, pa] = await Promise.all([
+    const [t, p, c, pa, cb] = await Promise.all([
       api.get("/tables"),
       api.get("/products"),
       api.get("/customers"),
       api.get("/payment-accounts"),
+      api.get("/card-brands"),
     ]);
     setTables(t.data); setProducts(p.data); setCustomers(c.data);
     setPaymentAccounts(pa.data || []);
+    setCardBrands(cb.data || []);
   };
   useEffect(() => { load(); }, []);
 
@@ -180,12 +184,26 @@ export default function Tables({ embedded = false }) {
 
   const doCheckout = async () => {
     const total = orderItems.reduce((s, i) => s + i.price * i.quantity, 0) - Number(discount || 0);
+
+    // Resolve card brand: if "Lainnya", save new brand to backend
+    let finalCardBrand = cardBrand;
+    if (payMethod === "card" && cardBrand === "__other__") {
+      if (!cardBrandOther.trim()) {
+        return toast.error("Ketik nama bank/brand");
+      }
+      finalCardBrand = cardBrandOther.trim();
+      try {
+        await api.post("/card-brands", { name: finalCardBrand });
+        setCardBrands(prev => prev.find(b => b.name === finalCardBrand) ? prev : [...prev, { id: "temp", name: finalCardBrand, is_active: true }]);
+      } catch (e) { /* ignore */ }
+    }
+
    if (payMethod === "card") {
       if (!cardType) {
         return toast.error("Pilih jenis kartu");
       }
 
-      if (!cardBrand) {
+      if (!finalCardBrand) {
         return toast.error("Isi bank / brand kartu");
       }
 
@@ -241,7 +259,7 @@ export default function Tables({ embedded = false }) {
         customer_id: customerId,
 
         card_type: payMethod === "card" ? cardType : "",
-        card_brand: payMethod === "card" ? cardBrand : "",
+        card_brand: payMethod === "card" ? finalCardBrand : "",
         card_last4: payMethod === "card" ? cardLast4 : "",
         card_reference_no: payMethod === "card" ? cardReferenceNo : "",
         card_approval_code: payMethod === "card" ? cardApprovalCode : "",
@@ -523,23 +541,25 @@ export default function Tables({ embedded = false }) {
 
                       <select
                         value={cardBrand}
-                        onChange={(e) => setCardBrand(e.target.value)}
+                        onChange={(e) => {
+                          setCardBrand(e.target.value);
+                          if (e.target.value !== "__other__") setCardBrandOther("");
+                        }}
                         className="mt-1 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]"
                       >
                         <option value="">Pilih</option>
-                        <option value="BCA">BCA</option>
-                        <option value="BRI">BRI</option>
-                        <option value="BNI">BNI</option>
-                        <option value="Mandiri">Mandiri</option>
-                        <option value="CIMB Niaga">CIMB Niaga</option>
-                        <option value="Danamon">Danamon</option>
-                        <option value="Permata">Permata</option>
-                        <option value="BTN">BTN</option>
-                        <option value="Visa">Visa</option>
-                        <option value="Mastercard">Mastercard</option>
-                        <option value="JCB">JCB</option>
-                        <option value="Other">Other</option>
+                        {cardBrands.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+                        <option value="__other__">+ Lainnya...</option>
                       </select>
+                      {cardBrand === "__other__" && (
+                        <input
+                          type="text"
+                          value={cardBrandOther}
+                          onChange={(e) => setCardBrandOther(e.target.value)}
+                          placeholder="Ketik nama bank/brand"
+                          className="mt-2 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]"
+                        />
+                      )}
                     </div>
 
                   </div>
