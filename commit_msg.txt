@@ -1,21 +1,31 @@
-Add manager and supervisor users + remove role check constraint
+Dynamic business branding — logo, colors, and profile
 
-- Drop users_role_check constraint (was limiting to admin/manager/kasir only)
-- Create supervisor role in roles table (custom, non-system)
-- Assign 7 menus to supervisor (dashboard, pos, attendance, shifts, products, inventory, reports)
-- Assign 11 permissions to supervisor
-- Insert 5 new users, all with password "Password1":
+Make the POS app dynamic for any business, not just one:
+- Business profile (name, address, logo) used across all transactions and reports
+- Color theme customization (5 colors) that changes the entire app appearance
 
-Manager:
-- manager.budi@republikdimsum.id (Budi Santoso, Manager Outlet)
-- manager.siti@republikdimsum.id (Siti Rahayu, Manager Operasional)
-- manager.agus@republikdimsum.id (Agus Pratama, Manager Keuangan)
+Backend:
+- Add columns to business table: logo_url, primary_color, secondary_color, bg_color, card_bg_color, sidebar_bg_color
+- Update models/business.py (BusinessIn with new fields)
+- Update routes/business.py (handle new fields in POST /business)
+- GET /business now public (no auth needed — for login page branding)
 
-Supervisor:
-- supervisor.rina@republikdimsum.id (Rina Wati, Supervisor Shift Pagi)
-- supervisor.dono@republikdimsum.id (Dono Hartono, Supervisor Shift Malam)
+Frontend:
+- Create ThemeContext.js — fetches business profile, applies CSS variables for colors
+- Wrap App with ThemeProvider
+- Settings.js: add logo URL input + color theme section (5 color pickers + live preview + reset)
+- Layout.js: sidebar uses business logo + name from ThemeContext (no hardcoded logo/name)
+- Receipt.js: uses business name, address, and logo from ThemeContext (no hardcoded address/slogan)
+- After saving business profile, theme refreshes immediately across the app
 
-Update postgres_schema.sql to remove role check constraint.
+Color variables applied via CSS:
+- --color-primary (gold accent)
+- --color-secondary (beige text)
+- --color-bg (main background)
+- --color-card (card background)
+- --color-sidebar (sidebar background)
+
+This makes the app reusable for any business — just change the profile and colors in Settings.
 
 Generated with [Devin](https://devin.ai)
 

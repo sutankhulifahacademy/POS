@@ -1,13 +1,18 @@
 import { formatIDR } from "../lib/api";
+import { useTheme } from "../context/ThemeContext";
 
-export default function Receipt({ sale, businessName = "Republik Dimsum Imperium" }) {
+export default function Receipt({ sale, businessName }) {
+  const { business } = useTheme();
+  const name = businessName || business?.name || "POS";
+  const address = business?.address || "";
+  const logoUrl = business?.logo_url;
+
   return (
     <div id="print-receipt" className="print-only bg-white text-black" style={{ width: "80mm", padding: "8px", fontFamily: "monospace", fontSize: "11px" }}>
       <div style={{ textAlign: "center", marginBottom: "6px" }}>
-        <div style={{ fontSize: "14px", fontWeight: "bold" }}>{businessName}</div>
-        <div style={{ fontSize: "9px", marginTop: "2px" }}>Jl. Gadjah Mada No.15 Pakualaman</div>
-        <div style={{ fontSize: "9px" }}>Kota Yogyakarta</div>
-        <div style={{ fontSize: "9px", fontStyle: "italic" }}>(1.2 KM dari Malioboro)</div>
+        {logoUrl && <img src={logoUrl} alt={name} style={{ width: "50px", height: "50px", objectFit: "contain", marginBottom: "4px" }} />}
+        <div style={{ fontSize: "14px", fontWeight: "bold" }}>{name}</div>
+        {address && <div style={{ fontSize: "9px", marginTop: "2px" }}>{address}</div>}
       </div>
       <div style={{ borderTop: "1px dashed #000", padding: "4px 0", textAlign: "center", fontSize: "10px" }}>
         <div>{sale.invoice_no}</div>
@@ -34,7 +39,6 @@ export default function Receipt({ sale, businessName = "Republik Dimsum Imperium
       </div>
       <div style={{ borderTop: "1px dashed #000", padding: "6px 0 2px", textAlign: "center", fontSize: "10px" }}>
         <div>Terima kasih atas kunjungan Anda</div>
-        <div style={{ fontStyle: "italic" }}>Perjalanan Ruhani · Transformasi Diri</div>
       </div>
     </div>
   );

@@ -24,8 +24,9 @@ import {
 } from "lucide-react";
 import { Toaster } from "sonner";
 import api from "../lib/api";
+import { useTheme } from "../context/ThemeContext";
 
-const LOGO = "https://customer-assets-gfyr7b9c.emergentagent.net/job_inventory-hub-3002/artifacts/3xyqa9jm_WhatsApp%20Image%202026-08-25%20at%2009.54.11.jpeg";
+const DEFAULT_LOGO = "https://customer-assets-gfyr7b9c.emergentagent.net/job_inventory-hub-3002/artifacts/3xyqa9jm_WhatsApp%20Image%202026-08-25%20at%2009.54.11.jpeg";
 
 // Icon map — maps icon name from database to lucide-react component
 const ICON_MAP = {
@@ -99,8 +100,11 @@ const ROLE_LABEL = { admin: "Owner / Admin", manager: "Manager", kasir: "Kasir",
 
 export default function Layout() {
   const { user, logout } = useAuth();
+  const { business } = useTheme();
   const nav = useNavigate();
   const [menus, setMenus] = useState(null);
+  const logoUrl = business?.logo_url || DEFAULT_LOGO;
+  const bizName = business?.name || "Republik Dimsum";
 
   useEffect(() => {
     // Return cached menus immediately if same role
@@ -125,10 +129,10 @@ export default function Layout() {
       <aside className="w-64 bg-[#2A1015] border-r border-[rgba(244,200,66,0.15)] flex flex-col fixed h-screen" data-testid="app-sidebar">
         <div className="p-6 border-b border-[rgba(244,200,66,0.15)]">
           <div className="flex flex-col items-center gap-3">
-            <img src={LOGO} alt="Sutan Khulifah" className="w-16 h-16 object-contain" data-testid="brand-logo" />
+            <img src={logoUrl} alt={bizName} className="w-16 h-16 object-contain" data-testid="brand-logo" />
             <div className="text-center">
-              <h1 className="font-serif-luxury text-lg text-[#F4C842] leading-tight">Republik Dimsum</h1>
-              <p className="text-[10px] tracking-widest text-[#C4A484] uppercase">Imperium</p>
+              <h1 className="font-serif-luxury text-lg text-[#F4C842] leading-tight">{bizName}</h1>
+              <p className="text-[10px] tracking-widest text-[#C4A484] uppercase">{business?.business_type || "POS"}</p>
             </div>
           </div>
         </div>

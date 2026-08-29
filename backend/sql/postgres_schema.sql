@@ -40,6 +40,12 @@ CREATE TABLE IF NOT EXISTS business (
     currency VARCHAR(10) DEFAULT 'IDR',
     tax_rate NUMERIC(5,2) DEFAULT 0,
     address TEXT,
+    logo_url TEXT,
+    primary_color VARCHAR(20) DEFAULT '#F4C842',
+    secondary_color VARCHAR(20) DEFAULT '#C4A484',
+    bg_color VARCHAR(20) DEFAULT '#1A0810',
+    card_bg_color VARCHAR(20) DEFAULT '#331419',
+    sidebar_bg_color VARCHAR(20) DEFAULT '#2A1015',
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ
 );

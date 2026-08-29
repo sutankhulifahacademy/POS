@@ -1,6 +1,7 @@
 import "@/index.css";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import { ThemeProvider } from "./context/ThemeContext";
 import Login from "./pages/Login";
 import Layout, { canAccess, defaultLandingFor } from "./components/Layout";
 import Dashboard from "./pages/Dashboard";
@@ -49,9 +50,10 @@ function RoleAwareLayout() {
 
 function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <Routes>
+    <ThemeProvider>
+      <AuthProvider>
+        <BrowserRouter>
+          <Routes>
           <Route path="/login" element={<Public><Login /></Public>} />
           <Route element={<Protected><RoleAwareLayout /></Protected>}>
             <Route path="/dashboard" element={<Protected path="/dashboard"><Dashboard /></Protected>} />
@@ -75,8 +77,9 @@ function App() {
           <Route path="/" element={<HomeRedirect />} />
           <Route path="*" element={<HomeRedirect />} />
         </Routes>
-      </BrowserRouter>
-    </AuthProvider>
+        </BrowserRouter>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
 

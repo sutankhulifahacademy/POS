@@ -8,6 +8,12 @@ class BusinessIn(BaseModel):
     currency: str = "IDR"
     tax_rate: float = 0.0
     address: Optional[str] = ""
+    logo_url: Optional[str] = ""
+    primary_color: Optional[str] = "#F4C842"
+    secondary_color: Optional[str] = "#C4A484"
+    bg_color: Optional[str] = "#1A0810"
+    card_bg_color: Optional[str] = "#331419"
+    sidebar_bg_color: Optional[str] = "#2A1015"
 
 
 class OutletIn(BaseModel):
