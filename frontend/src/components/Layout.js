@@ -84,16 +84,18 @@ export async function fetchAllMenus() {
 
 // Exported for App.js route protection — checks if a route exists in cached menus
 export function canAccess(role, path) {
-  if (!_cachedMenus) return true; // Allow during initial load
+  if (path === "/pos") return true; // POS always accessible
+  if (!_cachedMenus || _cachedRole !== role) return true; // Allow during initial load / role mismatch
   return _cachedMenus.some(m => m.route === path);
 }
 
 export function defaultLandingFor(role) {
   if (role === "kasir") return "/pos";
+  if (role === "supervisor") return "/dashboard";
   return "/dashboard";
 }
 
-const ROLE_LABEL = { admin: "Owner / Admin", manager: "Manager", kasir: "Kasir" };
+const ROLE_LABEL = { admin: "Owner / Admin", manager: "Manager", kasir: "Kasir", supervisor: "Supervisor" };
 
 export default function Layout() {
   const { user, logout } = useAuth();
