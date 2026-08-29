@@ -317,7 +317,7 @@ const labelCls = "text-xs uppercase tracking-widest text-[#C4A484] mb-1 block";
 
 export default function Roles() {
   const { user } = useAuth();
-  const isOwner = user?.role === "owner";
+  const isOwner = user?.role === "admin";
   const [roles, setRoles] = useState([]);
   const [tree, setTree] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
