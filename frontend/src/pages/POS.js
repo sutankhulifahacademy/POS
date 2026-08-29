@@ -44,6 +44,10 @@ export default function POS() {
   const [showScanner, setShowScanner] = useState(false);
   const [variantPick, setVariantPick] = useState(null);
   const [activeShift, setActiveShift] = useState(null);
+  const [showShiftModal, setShowShiftModal] = useState(false);
+  const [shiftCash, setShiftCash] = useState(0);
+  const [shiftNote, setShiftNote] = useState("");
+  const [shiftSaving, setShiftSaving] = useState(false);
   const [showQRIS, setShowQRIS] = useState(false);
   const [activeTab, setActiveTab] = useState("pos"); // "pos" | "dinein"
   const nav = useNavigate();
@@ -104,6 +108,18 @@ export default function POS() {
   const handleProductClick = (product) => {
     if (product.variants && product.variants.length > 0) setVariantPick(product);
     else addToCart(product);
+  };
+
+  const openShiftFromPOS = async (e) => {
+    e.preventDefault();
+    setShiftSaving(true);
+    try {
+      const { data } = await api.post("/shifts/open", { opening_cash: Number(shiftCash), note: shiftNote });
+      setActiveShift(data);
+      toast.success("Shift dibuka");
+      setShowShiftModal(false); setShiftCash(0); setShiftNote("");
+    } catch (err) { toast.error(err.response?.data?.detail || "Gagal membuka shift"); }
+    setShiftSaving(false);
   };
 
   const handleBarcodeInput = async (code) => {
@@ -313,7 +329,7 @@ export default function POS() {
                 <span className="text-[#C4A484]">Shift · <span className="text-[#F4C842]">{formatIDR(activeShift.opening_cash)}</span></span>
               </div>
             ) : (
-              <button onClick={() => nav("/shifts")} data-testid="pos-open-shift-cta" className="flex items-center gap-2 bg-[#331419] border border-[#8B0000] text-[#F5F5F5] px-3 py-2 rounded-md text-xs hover:bg-[#4A1A22]"><Clock size={14} /> Buka Shift</button>
+              <button onClick={() => setShowShiftModal(true)} data-testid="pos-open-shift-cta" className="flex items-center gap-2 bg-[#331419] border border-[#8B0000] text-[#F5F5F5] px-3 py-2 rounded-md text-xs hover:bg-[#4A1A22]"><Clock size={14} /> Buka Shift</button>
             )}
             {activeTab === "pos" && (
               <button onClick={() => setShowScanner(true)} data-testid="pos-scan-btn" className="flex items-center gap-2 bg-[#F4C842] text-[#1A0810] px-4 py-2 rounded-md text-xs font-semibold uppercase tracking-wider hover:bg-[#FFDD5C] transition-colors">
@@ -713,6 +729,28 @@ export default function POS() {
           </div>
           <Receipt sale={receipt} />
         </>
+      )}
+
+      {showShiftModal && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setShowShiftModal(false)}>
+          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-md w-full p-6">
+            <h3 className="font-serif-luxury text-2xl text-[#F5F5F5] mb-4">Buka Shift</h3>
+            <form onSubmit={openShiftFromPOS} className="space-y-4">
+              <div>
+                <label className="text-xs uppercase tracking-widest text-[#C4A484] mb-1 block">Kas Awal (Modal Kembali)</label>
+                <input required type="number" value={shiftCash} onChange={(e) => setShiftCash(e.target.value)} className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" data-testid="pos-shift-cash" />
+              </div>
+              <div>
+                <label className="text-xs uppercase tracking-widest text-[#C4A484] mb-1 block">Catatan</label>
+                <textarea value={shiftNote} onChange={(e) => setShiftNote(e.target.value)} rows="2" className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" />
+              </div>
+              <div className="flex gap-3">
+                <button type="button" onClick={() => setShowShiftModal(false)} className="flex-1 border border-[rgba(244,200,66,0.3)] text-[#F4C842] py-2.5 rounded-md text-sm uppercase tracking-widest">Batal</button>
+                <button type="submit" disabled={shiftSaving} data-testid="pos-confirm-open-shift" className="flex-1 bg-[#F4C842] text-[#1A0810] py-2.5 rounded-md text-sm font-semibold uppercase tracking-widest disabled:opacity-50">{shiftSaving ? "..." : "Buka"}</button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );
