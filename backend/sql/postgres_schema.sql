@@ -26,8 +26,7 @@ CREATE TABLE IF NOT EXISTS users (
 	ktp_image text NULL,
 	ktp_number varchar(100) NULL,
 	CONSTRAINT users_email_key UNIQUE (email),
-	CONSTRAINT users_pkey PRIMARY KEY (id),
-	CONSTRAINT users_role_check CHECK (((role)::text = ANY ((ARRAY['admin'::character varying, 'manager'::character varying, 'kasir'::character varying])::text[])))
+	CONSTRAINT users_pkey PRIMARY KEY (id)
 );
 CREATE INDEX idx_users_email ON public.users USING btree (email);
 
