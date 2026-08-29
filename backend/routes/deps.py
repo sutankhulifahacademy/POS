@@ -37,6 +37,7 @@ from models import (
     ShiftOpenIn, ShiftCloseIn, TableIn,
     ClockInIn, ClockOutIn,
     RoleCreate, RoleUpdate, PermissionUpdate, RolePermissionsUpdate,
+    MenuCreate, MenuUpdate, RoleMenuUpdate, RoleMenusUpdate,
 )
 
 __all__ = [
@@ -66,4 +67,5 @@ __all__ = [
     "ShiftOpenIn", "ShiftCloseIn", "TableIn",
     "ClockInIn", "ClockOutIn",
     "RoleCreate", "RoleUpdate", "PermissionUpdate", "RolePermissionsUpdate",
+    "MenuCreate", "MenuUpdate", "RoleMenuUpdate", "RoleMenusUpdate",
 ]

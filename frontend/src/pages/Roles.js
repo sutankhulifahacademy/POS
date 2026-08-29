@@ -14,7 +14,58 @@ import {
   Edit,
   Save,
   Users,
+  LayoutDashboard,
+  ShoppingCart,
+  Package,
+  Boxes,
+  Truck,
+  Store,
+  BarChart3,
+  Settings,
+  ClipboardList,
+  Clock,
+  UserCog,
+  ArrowRightLeft,
+  Utensils,
+  CreditCard,
+  Circle,
+  FileText,
 } from "lucide-react";
+
+/* ------------------------------------------------------------------ */
+/*  Menu icon map                                                      */
+/* ------------------------------------------------------------------ */
+
+const MENU_ICON_MAP = {
+  LayoutDashboard,
+  ShoppingCart,
+  Package,
+  Boxes,
+  Users,
+  Truck,
+  Store,
+  BarChart3,
+  Settings,
+  ClipboardList,
+  Clock,
+  UserCog,
+  ArrowRightLeft,
+  Utensils,
+  CreditCard,
+  Shield,
+  FileText,
+  Circle,
+};
+
+function getMenuIcon(name) {
+  if (!name) return Circle;
+  // try exact match, then case-insensitive
+  if (MENU_ICON_MAP[name]) return MENU_ICON_MAP[name];
+  const key = Object.keys(MENU_ICON_MAP).find(
+    (k) => k.toLowerCase() === String(name).toLowerCase()
+  );
+  return key ? MENU_ICON_MAP[key] : Circle;
+}
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -274,6 +325,15 @@ export default function Roles() {
   const [savedPermMap, setSavedPermMap] = useState(new Map());
   const [savingPerm, setSavingPerm] = useState(false);
 
+  // Right panel tab: "permissions" | "menus"
+  const [rightTab, setRightTab] = useState("permissions");
+
+  // Menu access state
+  const [roleMenus, setRoleMenus] = useState([]); // current editable list
+  const [originalRoleMenus, setOriginalRoleMenus] = useState([]); // snapshot for dirty check
+  const [menuLoading, setMenuLoading] = useState(false);
+  const [savingMenus, setSavingMenus] = useState(false);
+
   // Modals
   const [showCreate, setShowCreate] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
@@ -294,6 +354,17 @@ export default function Roles() {
     }
     return false;
   }, [permMap, savedPermMap, selected]);
+
+  // Menu dirty: compare current is_visible against original snapshot
+  const menuDirty = useMemo(() => {
+    if (!roleMenus.length && !originalRoleMenus.length) return false;
+    if (roleMenus.length !== originalRoleMenus.length) return true;
+    return roleMenus.some(
+      (m, i) =>
+        m.id !== originalRoleMenus[i]?.id ||
+        !!m.is_visible !== !!originalRoleMenus[i]?.is_visible
+    );
+  }, [roleMenus, originalRoleMenus]);
 
   /* ------------------------- loading ------------------------- */
 
@@ -317,6 +388,24 @@ export default function Roles() {
     }
   }, []);
 
+  const loadRoleMenus = useCallback(async (roleId) => {
+    setMenuLoading(true);
+    try {
+      const { data } = await api.get(`/menus/role/${roleId}`);
+      const list = Array.isArray(data) ? data : [];
+      // normalize is_visible to boolean
+      const normalized = list.map((m) => ({ ...m, is_visible: !!m.is_visible }));
+      setRoleMenus(normalized);
+      setOriginalRoleMenus(normalized.map((m) => ({ ...m })));
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Gagal memuat menu role");
+      setRoleMenus([]);
+      setOriginalRoleMenus([]);
+    } finally {
+      setMenuLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     (async () => {
       setLoading(true);
@@ -334,20 +423,33 @@ export default function Roles() {
     if (!selected) {
       setPermMap(new Map());
       setSavedPermMap(new Map());
+      setRoleMenus([]);
+      setOriginalRoleMenus([]);
       return;
     }
     const map = permissionsToMap(selected.permissions);
     setPermMap(map);
     setSavedPermMap(new Map(map));
+    // reset menu state on role switch
+    setRoleMenus([]);
+    setOriginalRoleMenus([]);
   }, [selectedId, selected]);
+
+  // Fetch role menus when the menus tab is open for the selected role
+  useEffect(() => {
+    if (selected && rightTab === "menus") {
+      loadRoleMenus(selected.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, rightTab]);
 
   /* ------------------------- actions ------------------------- */
 
   const selectRole = (id) => {
-    if (hasUnsavedChanges) {
+    if (hasUnsavedChanges || menuDirty) {
       if (
         !window.confirm(
-          "Anda memiliki perubahan permission yang belum disimpan. Ganti role dan buang perubahan?"
+          "Anda memiliki perubahan yang belum disimpan. Ganti role dan buang perubahan?"
         )
       )
         return;
@@ -384,6 +486,44 @@ export default function Roles() {
       toast.error(e.response?.data?.detail || "Gagal menyimpan permissions");
     } finally {
       setSavingPerm(false);
+    }
+  };
+
+  /* ------------------------- menu actions ------------------------- */
+
+  const toggleMenuVisible = (menuId) => {
+    setRoleMenus((prev) =>
+      prev.map((m) =>
+        m.id === menuId ? { ...m, is_visible: !m.is_visible } : m
+      )
+    );
+  };
+
+  const selectAllMenus = () => {
+    setRoleMenus((prev) => prev.map((m) => ({ ...m, is_visible: true })));
+  };
+
+  const deselectAllMenus = () => {
+    setRoleMenus((prev) => prev.map((m) => ({ ...m, is_visible: false })));
+  };
+
+  const saveMenus = async () => {
+    if (!selected) return;
+    setSavingMenus(true);
+    try {
+      const payload = {
+        menus: roleMenus.map((m) => ({
+          menu_id: m.id,
+          is_visible: !!m.is_visible,
+        })),
+      };
+      await api.put(`/menus/role/${selected.id}`, payload);
+      toast.success("Menu access disimpan");
+      setOriginalRoleMenus(roleMenus.map((m) => ({ ...m })));
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Gagal menyimpan menu access");
+    } finally {
+      setSavingMenus(false);
     }
   };
 
@@ -633,43 +773,184 @@ export default function Roles() {
                 </div>
               </div>
 
-              {/* Permission tree */}
-              <div className="p-6 flex-1 overflow-y-auto">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm uppercase tracking-widest text-[#C4A484]">
-                    Permission Tree
-                  </h3>
-                  {hasUnsavedChanges && (
-                    <span className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-[#F4C842] bg-[#F4C842]/10 px-2 py-1 rounded">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#F4C842] animate-pulse" />
-                      Perubahan belum disimpan
-                    </span>
-                  )}
-                </div>
-
-                <PermissionTree
-                  tree={tree}
-                  permissions={permMap}
-                  onChange={handlePermChange}
-                />
-              </div>
-
-              {/* Footer save bar */}
-              <div className="p-4 border-t border-[rgba(244,200,66,0.15)] flex items-center justify-between gap-3 bg-[#2A1015]">
-                <p className="text-xs text-[#C4A484]">
-                  {permMap.size} permission aktif
-                  {hasUnsavedChanges && " · ada perubahan belum disimpan"}
-                </p>
+              {/* Tab switcher */}
+              <div className="px-6 pt-5 flex items-center gap-2 border-b border-[rgba(244,200,66,0.15)]">
                 <button
-                  onClick={savePermissions}
-                  disabled={!hasUnsavedChanges || savingPerm}
-                  data-testid="save-permissions-btn"
-                  className="flex items-center gap-2 bg-[#F4C842] text-[#1A0810] px-5 py-2.5 rounded-md text-sm font-semibold uppercase tracking-wider hover:bg-[#FFDD5C] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  type="button"
+                  onClick={() => setRightTab("permissions")}
+                  data-testid="tab-permissions"
+                  className={`px-4 py-2 rounded-t-md text-xs uppercase tracking-widest font-semibold transition-colors ${
+                    rightTab === "permissions"
+                      ? "bg-[#F4C842] text-[#1A0810]"
+                      : "bg-transparent text-[#C4A484] hover:text-[#F4C842] hover:bg-[#4A1A22]"
+                  }`}
                 >
-                  <Save size={16} strokeWidth={2} />
-                  {savingPerm ? "Menyimpan…" : "Simpan Permissions"}
+                  Permission Tree
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRightTab("menus")}
+                  data-testid="tab-menus"
+                  className={`px-4 py-2 rounded-t-md text-xs uppercase tracking-widest font-semibold transition-colors ${
+                    rightTab === "menus"
+                      ? "bg-[#F4C842] text-[#1A0810]"
+                      : "bg-transparent text-[#C4A484] hover:text-[#F4C842] hover:bg-[#4A1A22]"
+                  }`}
+                >
+                  Menu Access
                 </button>
               </div>
+
+              {/* Permission tree tab */}
+              {rightTab === "permissions" && (
+                <>
+                  <div className="p-6 flex-1 overflow-y-auto">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-sm uppercase tracking-widest text-[#C4A484]">
+                        Permission Tree
+                      </h3>
+                      {hasUnsavedChanges && (
+                        <span className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-[#F4C842] bg-[#F4C842]/10 px-2 py-1 rounded">
+                          <span className="w-1.5 h-1.5 rounded-full bg-[#F4C842] animate-pulse" />
+                          Perubahan belum disimpan
+                        </span>
+                      )}
+                    </div>
+
+                    <PermissionTree
+                      tree={tree}
+                      permissions={permMap}
+                      onChange={handlePermChange}
+                    />
+                  </div>
+
+                  {/* Footer save bar */}
+                  <div className="p-4 border-t border-[rgba(244,200,66,0.15)] flex items-center justify-between gap-3 bg-[#2A1015]">
+                    <p className="text-xs text-[#C4A484]">
+                      {permMap.size} permission aktif
+                      {hasUnsavedChanges && " · ada perubahan belum disimpan"}
+                    </p>
+                    <button
+                      onClick={savePermissions}
+                      disabled={!hasUnsavedChanges || savingPerm}
+                      data-testid="save-permissions-btn"
+                      className="flex items-center gap-2 bg-[#F4C842] text-[#1A0810] px-5 py-2.5 rounded-md text-sm font-semibold uppercase tracking-wider hover:bg-[#FFDD5C] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <Save size={16} strokeWidth={2} />
+                      {savingPerm ? "Menyimpan…" : "Simpan Permissions"}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {/* Menu access tab */}
+              {rightTab === "menus" && (
+                <>
+                  <div className="p-6 flex-1 overflow-y-auto">
+                    <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+                      <h3 className="text-sm uppercase tracking-widest text-[#C4A484]">
+                        Menu Access
+                      </h3>
+                      <div className="flex items-center gap-2">
+                        {menuDirty && (
+                          <span className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-[#F4C842] bg-[#F4C842]/10 px-2 py-1 rounded">
+                            <span className="w-1.5 h-1.5 rounded-full bg-[#F4C842] animate-pulse" />
+                            Perubahan belum disimpan
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={selectAllMenus}
+                          disabled={menuLoading || roleMenus.length === 0}
+                          className="text-[10px] uppercase tracking-widest border border-[rgba(244,200,66,0.3)] text-[#F4C842] px-2.5 py-1 rounded hover:bg-[#4A1A22] transition-colors disabled:opacity-40"
+                        >
+                          Select All
+                        </button>
+                        <button
+                          type="button"
+                          onClick={deselectAllMenus}
+                          disabled={menuLoading || roleMenus.length === 0}
+                          className="text-[10px] uppercase tracking-widest border border-[rgba(244,200,66,0.3)] text-[#C4A484] px-2.5 py-1 rounded hover:bg-[#4A1A22] transition-colors disabled:opacity-40"
+                        >
+                          Deselect All
+                        </button>
+                      </div>
+                    </div>
+
+                    {menuLoading ? (
+                      <div className="text-sm text-[#C4A484] py-8 text-center">
+                        Memuat menu…
+                      </div>
+                    ) : roleMenus.length === 0 ? (
+                      <div className="text-sm text-[#C4A484] py-8 text-center">
+                        Tidak ada menu tersedia untuk role ini.
+                      </div>
+                    ) : (
+                      <div className="space-y-1">
+                        {roleMenus.map((menu) => {
+                          const Icon = getMenuIcon(menu.icon);
+                          const visible = !!menu.is_visible;
+                          return (
+                            <div
+                              key={menu.id}
+                              className="flex items-center gap-3 px-2 py-2.5 hover:bg-[#4A1A22] rounded-md transition-colors border border-transparent hover:border-[rgba(244,200,66,0.12)]"
+                            >
+                              <Checkbox
+                                state={visible ? "checked" : "unchecked"}
+                                onChange={() => toggleMenuVisible(menu.id)}
+                              />
+                              <Icon
+                                size={18}
+                                strokeWidth={1.5}
+                                className="text-[#F4C842] shrink-0"
+                              />
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-sm font-medium text-[#F5F5F5]">
+                                    {menu.label || menu.name}
+                                  </span>
+                                  {menu.route && (
+                                    <span className="text-[10px] uppercase tracking-widest text-[#C4A484]/70 bg-[#C4A484]/10 px-1.5 py-0.5 rounded">
+                                      {menu.route}
+                                    </span>
+                                  )}
+                                </div>
+                                {menu.description && (
+                                  <p className="text-xs text-[#C4A484] mt-0.5 line-clamp-1">
+                                    {menu.description}
+                                  </p>
+                                )}
+                              </div>
+                              {menu.is_active === false && (
+                                <span className="text-[10px] uppercase tracking-widest text-[#8B0000] bg-[#8B0000]/15 px-2 py-0.5 rounded shrink-0">
+                                  Nonaktif
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Footer save bar */}
+                  <div className="p-4 border-t border-[rgba(244,200,66,0.15)] flex items-center justify-between gap-3 bg-[#2A1015]">
+                    <p className="text-xs text-[#C4A484]">
+                      {roleMenus.filter((m) => m.is_visible).length} menu terlihat
+                      {menuDirty && " · ada perubahan belum disimpan"}
+                    </p>
+                    <button
+                      onClick={saveMenus}
+                      disabled={!menuDirty || savingMenus || roleMenus.length === 0}
+                      data-testid="save-menus-btn"
+                      className="flex items-center gap-2 bg-[#F4C842] text-[#1A0810] px-5 py-2.5 rounded-md text-sm font-semibold uppercase tracking-wider hover:bg-[#FFDD5C] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <Save size={16} strokeWidth={2} />
+                      {savingMenus ? "Menyimpan…" : "Simpan Menu"}
+                    </button>
+                  </div>
+                </>
+              )}
             </>
           )}
         </div>

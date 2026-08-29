@@ -544,6 +544,57 @@ def main():
         test("Cannot delete system role", r.status_code == 400, f"Status {r.status_code}")
 
     # ==========================================================
+    # 23. MENUS & ROLE MENUS
+    # ==========================================================
+    print("\n[23] MENUS & ROLE MENUS")
+    r = requests.get(f"{BASE}/menus", headers=h, timeout=10)
+    test("GET /menus", r.status_code == 200, f"Status {r.status_code}")
+    test("Menus has 17 items", len(r.json()) >= 17, f"Count: {len(r.json())}")
+
+    # My menus (admin should see all)
+    r = requests.get(f"{BASE}/menus/my-menus", headers=h, timeout=10)
+    test("GET /menus/my-menus (admin)", r.status_code == 200, f"Status {r.status_code}")
+    test("Admin sees all menus", len(r.json()) >= 17, f"Count: {len(r.json())}")
+
+    # My menus (kasir should see only pos + attendance)
+    r = requests.get(f"{BASE}/menus/my-menus", headers=hk, timeout=10)
+    test("GET /menus/my-menus (kasir)", r.status_code == 200, f"Status {r.status_code}")
+    test("Kasir sees 2 menus", len(r.json()) == 2, f"Count: {len(r.json())}")
+    kasir_menu_names = [m["name"] for m in r.json()]
+    test("Kasir has pos menu", "pos" in kasir_menu_names, f"Menus: {kasir_menu_names}")
+    test("Kasir has attendance menu", "attendance" in kasir_menu_names, f"Menus: {kasir_menu_names}")
+
+    # Get role menus for kasir
+    r = requests.get(f"{BASE}/menus/role/00000000-0000-0000-0000-000000000a03", headers=h, timeout=10)
+    test("GET /menus/role/{kasir_id}", r.status_code == 200, f"Status {r.status_code}")
+    visible_count = sum(1 for m in r.json() if m["is_visible"])
+    test("Kasir role has 2 visible menus", visible_count == 2, f"Visible: {visible_count}")
+
+    # Update role menus — add reports to kasir
+    all_menus = requests.get(f"{BASE}/menus", headers=h, timeout=10).json()
+    r = requests.put(f"{BASE}/menus/role/00000000-0000-0000-0000-000000000a03", headers=h, json={
+        "menus": [{"menu_id": m["id"], "is_visible": True} for m in all_menus if m["name"] in ("pos", "attendance", "reports")]
+    }, timeout=10)
+    test("PUT /menus/role/{kasir_id} (add reports)", r.status_code == 200, f"Status {r.status_code}")
+
+    # Verify kasir now sees 3 menus
+    r = requests.get(f"{BASE}/menus/my-menus", headers=hk, timeout=10)
+    test("Kasir now sees 3 menus", len(r.json()) == 3, f"Count: {len(r.json())}")
+
+    # Revert — remove reports from kasir
+    r = requests.put(f"{BASE}/menus/role/00000000-0000-0000-0000-000000000a03", headers=h, json={
+        "menus": [{"menu_id": m["id"], "is_visible": True} for m in all_menus if m["name"] in ("pos", "attendance")]
+    }, timeout=10)
+    test("PUT /menus/role/{kasir_id} (revert)", r.status_code == 200, f"Status {r.status_code}")
+
+    # Kasir cannot access menus management
+    r = requests.get(f"{BASE}/menus", headers=hk, timeout=10)
+    test("Kasir can list menus", r.status_code == 200, f"Status {r.status_code}")
+
+    r = requests.put(f"{BASE}/menus/role/00000000-0000-0000-0000-000000000a03", headers=hk, json={"menus": []}, timeout=10)
+    test("Kasir blocked from PUT /menus/role", r.status_code == 403, f"Status {r.status_code}")
+
+    # ==========================================================
     # CLEANUP
     # ==========================================================
     print("\n[22] CLEANUP")

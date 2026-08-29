@@ -43,8 +43,7 @@ function Public({ children }) {
 
 function RoleAwareLayout() {
   const { user } = useAuth();
-  // Kasir has no sidebar layout - they only get POS. Redirect any sidebar route to /pos.
-  if (user?.role === "kasir") return <Navigate to="/pos" replace />;
+  // Kasir gets sidebar too (POS + Absensi only)
   return <Layout />;
 }
 

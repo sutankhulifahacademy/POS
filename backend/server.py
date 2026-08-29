@@ -39,6 +39,7 @@ from routes.payments import router as payments_router
 from routes.payment_accounts import router as payment_accounts_router
 from routes.card_brands import router as card_brands_router
 from routes.roles import router as roles_router
+from routes.menus import router as menus_router
 from routes.attendance import router as attendance_router
 
 # ============ APP ============
@@ -68,6 +69,7 @@ app.include_router(payments_router, prefix="/api")
 app.include_router(payment_accounts_router, prefix="/api")
 app.include_router(card_brands_router, prefix="/api")
 app.include_router(roles_router, prefix="/api")
+app.include_router(menus_router, prefix="/api")
 app.include_router(attendance_router, prefix="/api")
 
 # ============ CORS ============
