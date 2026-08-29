@@ -2,6 +2,7 @@
 -- Sutan Khulifah POS - PostgreSQL Schema
 -- Kompatibel dengan PostgreSQL 14+
 -- Menggunakan JSONB untuk data embedded (variants, items) untuk fleksibilitas
+-- Schema ini mencerminkan struktur database aktual
 -- ==========================================================================
 
 -- Enable UUID extension
@@ -11,22 +12,22 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- USERS
 -- =============================================
 CREATE TABLE IF NOT EXISTS users (
-    	id uuid DEFAULT uuid_generate_v4() NOT NULL,
-	email varchar(255) NOT NULL,
-	"name" varchar(255) NOT NULL,
-	"role" varchar(20) NOT NULL,
-	password_hash text NOT NULL,
-	is_active bool DEFAULT true NULL,
-	created_at timestamptz DEFAULT now() NULL,
-	updated_at timestamptz NULL,
-	phone varchar(50) NULL,
-	address text NULL,
-	job_title varchar(100) NULL,
-	photo text NULL,
-	ktp_image text NULL,
-	ktp_number varchar(100) NULL,
-	CONSTRAINT users_email_key UNIQUE (email),
-	CONSTRAINT users_pkey PRIMARY KEY (id)
+    id uuid DEFAULT uuid_generate_v4() NOT NULL,
+    email varchar(255) NOT NULL,
+    name varchar(255) NOT NULL,
+    role varchar(20) NOT NULL,
+    password_hash text NOT NULL,
+    is_active bool DEFAULT true NULL,
+    created_at timestamptz DEFAULT now() NULL,
+    updated_at timestamptz NULL,
+    phone varchar(50) NULL,
+    address text NULL,
+    job_title varchar(100) NULL,
+    photo text NULL,
+    ktp_image text NULL,
+    ktp_number varchar(100) NULL,
+    CONSTRAINT users_email_key UNIQUE (email),
+    CONSTRAINT users_pkey PRIMARY KEY (id)
 );
 CREATE INDEX idx_users_email ON public.users USING btree (email);
 
@@ -130,48 +131,58 @@ CREATE INDEX idx_movements_product ON stock_movements(product_id, created_at DES
 CREATE INDEX idx_movements_created ON stock_movements(created_at DESC);
 
 -- =============================================
+-- PAYMENT ACCOUNTS (rekening bank untuk transfer)
+-- =============================================
+CREATE TABLE IF NOT EXISTS payment_accounts (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    bank_name VARCHAR(100) NOT NULL,
+    account_name VARCHAR(255) NOT NULL,
+    account_no VARCHAR(100) NOT NULL,
+    outlet_id UUID REFERENCES outlets(id) ON DELETE SET NULL,
+    is_active BOOLEAN DEFAULT TRUE NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- =============================================
 -- SALES (invoice + line items as JSONB)
 -- =============================================
 CREATE TABLE IF NOT EXISTS sales (
     id uuid DEFAULT uuid_generate_v4() NOT NULL,
-	invoice_no varchar(50) NOT NULL,
-	shift_id uuid NULL,
-	outlet_id uuid NULL,
-	customer_id uuid NULL,
-	cashier_id uuid NULL,
-	cashier_name varchar(255) NULL,
-	items jsonb NOT NULL,
-	subtotal numeric(14, 2) NOT NULL,
-	discount numeric(14, 2) DEFAULT 0 NULL,
-	tax numeric(14, 2) DEFAULT 0 NULL,
-	total numeric(14, 2) NOT NULL,
-	payment_method varchar(20) NULL,
-	amount_paid numeric(14, 2) NULL,
-	change_amount numeric(14, 2) NULL,
-	"source" varchar(20) DEFAULT 'pos'::character varying NULL,
-	table_id uuid NULL,
-	table_name varchar(100) NULL,
-	note text NULL,
-	created_at timestamptz DEFAULT now() NULL,
-	card_type varchar(20) NULL,
-	card_brand varchar(50) NULL,
-	card_last4 varchar(4) NULL,
-	card_reference_no varchar(100) NULL,
-	card_approval_code varchar(100) NULL,
-	card_terminal_id varchar(100) NULL,
-	transfer_bank varchar(50) NULL,
-	transfer_account_name varchar(255) NULL,
-	transfer_account_no varchar(100) NULL,
-	transfer_reference_no varchar(100) NULL,
-	transfer_sender_name varchar(255) NULL,
-	transfer_verified bool DEFAULT false NULL,
-	transfer_verified_at timestamptz NULL,
-	transfer_verified_by uuid NULL,
-	payment_reference varchar(100) NULL,
-	payment_account_id uuid NULL,
-	CONSTRAINT sales_invoice_no_key UNIQUE (invoice_no),
-	CONSTRAINT sales_pkey PRIMARY KEY (id),
-	CONSTRAINT sales_payment_account_id_fkey FOREIGN KEY (payment_account_id) REFERENCES public.payment_accounts(id) ON DELETE SET NULL
+    invoice_no varchar(50) NOT NULL,
+    shift_id uuid NULL,
+    outlet_id uuid NULL,
+    customer_id uuid NULL,
+    cashier_id uuid NULL,
+    cashier_name varchar(255) NULL,
+    items jsonb NOT NULL,
+    subtotal numeric(14, 2) NOT NULL,
+    discount numeric(14, 2) DEFAULT 0 NULL,
+    tax numeric(14, 2) DEFAULT 0 NULL,
+    total numeric(14, 2) NOT NULL,
+    payment_method varchar(20) NULL,
+    amount_paid numeric(14, 2) NULL,
+    change_amount numeric(14, 2) NULL,
+    source varchar(20) DEFAULT 'pos' NULL,
+    table_id uuid NULL,
+    table_name varchar(100) NULL,
+    note text NULL,
+    created_at timestamptz DEFAULT now() NULL,
+    card_type varchar(20) NULL,
+    card_brand varchar(50) NULL,
+    card_last4 varchar(4) NULL,
+    card_reference_no varchar(100) NULL,
+    card_approval_code varchar(100) NULL,
+    card_terminal_id varchar(100) NULL,
+    transfer_bank varchar(100) NULL,
+    transfer_account_name varchar(150) NULL,
+    transfer_account_no varchar(100) NULL,
+    transfer_reference_no varchar(150) NULL,
+    transfer_sender_name varchar(150) NULL,
+    transfer_verified bool DEFAULT false NOT NULL,
+    payment_reference varchar(150) NULL,
+    CONSTRAINT sales_invoice_no_key UNIQUE (invoice_no),
+    CONSTRAINT sales_pkey PRIMARY KEY (id)
 );
 CREATE INDEX idx_sales_created ON public.sales USING btree (created_at DESC);
 CREATE INDEX idx_sales_outlet_created ON public.sales USING btree (outlet_id, created_at DESC);
@@ -305,8 +316,9 @@ CREATE INDEX idx_orders_table_status ON orders(table_id, status);
 -- =============================================
 -- QRIS ORDERS (Midtrans payment tracking)
 -- =============================================
+CREATE SEQUENCE IF NOT EXISTS qris_orders_id_seq;
 CREATE TABLE IF NOT EXISTS qris_orders (
-    id SERIAL PRIMARY KEY,
+    id INTEGER PRIMARY KEY DEFAULT nextval('qris_orders_id_seq'),
     order_id VARCHAR(100) UNIQUE NOT NULL,
     amount INTEGER NOT NULL,
     description TEXT,
@@ -316,20 +328,6 @@ CREATE TABLE IF NOT EXISTS qris_orders (
     qr_string TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ
-);
-
-
-CREATE TABLE IF NOT EXISTS public.payment_accounts (
-id uuid DEFAULT uuid_generate_v4() NOT NULL,
-bank_name varchar(100) NOT NULL,
-account_name varchar(255) NOT NULL,
-account_no varchar(100) NOT NULL,
-outlet_id uuid NULL,
-is_active bool DEFAULT true NOT NULL,
-created_at timestamptz DEFAULT now() NULL,
-updated_at timestamptz DEFAULT now() NULL,
-CONSTRAINT payment_accounts_pkey PRIMARY KEY (id),
-CONSTRAINT payment_accounts_outlet_id_fkey FOREIGN KEY (outlet_id) REFERENCES public.outlets(id) ON DELETE SET NULL
 );
 
 -- =============================================

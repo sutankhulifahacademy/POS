@@ -1,10 +1,18 @@
-Use outlet address in receipt with fallback to business address
+Sync postgres_schema.sql with actual database
 
-- Backend: JOIN outlets in sales SELECT (POST /sales + GET /sales/{id})
-  Returns outlet_name, outlet_address, outlet_phone in sale response
-- Receipt: show outlet name + address + phone
-  Priority: outlet address > business address (fallback if outlet has no address)
-- Fix E2E test: use dynamic amount_paid based on product price
+Fixes to match actual DB state:
+- sales: remove 3 columns that don't exist in DB (transfer_verified_at,
+  transfer_verified_by, payment_account_id) and their FK constraint
+- sales: fix varchar lengths to match DB (transfer_bank 100, 
+  transfer_account_name 150, transfer_reference_no 150, 
+  transfer_sender_name 150, payment_reference 150)
+- payment_accounts: move BEFORE sales (was after, causing FK ordering
+  issue on fresh install)
+- qris_orders: use explicit SEQUENCE + nextval instead of SERIAL
+  for better compatibility
+- users: remove users_role_check constraint (already dropped from DB
+  to allow custom roles like supervisor)
+- Clean up formatting and comments
 
 Generated with [Devin](https://devin.ai)
 
