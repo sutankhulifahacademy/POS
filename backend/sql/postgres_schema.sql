@@ -395,6 +395,7 @@ CREATE TABLE IF NOT EXISTS menus (
     sort_order INTEGER DEFAULT 0,
     parent_id UUID REFERENCES menus(id) ON DELETE SET NULL,
     is_active BOOLEAN DEFAULT TRUE,
+    actions JSONB DEFAULT '["view"]'::jsonb,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );

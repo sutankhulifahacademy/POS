@@ -1,4 +1,5 @@
 """Menus & Role-Menus routes — dynamic menu management."""
+import json
 from fastapi import APIRouter, HTTPException, Depends
 from routes.deps import *
 
@@ -20,12 +21,13 @@ async def create_menu(body: MenuCreate, user=Depends(require_role("admin"))):
     if existing:
         raise HTTPException(400, "Menu name already exists")
     mid = new_id()
+    actions_json = json.dumps(body.actions) if body.actions else json.dumps(["view"])
     await q_exec(
-        """INSERT INTO menus (id, name, label, description, route, icon, sort_order, parent_id, is_active, created_at, updated_at)
-           VALUES (:id, :n, :l, :d, :r, :i, :s, :p, :a, NOW(), NOW())""",
+        """INSERT INTO menus (id, name, label, description, route, icon, sort_order, parent_id, is_active, actions, created_at, updated_at)
+           VALUES (:id, :n, :l, :d, :r, :i, :s, :p, :a, :act, NOW(), NOW())""",
         id=mid, n=body.name, l=body.label, d=body.description or "",
         r=body.route, i=body.icon, s=body.sort_order,
-        p=_u(body.parent_id), a=body.is_active,
+        p=_u(body.parent_id), a=body.is_active, act=actions_json,
     )
     return clean(await q_one("SELECT * FROM menus WHERE id=:id", id=mid))
 
@@ -41,6 +43,8 @@ async def update_menu(menu_id: str, body: MenuUpdate, user=Depends(require_role(
         raise HTTPException(400, "No updates")
     if "parent_id" in updates:
         updates["parent_id"] = _u(updates["parent_id"])
+    if "actions" in updates:
+        updates["actions"] = json.dumps(updates["actions"])
     sets = ", ".join(f"{k}=:{k}" for k in updates.keys())
     updates["id"] = menu_id
     await q_exec(f"UPDATE menus SET {sets}, updated_at=NOW() WHERE id=:id", **updates)

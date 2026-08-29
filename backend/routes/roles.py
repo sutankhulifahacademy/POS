@@ -1,37 +1,28 @@
 """Roles & Permissions routes — CRUD untuk role management dan permission tree."""
+import json
 from fastapi import APIRouter, HTTPException, Depends
 from routes.deps import *
 
 router = APIRouter()
 
-# Permission tree definition — semua module dan action yang tersedia
-PERMISSION_TREE = [
-    {"module": "dashboard", "label": "Dashboard", "actions": ["view"]},
-    {"module": "attendance", "label": "Absensi", "actions": ["view", "create", "update", "delete"]},
-    {"module": "pos", "label": "POS", "actions": ["view", "create"]},
-    {"module": "dinein", "label": "Dine In", "actions": ["view", "create"]},
-    {"module": "products", "label": "Produk", "actions": ["view", "create", "update", "delete"]},
-    {"module": "inventory", "label": "Inventory", "actions": ["view", "create", "update", "delete"]},
-    {"module": "reports", "label": "Reports", "actions": ["view", "export", "detail"]},
-    {"module": "roles", "label": "Role", "actions": ["view", "create", "update", "delete"]},
-    {"module": "settings", "label": "Settings", "actions": ["view", "update"]},
-    {"module": "users", "label": "Users", "actions": ["view", "create", "update", "delete"]},
-    {"module": "customers", "label": "Customers", "actions": ["view", "create", "update", "delete"]},
-    {"module": "suppliers", "label": "Suppliers", "actions": ["view", "create", "update", "delete"]},
-    {"module": "categories", "label": "Categories", "actions": ["view", "create", "update", "delete"]},
-    {"module": "outlets", "label": "Outlets", "actions": ["view", "create", "update", "delete"]},
-    {"module": "tables", "label": "Tables", "actions": ["view", "create", "update", "delete"]},
-    {"module": "shifts", "label": "Shift", "actions": ["view", "open", "close"]},
-    {"module": "purchase_orders", "label": "Purchase Orders", "actions": ["view", "create", "update", "delete"]},
-    {"module": "stock_transfers", "label": "Stock Transfers", "actions": ["view", "create"]},
-    {"module": "payment_accounts", "label": "Payment Accounts", "actions": ["view", "create", "update", "delete"]},
-]
-
 
 @router.get("/roles/permission-tree")
 async def get_permission_tree(user=Depends(get_current_user)):
-    """Return the full permission tree definition (modules + available actions)."""
-    return {"tree": PERMISSION_TREE}
+    """Return the full permission tree definition — derived dynamically from menus table."""
+    menus = await q_all("SELECT name, label, actions FROM menus WHERE is_active = TRUE ORDER BY sort_order ASC, label ASC")
+    tree = []
+    for m in menus:
+        actions = m.get("actions")
+        if isinstance(actions, str):
+            actions = json.loads(actions)
+        if not actions:
+            actions = ["view"]
+        tree.append({
+            "module": m["name"],
+            "label": m["label"],
+            "actions": actions,
+        })
+    return {"tree": tree}
 
 
 @router.get("/roles")

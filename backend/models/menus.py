@@ -11,6 +11,7 @@ class MenuCreate(BaseModel):
     sort_order: int = 0
     parent_id: Optional[str] = None
     is_active: bool = True
+    actions: Optional[List[str]] = ["view"]
 
 
 class MenuUpdate(BaseModel):
@@ -21,6 +22,7 @@ class MenuUpdate(BaseModel):
     sort_order: Optional[int] = None
     parent_id: Optional[str] = None
     is_active: Optional[bool] = None
+    actions: Optional[List[str]] = None
 
 
 class RoleMenuUpdate(BaseModel):

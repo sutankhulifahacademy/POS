@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import api, { formatIDR } from "../lib/api";
+import { useAuth } from "../context/AuthContext";
 import PageHeader from "../components/PageHeader";
 import { toast } from "sonner";
 import {
@@ -315,6 +316,8 @@ const labelCls = "text-xs uppercase tracking-widest text-[#C4A484] mb-1 block";
 /* ------------------------------------------------------------------ */
 
 export default function Roles() {
+  const { user } = useAuth();
+  const isOwner = user?.role === "owner";
   const [roles, setRoles] = useState([]);
   const [tree, setTree] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
@@ -325,7 +328,7 @@ export default function Roles() {
   const [savedPermMap, setSavedPermMap] = useState(new Map());
   const [savingPerm, setSavingPerm] = useState(false);
 
-  // Right panel tab: "permissions" | "menus"
+  // Right panel tab: "permissions" | "menus" | "menu-mgmt"
   const [rightTab, setRightTab] = useState("permissions");
 
   // Menu access state
@@ -333,6 +336,25 @@ export default function Roles() {
   const [originalRoleMenus, setOriginalRoleMenus] = useState([]); // snapshot for dirty check
   const [menuLoading, setMenuLoading] = useState(false);
   const [savingMenus, setSavingMenus] = useState(false);
+
+  // Menu management state (owner only)
+  const [allMenus, setAllMenus] = useState([]);
+  const [allMenusLoading, setAllMenusLoading] = useState(false);
+  const [showMenuModal, setShowMenuModal] = useState(false);
+  const [menuEditMode, setMenuEditMode] = useState(false); // false = create, true = edit
+  const [editingMenuId, setEditingMenuId] = useState(null);
+  const [menuForm, setMenuForm] = useState({
+    name: "",
+    label: "",
+    description: "",
+    route: "",
+    icon: "",
+    sort_order: 0,
+    actions: [],
+    is_active: true,
+  });
+  const [savingMenu, setSavingMenu] = useState(false);
+  const [deleteMenuTarget, setDeleteMenuTarget] = useState(null);
 
   // Modals
   const [showCreate, setShowCreate] = useState(false);
@@ -406,6 +428,19 @@ export default function Roles() {
     }
   }, []);
 
+  const loadAllMenus = useCallback(async () => {
+    setAllMenusLoading(true);
+    try {
+      const { data } = await api.get("/menus");
+      setAllMenus(Array.isArray(data) ? data : []);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Gagal memuat daftar menu");
+      setAllMenus([]);
+    } finally {
+      setAllMenusLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     (async () => {
       setLoading(true);
@@ -442,6 +477,14 @@ export default function Roles() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, rightTab]);
+
+  // Fetch all menus when the menu management tab is opened (owner only)
+  useEffect(() => {
+    if (isOwner && rightTab === "menu-mgmt") {
+      loadAllMenus();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rightTab, isOwner]);
 
   /* ------------------------- actions ------------------------- */
 
@@ -524,6 +567,113 @@ export default function Roles() {
       toast.error(e.response?.data?.detail || "Gagal menyimpan menu access");
     } finally {
       setSavingMenus(false);
+    }
+  };
+
+  /* --------------------- menu management actions --------------------- */
+
+  const COMMON_ACTIONS = ["view", "create", "update", "delete", "export", "detail", "open", "close"];
+
+  const openCreateMenu = () => {
+    setMenuEditMode(false);
+    setEditingMenuId(null);
+    setMenuForm({
+      name: "",
+      label: "",
+      description: "",
+      route: "",
+      icon: "",
+      sort_order: 0,
+      actions: ["view"],
+      is_active: true,
+    });
+    setShowMenuModal(true);
+  };
+
+  const openEditMenu = (menu) => {
+    setMenuEditMode(true);
+    setEditingMenuId(menu.id);
+    const actionList = Array.isArray(menu.actions)
+      ? menu.actions
+      : typeof menu.actions === "string"
+      ? menu.actions.split(",").map((a) => a.trim()).filter(Boolean)
+      : [];
+    setMenuForm({
+      name: menu.name || "",
+      label: menu.label || "",
+      description: menu.description || "",
+      route: menu.route || "",
+      icon: menu.icon || "",
+      sort_order: typeof menu.sort_order === "number" ? menu.sort_order : 0,
+      actions: actionList,
+      is_active: menu.is_active !== false,
+    });
+    setShowMenuModal(true);
+  };
+
+  const toggleActionInForm = (action) => {
+    setMenuForm((f) => ({
+      ...f,
+      actions: f.actions.includes(action)
+        ? f.actions.filter((a) => a !== action)
+        : [...f.actions, action],
+    }));
+  };
+
+  const submitMenu = async (e) => {
+    e.preventDefault();
+    const label = menuForm.label.trim();
+    if (!label) {
+      toast.error("Label wajib diisi");
+      return;
+    }
+    if (!menuEditMode) {
+      const name = menuForm.name.trim().toLowerCase().replace(/\s+/g, "");
+      if (!name) {
+        toast.error("Name wajib diisi");
+        return;
+      }
+    }
+    setSavingMenu(true);
+    try {
+      const payload = {
+        label,
+        description: menuForm.description.trim(),
+        route: menuForm.route.trim(),
+        icon: menuForm.icon.trim(),
+        sort_order: Number(menuForm.sort_order) || 0,
+        actions: menuForm.actions,
+        is_active: !!menuForm.is_active,
+      };
+      if (!menuEditMode) {
+        payload.name = menuForm.name.trim().toLowerCase().replace(/\s+/g, "");
+        await api.post("/menus", payload);
+        toast.success("Menu dibuat");
+      } else {
+        await api.put(`/menus/${editingMenuId}`, payload);
+        toast.success("Menu diperbarui");
+      }
+      setShowMenuModal(false);
+      await loadAllMenus();
+      // refresh permission tree so the new menu appears there too
+      await loadTree();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Gagal menyimpan menu");
+    } finally {
+      setSavingMenu(false);
+    }
+  };
+
+  const confirmDeleteMenu = async () => {
+    if (!deleteMenuTarget) return;
+    try {
+      await api.delete(`/menus/${deleteMenuTarget.id}`);
+      toast.success(`Menu "${deleteMenuTarget.label || deleteMenuTarget.name}" dihapus`);
+      setDeleteMenuTarget(null);
+      await loadAllMenus();
+      await loadTree();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Gagal menghapus menu");
     }
   };
 
@@ -799,6 +949,20 @@ export default function Roles() {
                 >
                   Menu Access
                 </button>
+                {isOwner && (
+                  <button
+                    type="button"
+                    onClick={() => setRightTab("menu-mgmt")}
+                    data-testid="tab-menu-mgmt"
+                    className={`px-4 py-2 rounded-t-md text-xs uppercase tracking-widest font-semibold transition-colors ${
+                      rightTab === "menu-mgmt"
+                        ? "bg-[#F4C842] text-[#1A0810]"
+                        : "bg-transparent text-[#C4A484] hover:text-[#F4C842] hover:bg-[#4A1A22]"
+                    }`}
+                  >
+                    Menu Management
+                  </button>
+                )}
               </div>
 
               {/* Permission tree tab */}
@@ -948,6 +1112,122 @@ export default function Roles() {
                       <Save size={16} strokeWidth={2} />
                       {savingMenus ? "Menyimpan…" : "Simpan Menu"}
                     </button>
+                  </div>
+                </>
+              )}
+
+              {/* Menu management tab (owner only) */}
+              {rightTab === "menu-mgmt" && (
+                <>
+                  <div className="p-6 flex-1 overflow-y-auto">
+                    <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+                      <h3 className="text-sm uppercase tracking-widest text-[#C4A484]">
+                        Manajemen Menu
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={openCreateMenu}
+                        data-testid="add-menu-btn"
+                        className="flex items-center gap-2 bg-[#F4C842] text-[#1A0810] px-4 py-2 rounded-md text-xs font-semibold uppercase tracking-widest hover:bg-[#FFDD5C] transition-colors"
+                      >
+                        <Plus size={14} strokeWidth={2} /> Tambah Menu
+                      </button>
+                    </div>
+
+                    {allMenusLoading ? (
+                      <div className="text-sm text-[#C4A484] py-8 text-center">
+                        Memuat menu…
+                      </div>
+                    ) : allMenus.length === 0 ? (
+                      <div className="text-sm text-[#C4A484] py-8 text-center">
+                        Belum ada menu. Klik "Tambah Menu" untuk membuat.
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {allMenus
+                          .slice()
+                          .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+                          .map((menu) => {
+                            const Icon = getMenuIcon(menu.icon);
+                            const actionList = Array.isArray(menu.actions)
+                              ? menu.actions
+                              : typeof menu.actions === "string"
+                              ? menu.actions.split(",").map((a) => a.trim()).filter(Boolean)
+                              : [];
+                            return (
+                              <div
+                                key={menu.id}
+                                className="flex items-center gap-3 px-3 py-3 bg-[#2A1015] border border-[rgba(244,200,66,0.12)] rounded-md hover:border-[rgba(244,200,66,0.3)] transition-colors"
+                              >
+                                <Icon
+                                  size={20}
+                                  strokeWidth={1.5}
+                                  className="text-[#F4C842] shrink-0"
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-sm font-medium text-[#F5F5F5]">
+                                      {menu.label || menu.name}
+                                    </span>
+                                    {menu.name && (
+                                      <span className="text-[10px] uppercase tracking-widest text-[#C4A484] bg-[#C4A484]/10 px-1.5 py-0.5 rounded">
+                                        {menu.name}
+                                      </span>
+                                    )}
+                                    {menu.route && (
+                                      <span className="text-[10px] uppercase tracking-widest text-[#F4C842]/80 bg-[#F4C842]/10 px-1.5 py-0.5 rounded">
+                                        {menu.route}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {actionList.length > 0 && (
+                                    <p className="text-xs text-[#C4A484] mt-1">
+                                      {actionList.join(", ")}
+                                    </p>
+                                  )}
+                                  {menu.description && (
+                                    <p className="text-xs text-[#C4A484]/70 mt-0.5 line-clamp-1">
+                                      {menu.description}
+                                    </p>
+                                  )}
+                                </div>
+                                <div className="flex flex-col items-end gap-1 shrink-0">
+                                  <span className="text-[10px] uppercase tracking-widest text-[#C4A484]/70">
+                                    sort: {menu.sort_order ?? 0}
+                                  </span>
+                                  <span
+                                    className={`text-[10px] uppercase tracking-widest px-2 py-0.5 rounded ${
+                                      menu.is_active === false
+                                        ? "text-[#8B0000] bg-[#8B0000]/15"
+                                        : "text-[#5FD89E] bg-[#2E8B57]/15"
+                                    }`}
+                                  >
+                                    {menu.is_active === false ? "Nonaktif" : "Aktif"}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => openEditMenu(menu)}
+                                    data-testid={`edit-menu-${menu.id}`}
+                                    className="flex items-center gap-1 border border-[rgba(244,200,66,0.3)] text-[#F4C842] px-2 py-1.5 rounded text-[10px] uppercase tracking-widest hover:bg-[#4A1A22] transition-colors"
+                                  >
+                                    <Edit size={12} strokeWidth={1.5} /> Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setDeleteMenuTarget(menu)}
+                                    data-testid={`delete-menu-${menu.id}`}
+                                    className="flex items-center gap-1 border border-[#8B0000]/40 text-[#8B0000] px-2 py-1.5 rounded text-[10px] uppercase tracking-widest hover:bg-[#8B0000]/15 transition-colors"
+                                  >
+                                    <Trash2 size={12} strokeWidth={1.5} /> Hapus
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                      </div>
+                    )}
                   </div>
                 </>
               )}
@@ -1129,6 +1409,206 @@ export default function Roles() {
                 type="button"
                 onClick={confirmDelete}
                 data-testid="confirm-delete-role"
+                className="flex-1 bg-[#8B0000] text-[#F5F5F5] py-2.5 rounded-md text-sm font-semibold uppercase tracking-widest hover:bg-[#A00000] transition-colors"
+              >
+                Hapus
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------- Add/Edit Menu Modal ---------------- */}
+      {showMenuModal && (
+        <Modal
+          title={menuEditMode ? "Edit Menu" : "Tambah Menu"}
+          icon={<Plus size={18} strokeWidth={1.5} className="text-[#F4C842]" />}
+          onClose={() => setShowMenuModal(false)}
+        >
+          <form
+            onSubmit={submitMenu}
+            className="p-6 space-y-4 max-h-[75vh] overflow-y-auto"
+            data-testid="menu-form"
+          >
+            <div>
+              <label className={labelCls}>Name (lowercase, no spaces)</label>
+              <input
+                required
+                disabled={menuEditMode}
+                value={menuForm.name}
+                onChange={(e) =>
+                  setMenuForm({
+                    ...menuForm,
+                    name: e.target.value.toLowerCase().replace(/\s+/g, ""),
+                  })
+                }
+                placeholder="contoh: newpage"
+                className={`${inputCls} disabled:opacity-50`}
+                data-testid="menu-name"
+              />
+              <p className="text-[10px] text-[#C4A484] mt-1">
+                Identifier modul. Tidak dapat diubah setelah dibuat.
+              </p>
+            </div>
+            <div>
+              <label className={labelCls}>Label</label>
+              <input
+                required
+                value={menuForm.label}
+                onChange={(e) => setMenuForm({ ...menuForm, label: e.target.value })}
+                placeholder="contoh: New Page"
+                className={inputCls}
+                data-testid="menu-label"
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Deskripsi</label>
+              <textarea
+                value={menuForm.description}
+                onChange={(e) =>
+                  setMenuForm({ ...menuForm, description: e.target.value })
+                }
+                rows={2}
+                placeholder="Deskripsi singkat menu…"
+                className={`${inputCls} resize-none`}
+                data-testid="menu-description"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>Route</label>
+                <input
+                  value={menuForm.route}
+                  onChange={(e) => setMenuForm({ ...menuForm, route: e.target.value })}
+                  placeholder="/new-page"
+                  className={inputCls}
+                  data-testid="menu-route"
+                />
+              </div>
+              <div>
+                <label className={labelCls}>Icon (lucide-react)</label>
+                <input
+                  value={menuForm.icon}
+                  onChange={(e) => setMenuForm({ ...menuForm, icon: e.target.value })}
+                  placeholder="Package"
+                  className={inputCls}
+                  data-testid="menu-icon"
+                />
+              </div>
+            </div>
+            <div>
+              <label className={labelCls}>Sort Order</label>
+              <input
+                type="number"
+                value={menuForm.sort_order}
+                onChange={(e) =>
+                  setMenuForm({ ...menuForm, sort_order: e.target.value })
+                }
+                className={inputCls}
+                data-testid="menu-sort-order"
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Actions</label>
+              <div className="flex flex-wrap gap-2">
+                {COMMON_ACTIONS.map((action) => {
+                  const selected = menuForm.actions.includes(action);
+                  return (
+                    <button
+                      key={action}
+                      type="button"
+                      onClick={() => toggleActionInForm(action)}
+                      className={`text-[10px] uppercase tracking-widest px-2.5 py-1 rounded border transition-colors ${
+                        selected
+                          ? "bg-[#F4C842] border-[#F4C842] text-[#1A0810]"
+                          : "border-[rgba(244,200,66,0.3)] text-[#C4A484] hover:bg-[#4A1A22]"
+                      }`}
+                    >
+                      {action}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-[10px] text-[#C4A484] mt-1">
+                Terpilih: {menuForm.actions.length ? menuForm.actions.join(", ") : "—"}
+              </p>
+            </div>
+            <label className="flex items-center gap-3 cursor-pointer select-none">
+              <button
+                type="button"
+                role="checkbox"
+                aria-checked={menuForm.is_active}
+                onClick={() =>
+                  setMenuForm((f) => ({ ...f, is_active: !f.is_active }))
+                }
+                className={`w-5 h-5 rounded border flex items-center justify-center transition-all ${
+                  menuForm.is_active
+                    ? "bg-[#F4C842] border-[#F4C842] text-[#1A0810]"
+                    : "bg-transparent border-[rgba(244,200,66,0.35)]"
+                }`}
+              >
+                {menuForm.is_active && <Check size={14} strokeWidth={3} />}
+              </button>
+              <span className="text-sm text-[#F5F5F5]">Menu aktif</span>
+            </label>
+            <div className="flex gap-3 pt-4">
+              <button
+                type="button"
+                onClick={() => setShowMenuModal(false)}
+                className="flex-1 border border-[rgba(244,200,66,0.3)] text-[#F4C842] py-2.5 rounded-md text-sm uppercase tracking-widest hover:bg-[#331419] transition-colors"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={savingMenu}
+                data-testid="menu-submit"
+                className="flex-1 bg-[#F4C842] text-[#1A0810] py-2.5 rounded-md text-sm font-semibold uppercase tracking-widest hover:bg-[#FFDD5C] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {savingMenu ? "Menyimpan…" : menuEditMode ? "Simpan" : "Buat"}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* ---------------- Delete Menu Confirmation ---------------- */}
+      {deleteMenuTarget && (
+        <div
+          className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
+          onClick={() => setDeleteMenuTarget(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-[#2A1015] gold-border rounded-lg max-w-sm w-full p-6"
+          >
+            <div className="flex items-center gap-2 mb-4">
+              <Trash2 size={18} strokeWidth={1.5} className="text-[#8B0000]" />
+              <h3 className="font-serif-luxury text-xl text-[#F5F5F5]">Hapus Menu</h3>
+            </div>
+            <p className="text-sm text-[#C4A484] mb-2">
+              Yakin ingin menghapus menu{" "}
+              <span className="text-[#F5F5F5] font-semibold">
+                {deleteMenuTarget.label || deleteMenuTarget.name}
+              </span>
+              ?
+            </p>
+            <p className="text-xs text-[#C4A484]/80 mb-6">
+              Menu tidak dapat dihapus jika sedang ditugaskan ke role yang memiliki
+              pengguna.
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setDeleteMenuTarget(null)}
+                className="flex-1 border border-[rgba(244,200,66,0.3)] text-[#F4C842] py-2.5 rounded-md text-sm uppercase tracking-widest hover:bg-[#331419] transition-colors"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteMenu}
+                data-testid="confirm-delete-menu"
                 className="flex-1 bg-[#8B0000] text-[#F5F5F5] py-2.5 rounded-md text-sm font-semibold uppercase tracking-widest hover:bg-[#A00000] transition-colors"
               >
                 Hapus

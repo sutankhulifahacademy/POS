@@ -1,0 +1,27 @@
+Dynamic permission tree from menus table + Menu Management tab
+
+Backend:
+- Add actions JSONB column to menus table (defines available actions per menu)
+- Seed actions for all 17 menus (view, create, update, delete, export, detail, open, close)
+- Permission tree endpoint now derives from menus table (no more hardcoded PERMISSION_TREE)
+- New menu automatically appears in permission tree AND role menus
+- MenuCreate/MenuUpdate models now accept actions array
+- routes/menus.py handles actions field in create/update
+
+Frontend:
+- Roles.js: add "Menu Management" tab (owner only)
+  - CRUD menus: name, label, description, route, icon, sort_order, actions, is_active
+  - Actions: multi-checkbox for common actions (view, create, update, delete, export, detail, open, close)
+  - After save, refreshes both menu list and permission tree
+  - Delete confirmation dialog
+- Three tabs now: Permission Tree | Menu Access | Menu Management
+- New menu created in Menu Management automatically appears in Permission Tree and Menu Access tabs
+
+Schema:
+- Update postgres_schema.sql: add actions JSONB column to menus table
+
+Flow: Add menu -> appears in permission tree -> assign to role via Menu Access -> assign actions via Permission Tree -> user sees menu in sidebar
+
+Generated with [Devin](https://devin.ai)
+
+Co-Authored-By: Devin <158243242+devin-ai-integration[bot]@users.noreply.github.com>
