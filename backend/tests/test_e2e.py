@@ -233,7 +233,7 @@ def main():
             "outlet_id": main_outlet["id"] if main_outlet else "",
             "customer_id": "",
             "items": [{"product_id": test_product["id"], "variant_name": "", "name": test_product["name"], "price": test_product["price"], "quantity": 1}],
-            "payment_method": "cash", "amount_paid": 50000, "discount": 0, "tax": 0, "note": "E2E cash sale"
+            "payment_method": "cash", "amount_paid": max(50000, test_product["price"] + 10000), "discount": 0, "tax": 0, "note": "E2E cash sale"
         }, timeout=15)
         test("POST /sales (cash)", r.status_code == 200, f"Status {r.status_code}: {r.text[:200]}")
 

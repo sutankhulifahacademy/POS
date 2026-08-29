@@ -4,15 +4,20 @@ import { useTheme } from "../context/ThemeContext";
 export default function Receipt({ sale, businessName }) {
   const { business } = useTheme();
   const name = businessName || business?.name || "POS";
-  const address = business?.address || "";
   const logoUrl = business?.logo_url;
+  // Outlet address takes priority; fall back to business address
+  const outletName = sale?.outlet_name;
+  const address = sale?.outlet_address || business?.address || "";
+  const phone = sale?.outlet_phone || "";
 
   return (
     <div id="print-receipt" className="print-only bg-white text-black" style={{ width: "80mm", padding: "8px", fontFamily: "monospace", fontSize: "11px" }}>
       <div style={{ textAlign: "center", marginBottom: "6px" }}>
         {logoUrl && <img src={logoUrl} alt={name} style={{ width: "50px", height: "50px", objectFit: "contain", marginBottom: "4px" }} />}
         <div style={{ fontSize: "14px", fontWeight: "bold" }}>{name}</div>
+        {outletName && <div style={{ fontSize: "10px", fontWeight: "bold", marginTop: "2px" }}>{outletName}</div>}
         {address && <div style={{ fontSize: "9px", marginTop: "2px" }}>{address}</div>}
+        {phone && <div style={{ fontSize: "9px" }}>Telp: {phone}</div>}
       </div>
       <div style={{ borderTop: "1px dashed #000", padding: "4px 0", textAlign: "center", fontSize: "10px" }}>
         <div>{sale.invoice_no}</div>

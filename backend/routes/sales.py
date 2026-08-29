@@ -196,10 +196,14 @@ async def create_sale(
     row = await q_one(
         """
         SELECT
-            *,
-            change_amount AS change
-        FROM sales
-        WHERE id = :id
+            s.*,
+            s.change_amount AS change,
+            o.name AS outlet_name,
+            o.address AS outlet_address,
+            o.phone AS outlet_phone
+        FROM sales s
+        LEFT JOIN outlets o ON s.outlet_id = o.id
+        WHERE s.id = :id
         """,
         id=sale_id
     )
@@ -241,10 +245,14 @@ async def get_sale(
     row = await q_one(
         """
         SELECT
-            *,
-            change_amount AS change
-        FROM sales
-        WHERE id=:id
+            s.*,
+            s.change_amount AS change,
+            o.name AS outlet_name,
+            o.address AS outlet_address,
+            o.phone AS outlet_phone
+        FROM sales s
+        LEFT JOIN outlets o ON s.outlet_id = o.id
+        WHERE s.id=:id
         """,
         id=sale_id
     )
