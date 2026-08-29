@@ -326,3 +326,87 @@ updated_at timestamptz DEFAULT now() NULL,
 CONSTRAINT payment_accounts_pkey PRIMARY KEY (id),
 CONSTRAINT payment_accounts_outlet_id_fkey FOREIGN KEY (outlet_id) REFERENCES public.outlets(id) ON DELETE SET NULL
 );
+
+-- =============================================
+-- CARD BRANDS (bank/brand untuk pembayaran kartu)
+-- =============================================
+CREATE TABLE IF NOT EXISTS card_brands (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(100) UNIQUE NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- =============================================
+-- ATTENDANCE (absensi karyawan)
+-- =============================================
+CREATE TABLE IF NOT EXISTS attendance (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    cashier_id UUID,
+    cashier_name TEXT,
+    clock_in_at TIMESTAMPTZ,
+    clock_in_photo TEXT,
+    clock_in_note TEXT,
+    clock_out_at TIMESTAMPTZ,
+    clock_out_photo TEXT,
+    clock_out_note TEXT,
+    duration_minutes INTEGER,
+    shift_id UUID,
+    status TEXT DEFAULT 'active'
+);
+
+-- =============================================
+-- ROLES (manajemen role)
+-- =============================================
+CREATE TABLE IF NOT EXISTS roles (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(50) UNIQUE NOT NULL,
+    label VARCHAR(100) NOT NULL,
+    description TEXT,
+    is_system BOOLEAN DEFAULT FALSE,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- =============================================
+-- ROLE PERMISSIONS (module/action per role)
+-- =============================================
+CREATE TABLE IF NOT EXISTS role_permissions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    role_id UUID NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    module VARCHAR(50) NOT NULL,
+    action VARCHAR(20) NOT NULL,
+    granted BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(role_id, module, action)
+);
+
+-- =============================================
+-- MENUS (dynamic menu items for sidebar)
+-- =============================================
+CREATE TABLE IF NOT EXISTS menus (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(50) UNIQUE NOT NULL,
+    label VARCHAR(100) NOT NULL,
+    description TEXT,
+    route VARCHAR(100) NOT NULL,
+    icon VARCHAR(50) DEFAULT 'Circle',
+    sort_order INTEGER DEFAULT 0,
+    parent_id UUID REFERENCES menus(id) ON DELETE SET NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- =============================================
+-- ROLE MENUS (which menus are visible per role)
+-- =============================================
+CREATE TABLE IF NOT EXISTS role_menus (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    role_id UUID NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    menu_id UUID NOT NULL REFERENCES menus(id) ON DELETE CASCADE,
+    is_visible BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(role_id, menu_id)
+);
