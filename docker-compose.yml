@@ -51,6 +51,8 @@ services:
       MIDTRANS_BASE_URL: "${MIDTRANS_BASE_URL:-https://api.sandbox.midtrans.com}"
     ports:
       - "8001:8001"
+    volumes:
+      - uploads_data:/app/uploads
     networks:
       - rdi-net
     healthcheck:
@@ -98,6 +100,8 @@ volumes:
   pg_data:
     driver: local
   uptime_data:
+    driver: local
+  uploads_data:
     driver: local
 
 networks:

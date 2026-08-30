@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import api, { formatIDR } from "../lib/api";
 import PageHeader from "../components/PageHeader";
-import { Plus, Edit3, Trash2, X, Search, Package } from "lucide-react";
+import { Plus, Edit3, Trash2, X, Search, Package, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 const empty = { name: "", sku: "", barcode: "", category_id: "", price: 0, cost: 0, stock: 0, low_stock_threshold: 5, unit: "pcs", image_url: "", description: "", is_active: true, variants: [] };
@@ -13,6 +13,24 @@ export default function Products() {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(empty);
   const [search, setSearch] = useState("");
+  const [uploadingImage, setUploadingImage] = useState(false);
+
+  const uploadImage = async (file) => {
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { toast.error("Ukuran file maksimal 5MB"); return; }
+    setUploadingImage(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const { data } = await api.post("/uploads", fd, { headers: { "Content-Type": "multipart/form-data" } });
+      setForm((prev) => ({ ...prev, image_url: data.url }));
+      toast.success("Gambar berhasil diupload");
+    } catch (e) {
+      toast.error("Gagal upload gambar");
+    } finally {
+      setUploadingImage(false);
+    }
+  };
 
   const load = async () => {
     const [p, c] = await Promise.all([api.get("/products"), api.get("/categories")]);
@@ -169,8 +187,22 @@ export default function Products() {
                   <input type="number" value={form.low_stock_threshold} onChange={(e) => setForm({ ...form, low_stock_threshold: e.target.value })} className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" />
                 </div>
                 <div className="col-span-2">
-                  <label className="text-xs uppercase tracking-widest text-[#C4A484] mb-1 block">URL Gambar</label>
-                  <input value={form.image_url} onChange={(e) => setForm({ ...form, image_url: e.target.value })} placeholder="https://..." className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" />
+                  <label className="text-xs uppercase tracking-widest text-[#C4A484] mb-1 block">Gambar Produk</label>
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 rounded-md overflow-hidden bg-[#2A1015] border border-[rgba(244,200,66,0.2)] flex items-center justify-center flex-shrink-0">
+                      {form.image_url ? <img src={form.image_url} alt="" className="w-full h-full object-cover" /> : <Package size={20} className="text-[#C4A484] opacity-40" />}
+                    </div>
+                    <div className="flex-1 space-y-1">
+                      <label className="flex items-center justify-center gap-2 bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F4C842] hover:bg-[#4A1A22] cursor-pointer transition-colors">
+                        <Upload size={14} />
+                        {uploadingImage ? "Uploading..." : "Pilih Gambar"}
+                        <input type="file" accept="image/*" className="hidden" onChange={(e) => uploadImage(e.target.files[0])} disabled={uploadingImage} />
+                      </label>
+                      {form.image_url && (
+                        <button type="button" onClick={() => setForm({ ...form, image_url: "" })} className="text-xs text-[#C4A484] hover:text-[#8B0000]">Hapus gambar</button>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
 

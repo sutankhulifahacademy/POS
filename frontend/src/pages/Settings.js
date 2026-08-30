@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import api from "../lib/api";
 import PageHeader from "../components/PageHeader";
 import { toast } from "sonner";
-import { Plus, Trash2, RotateCcw } from "lucide-react";
+import { Plus, Trash2, RotateCcw, Upload } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 
 const DEFAULT_COLORS = {
@@ -18,6 +18,24 @@ export default function Settings() {
   const [business, setBusiness] = useState({ name: "", business_type: "retail", currency: "IDR", tax_rate: 0, address: "", logo_url: "", ...DEFAULT_COLORS });
   const [categories, setCategories] = useState([]);
   const [newCat, setNewCat] = useState("");
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+
+  const uploadLogo = async (file) => {
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { toast.error("Ukuran file maksimal 5MB"); return; }
+    setUploadingLogo(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const { data } = await api.post("/uploads", fd, { headers: { "Content-Type": "multipart/form-data" } });
+      setBusiness({ ...business, logo_url: data.url });
+      toast.success("Logo berhasil diupload");
+    } catch (e) {
+      toast.error("Gagal upload logo");
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
 
   const loadAll = async () => {
     const [b, c] = await Promise.all([api.get("/business"), api.get("/categories")]);
@@ -81,7 +99,16 @@ export default function Settings() {
                   <span className="text-xs text-[#C4A484] text-center px-2">No Logo</span>
                 )}
               </div>
-              <input value={business.logo_url || ""} onChange={(e) => setBusiness({ ...business, logo_url: e.target.value })} placeholder="https://url-logo.png" className="flex-1 bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" data-testid="business-logo-url" />
+              <div className="flex-1 space-y-2">
+                <label className="flex items-center justify-center gap-2 bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2.5 text-sm text-[#F4C842] hover:bg-[#4A1A22] cursor-pointer transition-colors" data-testid="business-logo-upload">
+                  <Upload size={16} />
+                  {uploadingLogo ? "Uploading..." : "Pilih File Logo"}
+                  <input type="file" accept="image/*" className="hidden" onChange={(e) => uploadLogo(e.target.files[0])} disabled={uploadingLogo} />
+                </label>
+                {business.logo_url && (
+                  <button type="button" onClick={() => setBusiness({ ...business, logo_url: "" })} className="text-xs text-[#C4A484] hover:text-[#8B0000]">Hapus logo</button>
+                )}
+              </div>
             </div>
           </div>
 

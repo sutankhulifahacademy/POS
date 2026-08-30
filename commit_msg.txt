@@ -1,67 +1,60 @@
-Connect paket_items to reports, clean up schema, update docs
+Add file upload system with static serving for images
 
-## Reports — Profit/Loss now uses paket_items for COGS
+## New: POST /api/uploads endpoint
 
-All COGS calculations in report endpoints now handle paket items:
-- /reports/profit-loss: headline, by-product, by-category, by-day
-- /reports/sales: by-product breakdown
+Added a real file upload endpoint that saves images to the server:
 
-For regular items: COGS = products.cost × quantity
-For paket items: COGS = SUM(component.cost × component.quantity)
-  for each item in paket_items
+- Endpoint: POST /api/uploads (multipart/form-data)
+- Accepts: jpg, jpeg, png, webp, gif, svg
+- Max size: 5MB
+- Returns: { "url": "/api/uploads/<uuid>.<ext>", "filename": "..." }
+- Auth required (any logged-in user)
 
-The SQL uses a CASE expression with jsonb_typeof check:
-  WHEN jsonb_typeof(elem->'paket_items') = 'array'
-       AND jsonb_array_length(elem->'paket_items') > 0
-  THEN (SELECT SUM(pc.cost * pi.quantity)
-        FROM jsonb_array_elements(elem->'paket_items') pi
-        JOIN products pc ON pi.product_id = pc.id)
-  ELSE p.cost * elem.quantity
+Files are stored in /app/uploads/ inside the backend container.
 
-## Backend — SaleItem model now accepts paket_items
+## New: Static file serving
 
-Added paket_items field to SaleItem model so Pydantic doesn't strip it:
-  class SaleItem(BaseModel):
-      ...
-      paket_items: Optional[list[dict[str, Any]]] = None
+Mounted StaticFiles at /api/uploads/ so uploaded images are
+publicly accessible via URL:
 
-Without this, paket_items sent from POS/Dine-In were silently dropped
-during validation and never stored in sales.items JSONB.
+  GET /api/uploads/<filename>  →  serves the image file
 
-## Database — Removed unused columns
+No authentication needed for GET (images are public).
 
-Dropped product_type and bundle_items from products table:
-  ALTER TABLE products DROP COLUMN product_type;
-  ALTER TABLE products DROP COLUMN bundle_items;
+## Docker volume for uploads
 
-These were added in the previous paket approach (v1.0) but are no
-longer needed. Paket detection is now purely category-based.
+Added uploads_data volume to docker-compose.yml so uploaded files
+persist across container restarts:
 
-Updated postgres_schema.sql to reflect the removal.
+  volumes:
+    - uploads_data:/app/uploads
 
-## Backend — Cleaned up models and routes
+## Frontend: Settings logo upload
 
-- models/products.py: removed product_type, bundle_items from
-  ProductCreate and ProductUpdate
-- routes/products.py: removed product_type, bundle_items from
-  INSERT and UPDATE SQL
+Replaced the URL text input for business logo with a file upload
+button. User clicks "Pilih File Logo", selects an image, and it
+uploads to the server. The returned URL is stored in logo_url.
 
-## Documentation — MENU_DOCUMENTATION_v2.0.md
+- Shows upload progress ("Uploading...")
+- Shows preview thumbnail
+- "Hapus logo" button to clear
 
-New documentation version covering:
-- Category-based paket detection
-- Dynamic composition at point of sale
-- COGS calculation from paket_items components
-- Profit/loss formula for paket vs regular items
-- Example calculation
-- List of existing paket products
+## Frontend: Products image upload
 
-## Product data
+Replaced the "URL Gambar" text input with a file upload button.
+Same flow as logo — select file, upload, get URL back.
 
-Existing paket products already have correct category_id pointing to
-the "Paket" category. Stock was set to 100 for all paket products
-(was 0). The product_type and bundle_items columns were removed so
-the data is now clean.
+- Shows preview thumbnail
+- "Hapus gambar" button to clear
+
+## Files changed
+
+- backend/routes/uploads.py (NEW) — upload endpoint
+- backend/server.py — mount uploads router + StaticFiles
+- docker-compose.yml — add uploads_data volume
+- frontend/nginx.conf — client_max_body_size 10M (was 20M, still fine)
+- frontend/src/pages/Settings.js — logo file upload
+- frontend/src/pages/Products.js — product image file upload
 
 Generated with [Devin](https://devin.ai)
 

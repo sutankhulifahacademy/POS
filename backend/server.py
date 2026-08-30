@@ -41,6 +41,7 @@ from routes.card_brands import router as card_brands_router
 from routes.roles import router as roles_router
 from routes.menus import router as menus_router
 from routes.attendance import router as attendance_router
+from routes.uploads import router as uploads_router
 
 # ============ APP ============
 app = FastAPI(title="Sutan Khulifah POS API (PostgreSQL)")
@@ -71,6 +72,7 @@ app.include_router(card_brands_router, prefix="/api")
 app.include_router(roles_router, prefix="/api")
 app.include_router(menus_router, prefix="/api")
 app.include_router(attendance_router, prefix="/api")
+app.include_router(uploads_router, prefix="/api")
 
 # ============ CORS ============
 app.add_middleware(
@@ -80,6 +82,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ============ STATIC FILES (uploads) ============
+from pathlib import Path as _Path
+from fastapi.staticfiles import StaticFiles
+
+_uploads_dir = _Path(__file__).parent / "uploads"
+_uploads_dir.mkdir(exist_ok=True)
+app.mount("/api/uploads", StaticFiles(directory=str(_uploads_dir)), name="uploads")
 
 # ============ STARTUP / SHUTDOWN ============
 @app.on_event("startup")
