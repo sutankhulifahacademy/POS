@@ -49,10 +49,16 @@ async def open_shift(body: ShiftOpenIn, user=Depends(get_current_user)):
     existing = await q_one("SELECT id FROM shifts WHERE cashier_id=:c AND status='open'", c=user["id"])
     if existing:
         raise HTTPException(400, "Shift already open")
+    # Auto-detect outlet if not provided
+    outlet_id = body.outlet_id
+    if not outlet_id:
+        user_outlets = user.get("outlet_ids", [])
+        if user_outlets:
+            outlet_id = user_outlets[0]
     sid = new_id()
     await q_exec("""INSERT INTO shifts (id, cashier_id, cashier_name, outlet_id, opening_cash, status, opened_at, note)
                     VALUES (:id, :ci, :cn, :oid, :cash, 'open', NOW(), :note)""",
-                 id=sid, ci=user["id"], cn=user.get("name", ""), oid=_u(body.outlet_id),
+                 id=sid, ci=user["id"], cn=user.get("name", ""), oid=_u(outlet_id),
                  cash=body.opening_cash, note=body.note or "")
     return clean(await q_one("SELECT * FROM shifts WHERE id=:id", id=sid))
 

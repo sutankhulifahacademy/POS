@@ -52,19 +52,45 @@ async def create_user(body: UserCreate, user=Depends(require_permission("users",
                  id=uid, e=email, n=body.name, r=body.role, h=hash_password(body.password),
                  ph=body.phone or "", ad=body.address or "", jt=body.job_title or "",
                  pt=body.photo or "", ki=body.ktp_image or "", kn=body.ktp_number or "")
+    # Save outlet assignments
+    outlet_ids = body.outlet_ids or []
+    primary_outlet_id = body.primary_outlet_id or ""
+    if outlet_ids:
+        if not primary_outlet_id:
+            primary_outlet_id = outlet_ids[0]
+        for oid in outlet_ids:
+            is_primary = (oid == primary_outlet_id)
+            await q_exec(
+                "INSERT INTO user_outlet_access (user_id, outlet_id, is_primary, assigned_at) VALUES (:uid, :oid, :ip, NOW()) ON CONFLICT DO NOTHING",
+                uid=uid, oid=oid, ip=is_primary,
+            )
     return clean(await q_one("""SELECT id, email, name, role, is_active, phone, address, job_title, photo,
                                   ktp_number, created_at FROM users WHERE id=:id""", id=uid))
 
 @router.put("/users/{user_id}")
 async def update_user(user_id: str, body: UserUpdate, user=Depends(require_permission("users", "update"))):
-    updates = {k: v for k, v in body.model_dump().items() if v is not None}
-    if not updates: raise HTTPException(400, "No updates")
-    if updates.get("role") in ("owner", "admin") and user["role"] != "owner":
-        raise HTTPException(403, "Hanya owner yang bisa mengubah peran ke owner/admin")
-    sets = ", ".join(f"{k}=:{k}" for k in updates.keys())
-    updates["id"] = user_id
-    r = await q_exec(f"UPDATE users SET {sets}, updated_at=NOW() WHERE id=:id", **updates)
-    if r == 0: raise HTTPException(404, "User not found")
+    body_dict = body.model_dump()
+    outlet_ids = body_dict.pop("outlet_ids", None)
+    primary_outlet_id = body_dict.pop("primary_outlet_id", None)
+    updates = {k: v for k, v in body_dict.items() if v is not None}
+    if updates:
+        if updates.get("role") in ("owner", "admin") and user["role"] != "owner":
+            raise HTTPException(403, "Hanya owner yang bisa mengubah peran ke owner/admin")
+        sets = ", ".join(f"{k}=:{k}" for k in updates.keys())
+        updates["id"] = user_id
+        r = await q_exec(f"UPDATE users SET {sets}, updated_at=NOW() WHERE id=:id", **updates)
+        if r == 0: raise HTTPException(404, "User not found")
+    # Update outlet assignments if provided
+    if outlet_ids is not None:
+        await q_exec("DELETE FROM user_outlet_access WHERE user_id = :uid", uid=user_id)
+        if outlet_ids:
+            primary = primary_outlet_id or outlet_ids[0]
+            for oid in outlet_ids:
+                is_primary = (oid == primary)
+                await q_exec(
+                    "INSERT INTO user_outlet_access (user_id, outlet_id, is_primary, assigned_at) VALUES (:uid, :oid, :ip, NOW()) ON CONFLICT DO NOTHING",
+                    uid=user_id, oid=oid, ip=is_primary,
+                )
     return clean(await q_one("SELECT id, email, name, role, is_active FROM users WHERE id=:id", id=user_id))
 
 @router.post("/users/{user_id}/reset-password")

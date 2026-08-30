@@ -29,7 +29,7 @@ export default function Loyalty() {
         api.get("/loyalty/tiers"),
         api.get(`/loyalty/memberships?${params}`),
       ]);
-      setTiers(tierRes.data || []);
+      setTiers(tierRes.data?.tiers || []);
       setMemberships(memRes.data || []);
     } catch (e) {
       toast.error("Gagal memuat data loyalty");
@@ -50,9 +50,10 @@ export default function Loyalty() {
     }
     try {
       await api.post("/loyalty/adjust-points", {
-        membership_id: adjustTarget.id,
-        points: pts,
+        customer_id: adjustTarget.customer_id,
+        points_change: pts,
         reason: adjustForm.reason,
+        outlet_id: outletIdForApi || undefined,
       });
       toast.success("Poin disesuaikan");
       setAdjustTarget(null);
@@ -83,7 +84,7 @@ export default function Loyalty() {
                 const style = getTierStyle(t.name);
                 const Icon = style.icon;
                 return (
-                  <div key={t.id} className="bg-[#331419] gold-border rounded-lg p-5 text-center">
+                  <div key={t.name} className="bg-[#331419] gold-border rounded-lg p-5 text-center">
                     <div
                       className="mx-auto w-12 h-12 rounded-full flex items-center justify-center mb-3"
                       style={{ backgroundColor: `${style.color}22`, border: `1px solid ${style.color}` }}

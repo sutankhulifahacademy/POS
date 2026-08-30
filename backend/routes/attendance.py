@@ -54,10 +54,17 @@ async def clock_in(body: ClockInIn, user=Depends(get_current_user)):
     existing = await q_one("SELECT id FROM attendance WHERE cashier_id=:c AND status='active'", c=user["id"])
     if existing:
         raise HTTPException(400, "Anda sudah absen masuk. Absen keluar dulu.")
+    # Determine outlet_id: from body, or from user's assigned outlet
+    outlet_id = body.outlet_id
+    if not outlet_id:
+        user_outlets = user.get("outlet_ids", [])
+        if user_outlets:
+            outlet_id = user_outlets[0]
     aid = new_id()
-    await q_exec("""INSERT INTO attendance (id, cashier_id, cashier_name, clock_in_at, clock_in_photo, clock_in_note, status)
-                    VALUES (:id, :ci, :cn, NOW(), :p, :n, 'active')""",
-                 id=aid, ci=user["id"], cn=user.get("name", ""), p=body.photo or "", n=body.note or "")
+    await q_exec("""INSERT INTO attendance (id, cashier_id, cashier_name, outlet_id, clock_in_at, clock_in_photo, clock_in_note, status)
+                    VALUES (:id, :ci, :cn, :oid, NOW(), :p, :n, 'active')""",
+                 id=aid, ci=user["id"], cn=user.get("name", ""), oid=_u(outlet_id),
+                 p=body.photo or "", n=body.note or "")
     return clean(await q_one("SELECT * FROM attendance WHERE id=:id", id=aid))
 
 

@@ -1,3 +1,4 @@
+from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends
 from routes.deps import *
 
@@ -5,11 +6,25 @@ router = APIRouter()
 
 
 @router.get("/tables")
-async def list_tables(user=Depends(get_current_user)):
-    rows = await q_all("""SELECT t.*,
+async def list_tables(user=Depends(get_current_user), outlet_id: Optional[str] = None):
+    where = ["1=1"]
+    params = {}
+    if outlet_id:
+        if user["role"] != "owner" and outlet_id not in user.get("outlet_ids", []):
+            raise HTTPException(403, "Tidak ada akses ke outlet ini")
+        where.append("t.outlet_id = :oid")
+        params["oid"] = outlet_id
+    elif user["role"] != "owner":
+        user_outlets = user.get("outlet_ids", [])
+        if user_outlets:
+            ids_sql = ",".join(f"'{oid}'" for oid in user_outlets)
+            where.append(f"t.outlet_id IN ({ids_sql})")
+        else:
+            return []
+    rows = await q_all(f"""SELECT t.*,
         (SELECT id FROM orders WHERE table_id=t.id AND status='open' LIMIT 1) AS active_order_id,
         COALESCE((SELECT total FROM orders WHERE table_id=t.id AND status='open' LIMIT 1), 0) AS active_order_total
-        FROM tables t ORDER BY name""")
+        FROM tables t WHERE {' AND '.join(where)} ORDER BY name""", **params)
     result = clean_list(rows)
     return result
 

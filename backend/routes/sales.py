@@ -271,6 +271,9 @@ async def list_sales(
 ):
     # Build outlet filter
     if outlet_id:
+        # Authorization: non-owner can only access assigned outlets
+        if user["role"] != "owner" and outlet_id not in user.get("outlet_ids", []):
+            raise HTTPException(403, "Tidak ada akses ke outlet ini")
         o_clause = " AND outlet_id = :outlet_id "
         params = {"l": limit, "outlet_id": outlet_id}
     elif user["role"] != "owner":

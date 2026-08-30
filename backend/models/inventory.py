@@ -14,6 +14,7 @@ class POIn(BaseModel):
     supplier_name: str
     items: List[POItem]
     note: Optional[str] = ""
+    outlet_id: Optional[str] = None
 
 
 class TransferItem(BaseModel):
@@ -52,6 +53,7 @@ class TableIn(BaseModel):
 class ClockInIn(BaseModel):
     photo: Optional[str] = ""
     note: Optional[str] = ""
+    outlet_id: Optional[str] = None
 
 
 class ClockOutIn(BaseModel):

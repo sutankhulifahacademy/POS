@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
 import api from "../lib/api";
+import { useAuth } from "../context/AuthContext";
 import PageHeader from "../components/PageHeader";
-import { Plus, KeyRound, Trash2, X, UserCog, Shield, Upload, User } from "lucide-react";
+import { Plus, KeyRound, Trash2, X, UserCog, Shield, Upload, User, Store } from "lucide-react";
 import { toast } from "sonner";
 
 const empty = {
   email: "", name: "", role: "kasir", password: "",
   phone: "", address: "", job_title: "",
   photo: "", ktp_image: "", ktp_number: "",
+  outlet_ids: [], primary_outlet_id: "",
 };
 
 // Read file as base64 data URI (compressed for KTP/photo)
@@ -35,7 +37,9 @@ async function fileToDataURI(file, maxDim = 800) {
 }
 
 export default function Karyawan() {
+  const { user: currentUser } = useAuth();
   const [users, setUsers] = useState([]);
+  const [outlets, setOutlets] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(empty);
   const [editing, setEditing] = useState(null);
@@ -44,19 +48,36 @@ export default function Karyawan() {
   const [detail, setDetail] = useState(null);
 
   const load = async () => {
-    try { const { data } = await api.get("/users"); setUsers(data); }
-    catch (e) { toast.error(e.response?.data?.detail || "Gagal memuat karyawan"); }
+    try {
+      const [usersRes, outletsRes] = await Promise.all([
+        api.get("/users"),
+        api.get("/outlets"),
+      ]);
+      setUsers(usersRes.data);
+      setOutlets(outletsRes.data);
+    } catch (e) { toast.error(e.response?.data?.detail || "Gagal memuat karyawan"); }
   };
   useEffect(() => { load(); }, []);
 
-  const openNew = () => { setForm(empty); setEditing(null); setShowForm(true); };
+  const openNew = () => { setForm({ ...empty, outlet_ids: [], primary_outlet_id: "" }); setEditing(null); setShowForm(true); };
   const openEdit = async (u) => {
     try {
       const { data } = await api.get(`/users/${u.id}`);
-      setForm({ ...empty, ...data, password: "" });
+      setForm({ ...empty, ...data, password: "",
+        outlet_ids: data.outlet_ids || (data.primary_outlet_id ? [data.primary_outlet_id] : []),
+        primary_outlet_id: data.primary_outlet_id || "",
+      });
       setEditing(u);
       setShowForm(true);
     } catch (e) { toast.error("Gagal memuat detail"); }
+  };
+
+  const toggleOutlet = (oid) => {
+    const current = form.outlet_ids || [];
+    const next = current.includes(oid) ? current.filter(x => x !== oid) : [...current, oid];
+    setForm({ ...form, outlet_ids: next,
+      primary_outlet_id: next.length === 1 ? next[0] : (next.includes(form.primary_outlet_id) ? form.primary_outlet_id : ""),
+    });
   };
 
   const uploadImage = async (file, field) => {
@@ -102,7 +123,7 @@ export default function Karyawan() {
   };
 
   const roleLabel = { owner: "OWNER", admin: "ADMIN", manager: "MANAGER", kasir: "KASIR", supervisor: "SUPERVISOR" };
-  const roleColor = (r) => r === "owner" ? "text-[#F4C842] bg-[#F4C842]/10" : r === "admin" ? "text-[#F4C842] bg-[#F4C842]/10" : r === "manager" ? "text-[#7FD68F] bg-[#7FD68F]/10" : r === "supervisor" ? "text-blue-400 bg-blue-400/10" : "text-[#C4A484] bg-[#C4A484]/10";
+  const roleColor = (r) => r === "owner" ? "text-[#F4C842] bg-[#F4C842]/20 border border-[#F4C842]/40" : r === "admin" ? "text-[#E6B835] bg-[#E6B835]/10" : r === "manager" ? "text-[#7FD68F] bg-[#7FD68F]/10" : r === "supervisor" ? "text-blue-400 bg-blue-400/10" : "text-[#C4A484] bg-[#C4A484]/10";
 
   return (
     <div>
@@ -217,9 +238,60 @@ export default function Karyawan() {
                 <label className="text-xs uppercase tracking-widest text-[#C4A484] mb-1 block">Peran Sistem *</label>
                 <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} className="w-full bg-[#1A0810] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" data-testid="emp-role">
                   <option value="kasir">Kasir</option>
+                  <option value="supervisor">Supervisor</option>
                   <option value="manager">Manager</option>
-                  <option value="admin">Owner (Admin)</option>
+                  <option value="admin">Admin</option>
+                  {currentUser?.role === "owner" && <option value="owner">Owner</option>}
                 </select>
+                {form.role === "owner" && (
+                  <p className="text-[10px] text-[#F4C842] mt-1">Owner memiliki akses penuh ke semua outlet & menu</p>
+                )}
+                {form.role === "admin" && (
+                  <p className="text-[10px] text-[#C4A484] mt-1">Admin memiliki akses ke outlet yang diassign saja</p>
+                )}
+              </div>
+
+              {/* Outlet Assignment */}
+              <div className="col-span-2">
+                <label className="text-xs uppercase tracking-widest text-[#C4A484] mb-2 block flex items-center gap-1">
+                  <Store size={12} /> Outlet Assignment *
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  {outlets.map((o) => {
+                    const selected = (form.outlet_ids || []).includes(o.id);
+                    const isPrimary = form.primary_outlet_id === o.id;
+                    return (
+                      <div
+                        key={o.id}
+                        onClick={() => toggleOutlet(o.id)}
+                        className={`cursor-pointer rounded-md border p-3 transition-colors ${
+                          selected
+                            ? "border-[#F4C842] bg-[#F4C842]/10"
+                            : "border-[rgba(244,200,66,0.2)] bg-[#1A0810] hover:border-[rgba(244,200,66,0.4)]"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-[#F5F5F5]">{o.name}</span>
+                          {selected && (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); setForm({ ...form, primary_outlet_id: o.id }); }}
+                              className={`text-[9px] uppercase px-1.5 py-0.5 rounded ${
+                                isPrimary ? "bg-[#F4C842] text-[#1A0810]" : "border border-[rgba(244,200,66,0.3)] text-[#C4A484]"
+                              }`}
+                            >
+                              {isPrimary ? "Utama" : "Set Utama"}
+                            </button>
+                          )}
+                        </div>
+                        {o.address && <p className="text-[10px] text-[#C4A484] mt-1 truncate">{o.address}</p>}
+                      </div>
+                    );
+                  })}
+                </div>
+                {(form.outlet_ids || []).length === 0 && (
+                  <p className="text-[10px] text-[#C4A484] mt-1">Pilih minimal 1 outlet untuk karyawan ini</p>
+                )}
               </div>
               <div className="col-span-2">
                 <label className="text-xs uppercase tracking-widest text-[#C4A484] mb-1 block">Alamat</label>

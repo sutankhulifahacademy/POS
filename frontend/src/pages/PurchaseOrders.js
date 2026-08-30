@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import api, { formatIDR } from "../lib/api";
+import { useOutlet } from "../context/OutletContext";
 import PageHeader from "../components/PageHeader";
 import { Plus, X, PackageCheck, Trash2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 
 export default function PurchaseOrders() {
+  const { outletIdForApi } = useOutlet();
   const [orders, setOrders] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [products, setProducts] = useState([]);
@@ -14,11 +16,17 @@ export default function PurchaseOrders() {
   const [note, setNote] = useState("");
   const [detail, setDetail] = useState(null);
 
-  const load = async () => {
-    const [o, s, p] = await Promise.all([api.get("/purchase-orders"), api.get("/suppliers"), api.get("/products")]);
+  const load = useCallback(async () => {
+    const params = new URLSearchParams();
+    if (outletIdForApi) params.append("outlet_id", outletIdForApi);
+    const [o, s, p] = await Promise.all([
+      api.get(`/purchase-orders?${params}`),
+      api.get("/suppliers"),
+      api.get(`/products?${params}`),
+    ]);
     setOrders(o.data); setSuppliers(s.data); setProducts(p.data);
-  };
-  useEffect(() => { load(); }, []);
+  }, [outletIdForApi]);
+  useEffect(() => { load(); }, [load]);
 
   const addLine = () => setItems([...items, { product_id: "", name: "", quantity: 1, cost: 0 }]);
   const updateLine = (idx, patch) => setItems(items.map((it, i) => i === idx ? { ...it, ...patch } : it));
@@ -38,6 +46,7 @@ export default function PurchaseOrders() {
         supplier_name: supplier.name,
         items: items.map(i => ({ product_id: i.product_id, name: i.name, quantity: Number(i.quantity), cost: Number(i.cost) })),
         note,
+        outlet_id: outletIdForApi || undefined,
       });
       toast.success("PO dibuat");
       setShowForm(false); setSupplierId(""); setItems([]); setNote("");

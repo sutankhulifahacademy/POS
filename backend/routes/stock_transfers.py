@@ -1,4 +1,5 @@
 import json
+from typing import Optional
 from routes.deps import *
 from routes.inventory import _adjust_outlet_stock
 
@@ -6,8 +7,32 @@ router = APIRouter()
 
 # ============ TRANSFERS ============
 @router.get("/stock-transfers")
-async def list_transfers(user=Depends(get_current_user), limit: int = 200):
-    rows = await q_all("SELECT * FROM stock_transfers ORDER BY created_at DESC LIMIT :l", l=limit)
+async def list_transfers(
+    user=Depends(get_current_user),
+    limit: int = 200,
+    outlet_id: Optional[str] = None,
+):
+    if outlet_id:
+        if user["role"] != "owner" and outlet_id not in user.get("outlet_ids", []):
+            raise HTTPException(403, "Tidak ada akses ke outlet ini")
+        rows = await q_all("""
+            SELECT * FROM stock_transfers
+            WHERE from_outlet_id = :oid OR to_outlet_id = :oid
+            ORDER BY created_at DESC LIMIT :l
+        """, oid=outlet_id, l=limit)
+    elif user["role"] != "owner":
+        user_outlets = user.get("outlet_ids", [])
+        if user_outlets:
+            ids_sql = ",".join(f"'{oid}'" for oid in user_outlets)
+            rows = await q_all(f"""
+                SELECT * FROM stock_transfers
+                WHERE from_outlet_id IN ({ids_sql}) OR to_outlet_id IN ({ids_sql})
+                ORDER BY created_at DESC LIMIT :l
+            """, l=limit)
+        else:
+            rows = []
+    else:
+        rows = await q_all("SELECT * FROM stock_transfers ORDER BY created_at DESC LIMIT :l", l=limit)
     return clean_list(rows)
 
 @router.post("/stock-transfers")

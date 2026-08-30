@@ -20,6 +20,8 @@ class UserCreate(BaseModel):
     photo: Optional[str] = ""
     ktp_image: Optional[str] = ""
     ktp_number: Optional[str] = ""
+    outlet_ids: Optional[list] = []
+    primary_outlet_id: Optional[str] = ""
 
 
 class UserUpdate(BaseModel):
@@ -33,6 +35,8 @@ class UserUpdate(BaseModel):
     ktp_image: Optional[str] = None
     ktp_number: Optional[str] = None
     is_active: Optional[bool] = None
+    outlet_ids: Optional[list] = None
+    primary_outlet_id: Optional[str] = None
 
 
 class PasswordReset(BaseModel):
