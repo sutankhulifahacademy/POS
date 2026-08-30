@@ -43,6 +43,7 @@ export default function POS() {
   const [receipt, setReceipt] = useState(null);
   const [showScanner, setShowScanner] = useState(false);
   const [variantPick, setVariantPick] = useState(null);
+  const [paketPick, setPaketPick] = useState(null);
   const [activeShift, setActiveShift] = useState(null);
   const [showShiftModal, setShowShiftModal] = useState(false);
   const [shiftCash, setShiftCash] = useState(0);
@@ -109,6 +110,7 @@ export default function POS() {
 
   const handleProductClick = (product) => {
     if (product.variants && product.variants.length > 0) setVariantPick(product);
+    else if (product.product_type === "paket") setPaketPick(product);
     else addToCart(product);
   };
 
@@ -383,6 +385,7 @@ export default function POS() {
                   <div className="aspect-square rounded-md bg-[#4A1A22] mb-3 overflow-hidden flex items-center justify-center relative">
                     {p.image_url ? <img src={p.image_url} alt={p.name} className="w-full h-full object-cover" /> : <PackageIcon size={32} strokeWidth={1.2} className="text-[#C4A484] opacity-40" />}
                     {p.variants && p.variants.length > 0 && <span className="absolute top-2 right-2 text-[9px] uppercase tracking-widest bg-[#F4C842] text-[#1A0810] px-1.5 py-0.5 rounded">Varian</span>}
+                    {p.product_type === "paket" && <span className="absolute top-2 right-2 text-[9px] uppercase tracking-widest bg-[#F4C842] text-[#1A0810] px-1.5 py-0.5 rounded">Paket</span>}
                   </div>
                   <p className="text-sm text-[#F5F5F5] truncate">{p.name}</p>
                   <p className="text-xs text-[#C4A484] mt-1">Stok outlet: {s} {p.unit}</p>
@@ -706,6 +709,34 @@ export default function POS() {
               ))}
             </div>
             <button onClick={() => setVariantPick(null)} className="mt-4 w-full border border-[rgba(244,200,66,0.3)] text-[#F4C842] py-2 rounded-md text-xs uppercase tracking-widest">Batal</button>
+          </div>
+        </div>
+      )}
+
+      {paketPick && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPaketPick(null)}>
+          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-full sm:max-w-md w-full p-6 mx-4" data-testid="paket-picker">
+            <h3 className="font-serif-luxury text-2xl text-[#F5F5F5] mb-1">{paketPick.name}</h3>
+            <p className="text-xs text-[#C4A484] mb-4">Paket berisi {paketPick.bundle_items?.length || 0} item</p>
+            <div className="space-y-1 mb-4 max-h-[40vh] overflow-y-auto">
+              {(paketPick.bundle_items || []).map((b, i) => (
+                <div key={i} className="flex items-center justify-between bg-[#331419] gold-border rounded-md p-3">
+                  <div className="text-left">
+                    <p className="text-sm text-[#F5F5F5]">{b.name}</p>
+                    <p className="text-xs text-[#C4A484]">@ {formatIDR(b.price)} × {b.quantity}</p>
+                  </div>
+                  <span className="text-xs text-[#F4C842]">{formatIDR(Number(b.price) * Number(b.quantity))}</span>
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-between items-center pt-3 border-t border-[rgba(244,200,66,0.15)] mb-4">
+              <span className="text-xs text-[#C4A484]">Harga Paket:</span>
+              <span className="text-lg text-[#F4C842] font-semibold">{formatIDR(paketPick.price)}</span>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setPaketPick(null)} className="flex-1 border border-[rgba(244,200,66,0.3)] text-[#F4C842] py-2.5 rounded-md text-xs uppercase tracking-widest">Batal</button>
+              <button onClick={() => { addToCart(paketPick); setPaketPick(null); }} data-testid="paket-add-to-cart" className="flex-1 bg-[#F4C842] text-[#1A0810] py-2.5 rounded-md text-xs font-semibold uppercase tracking-widest">Tambah ke Keranjang</button>
+            </div>
           </div>
         </div>
       )}

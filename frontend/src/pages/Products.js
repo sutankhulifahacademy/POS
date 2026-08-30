@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import api, { formatIDR } from "../lib/api";
 import PageHeader from "../components/PageHeader";
-import { Plus, Edit3, Trash2, X, Search, Package } from "lucide-react";
+import { Plus, Edit3, Trash2, X, Search, Package, ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 
 const empty = { name: "", sku: "", barcode: "", category_id: "", price: 0, cost: 0, stock: 0, low_stock_threshold: 5, unit: "pcs", image_url: "", description: "", is_active: true, variants: [], product_type: "regular", bundle_items: [] };
@@ -13,6 +13,7 @@ export default function Products() {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(empty);
   const [search, setSearch] = useState("");
+  const [expandedPaket, setExpandedPaket] = useState({});
 
   const load = async () => {
     const [p, c] = await Promise.all([api.get("/products"), api.get("/categories")]);
@@ -95,34 +96,76 @@ export default function Products() {
             <tbody>
               {filtered.length === 0 && <tr><td colSpan={7} className="px-6 py-12 text-center text-[#C4A484]">Belum ada produk. Tambahkan produk pertama Anda.</td></tr>}
               {filtered.map((p) => (
-                <tr key={p.id} className="border-b border-[rgba(244,200,66,0.08)] last:border-0 hover:bg-[#4A1A22] transition-colors" data-testid={`product-row-${p.id}`}>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      {p.image_url ? <img src={p.image_url} alt="" className="w-10 h-10 rounded-md object-cover" /> : <div className="w-10 h-10 rounded-md bg-[#4A1A22]" />}
-                      <div>
-                        <p className="text-sm text-[#F5F5F5]">{p.name}</p>
-                        <p className="text-xs text-[#C4A484]">{p.unit}</p>
+                <>
+                  <tr key={p.id} className="border-b border-[rgba(244,200,66,0.08)] last:border-0 hover:bg-[#4A1A22] transition-colors" data-testid={`product-row-${p.id}`}>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        {p.product_type === "paket" && (
+                          <button
+                            onClick={() => setExpandedPaket({ ...expandedPaket, [p.id]: !expandedPaket[p.id] })}
+                            className="text-[#F4C842] hover:text-[#FFDD5C] flex-shrink-0"
+                            data-testid={`expand-paket-${p.id}`}
+                          >
+                            {expandedPaket[p.id] ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                          </button>
+                        )}
+                        {p.image_url ? <img src={p.image_url} alt="" className="w-10 h-10 rounded-md object-cover" /> : <div className="w-10 h-10 rounded-md bg-[#4A1A22]" />}
+                        <div>
+                          <p className="text-sm text-[#F5F5F5]">{p.name}</p>
+                          <p className="text-xs text-[#C4A484]">{p.unit}</p>
+                        </div>
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    {p.product_type === "paket" ? (
-                      <span className="inline-flex items-center gap-1 text-xs bg-[rgba(244,200,66,0.15)] text-[#F4C842] px-2 py-1 rounded"><Package size={12} /> Paket</span>
-                    ) : (
-                      <span className="text-xs text-[#C4A484]">Reguler</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-[#C4A484]">{p.sku}</td>
-                  <td className="px-6 py-4 text-sm text-[#C4A484]">{p.variants?.length ? `${p.variants.length} varian` : "—"}</td>
-                  <td className="px-6 py-4 text-right text-sm text-[#F4C842]">{formatIDR(p.price)}</td>
-                  <td className="px-6 py-4 text-right"><span className={`text-sm ${p.stock <= (p.low_stock_threshold || 5) ? 'text-[#8B0000]' : 'text-[#F5F5F5]'}`}>{p.stock}</span></td>
-                  <td className="px-6 py-4 text-right">
-                    <div className="flex justify-end gap-2">
-                      <button onClick={() => openEdit(p)} data-testid={`edit-product-${p.id}`} className="p-2.5 text-[#C4A484] hover:text-[#F4C842]"><Edit3 size={16} /></button>
-                      <button onClick={() => remove(p.id)} data-testid={`delete-product-${p.id}`} className="p-2.5 text-[#C4A484] hover:text-[#8B0000]"><Trash2 size={16} /></button>
-                    </div>
-                  </td>
-                </tr>
+                    </td>
+                    <td className="px-6 py-4">
+                      {p.product_type === "paket" ? (
+                        <span className="inline-flex items-center gap-1 text-xs bg-[rgba(244,200,66,0.15)] text-[#F4C842] px-2 py-1 rounded"><Package size={12} /> Paket</span>
+                      ) : (
+                        <span className="text-xs text-[#C4A484]">Reguler</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-[#C4A484]">{p.sku}</td>
+                    <td className="px-6 py-4 text-sm text-[#C4A484]">
+                      {p.product_type === "paket"
+                        ? `${p.bundle_items?.length || 0} item`
+                        : p.variants?.length ? `${p.variants.length} varian` : "—"}
+                    </td>
+                    <td className="px-6 py-4 text-right text-sm text-[#F4C842]">{formatIDR(p.price)}</td>
+                    <td className="px-6 py-4 text-right"><span className={`text-sm ${p.stock <= (p.low_stock_threshold || 5) ? 'text-[#8B0000]' : 'text-[#F5F5F5]'}`}>{p.stock}</span></td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex justify-end gap-2">
+                        <button onClick={() => openEdit(p)} data-testid={`edit-product-${p.id}`} className="p-2.5 text-[#C4A484] hover:text-[#F4C842]"><Edit3 size={16} /></button>
+                        <button onClick={() => remove(p.id)} data-testid={`delete-product-${p.id}`} className="p-2.5 text-[#C4A484] hover:text-[#8B0000]"><Trash2 size={16} /></button>
+                      </div>
+                    </td>
+                  </tr>
+                  {p.product_type === "paket" && expandedPaket[p.id] && (p.bundle_items || []).length > 0 && (
+                    <tr key={`${p.id}-bundle`} className="bg-[#1A0810]">
+                      <td colSpan={7} className="px-6 py-3">
+                        <div className="ml-8 border-l-2 border-[rgba(244,200,66,0.3)] pl-4">
+                          <p className="text-xs uppercase tracking-widest text-[#C4A484] mb-2">Komposisi Paket</p>
+                          <div className="space-y-1">
+                            {(p.bundle_items || []).map((b, i) => (
+                              <div key={i} className="flex items-center justify-between text-sm py-1.5 border-b border-[rgba(244,200,66,0.05)] last:border-0">
+                                <div className="flex items-center gap-3">
+                                  <span className="text-[#F5F5F5]">{b.name}</span>
+                                  <span className="text-xs text-[#C4A484]">@ {formatIDR(b.price)}</span>
+                                </div>
+                                <div className="flex items-center gap-4">
+                                  <span className="text-xs text-[#C4A484]">Qty: <span className="text-[#F4C842] font-semibold">{b.quantity}</span></span>
+                                  <span className="text-xs text-[#F4C842]">{formatIDR(Number(b.price) * Number(b.quantity))}</span>
+                                </div>
+                              </div>
+                            ))}
+                            <div className="flex justify-between pt-2 mt-1 border-t border-[rgba(244,200,66,0.15)]">
+                              <span className="text-xs text-[#C4A484]">Total nilai item:</span>
+                              <span className="text-sm text-[#F4C842] font-semibold">{formatIDR((p.bundle_items || []).reduce((s, b) => s + Number(b.price) * Number(b.quantity), 0))}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </>
               ))}
             </tbody>
           </table>

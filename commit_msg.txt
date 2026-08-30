@@ -1,35 +1,17 @@
-Add paket/bundle product type with composition items
+Enhance paket UI with expandable composition in product list and POS
 
-Products can now be either "regular" or "paket" (bundle). A paket is a
-collaboration of multiple products, each with its own selling price.
+Products.js:
+- Paket rows in product table now have expand/collapse chevron
+- Clicking chevron shows full composition: item name, unit price,
+  quantity, subtotal per item, and total bundle value
+- Column "Varian" shows "N item" for paket products
 
-Database:
-- products.product_type VARCHAR(20) DEFAULT 'regular'
-- products.bundle_items JSONB DEFAULT '[]' (array of
-  {product_id, name, price, quantity})
-
-Backend:
-- ProductCreate/ProductUpdate models accept product_type + bundle_items
-- POST /products and PUT /products/{id} persist both fields
-
-Frontend (Products.js):
-- Product type selector: "Produk Reguler" vs "Paket / Bundle"
-- When "paket" is selected, a "Komposisi Paket" section appears:
-  - Dropdown to pick from existing regular products
-  - Auto-fills product name and unit price on selection
-  - Quantity field per bundle item
-  - Subtotal per row (price x qty)
-  - Total modal value of all bundle items
-  - Add/remove bundle item rows
-- Product table shows "Paket" badge or "Reguler" label
-- Paket products are excluded from the bundle item dropdown (no nested
-  bundles)
-
-The selling price of the paket is set in the existing "Harga Jual" field
-and can differ from the sum of component prices (allowing bundle
-discounts or markups).
-
-Schema file postgres_schema.sql updated with the two new columns.
+POS.js:
+- Paket products show "Paket" badge on product card
+- Clicking a paket product opens a composition preview modal showing
+  all bundle items with prices and quantities
+- Modal has "Tambah ke Keranjang" button to add the paket to cart
+- Pattern matches the user's example: paket name, item list, quantities
 
 Generated with [Devin](https://devin.ai)
 
