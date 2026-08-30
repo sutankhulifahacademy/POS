@@ -15,7 +15,7 @@ async def list_menus(user=Depends(get_current_user)):
 
 
 @router.post("/menus")
-async def create_menu(body: MenuCreate, user=Depends(require_role("admin"))):
+async def create_menu(body: MenuCreate, user=Depends(require_permission("roles", "manage"))):
     """Create a new menu item."""
     existing = await q_one("SELECT id FROM menus WHERE name=:n", n=body.name)
     if existing:
@@ -33,7 +33,7 @@ async def create_menu(body: MenuCreate, user=Depends(require_role("admin"))):
 
 
 @router.put("/menus/{menu_id}")
-async def update_menu(menu_id: str, body: MenuUpdate, user=Depends(require_role("admin"))):
+async def update_menu(menu_id: str, body: MenuUpdate, user=Depends(require_permission("roles", "manage"))):
     """Update a menu item."""
     menu = await q_one("SELECT * FROM menus WHERE id=:id", id=menu_id)
     if not menu:
@@ -52,7 +52,7 @@ async def update_menu(menu_id: str, body: MenuUpdate, user=Depends(require_role(
 
 
 @router.delete("/menus/{menu_id}")
-async def delete_menu(menu_id: str, user=Depends(require_role("admin"))):
+async def delete_menu(menu_id: str, user=Depends(require_permission("roles", "manage"))):
     """Delete a menu item."""
     r = await q_exec("DELETE FROM menus WHERE id=:id", id=menu_id)
     if r == 0:
@@ -78,7 +78,7 @@ async def get_my_menus(user=Depends(get_current_user)):
 
 
 @router.get("/menus/role/{role_id}")
-async def get_role_menus(role_id: str, user=Depends(require_role("admin"))):
+async def get_role_menus(role_id: str, user=Depends(require_permission("roles", "manage"))):
     """Get all menus with visibility status for a specific role."""
     menus = await q_all("SELECT * FROM menus ORDER BY sort_order ASC, label ASC")
     role_menus = await q_all(
@@ -103,7 +103,7 @@ async def get_role_menus(role_id: str, user=Depends(require_role("admin"))):
 
 
 @router.put("/menus/role/{role_id}")
-async def update_role_menus(role_id: str, body: RoleMenusUpdate, user=Depends(require_role("admin"))):
+async def update_role_menus(role_id: str, body: RoleMenusUpdate, user=Depends(require_permission("roles", "manage"))):
     """Bulk update which menus are visible to a role."""
     role = await q_one("SELECT * FROM roles WHERE id=:id", id=role_id)
     if not role:

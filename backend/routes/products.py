@@ -16,7 +16,7 @@ async def product_by_barcode(code: str, user=Depends(get_current_user)):
     return clean(p)
 
 @router.post("/products")
-async def create_product(body: ProductCreate, user=Depends(require_role("admin","manager"))):
+async def create_product(body: ProductCreate, user=Depends(require_permission("products", "create"))):
     exists = await q_one("SELECT id FROM products WHERE sku=:s", s=body.sku)
     if exists: raise HTTPException(400, "SKU already exists")
     pid = new_id()
@@ -38,7 +38,7 @@ async def create_product(body: ProductCreate, user=Depends(require_role("admin",
 async def update_product(
     product_id: str,
     body: ProductUpdate,
-    user=Depends(require_role("admin", "manager"))
+    user=Depends(require_permission("products", "update"))
 ):
     data = body.model_dump(exclude_none=True)
 
@@ -126,7 +126,7 @@ async def update_product(
 @router.delete("/products/{product_id}")
 async def delete_product(
     product_id: str,
-    user=Depends(require_role("admin", "manager"))
+    user=Depends(require_permission("products", "delete"))
 ):
     existing = await q_one(
         "SELECT id FROM products WHERE id=:id",

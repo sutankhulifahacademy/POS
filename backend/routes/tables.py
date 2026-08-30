@@ -15,7 +15,7 @@ async def list_tables(user=Depends(get_current_user)):
 
 
 @router.post("/tables")
-async def create_table(body: TableIn, user=Depends(require_role("admin", "manager"))):
+async def create_table(body: TableIn, user=Depends(require_permission("tables", "create"))):
     tid = new_id()
     await q_exec("""INSERT INTO tables (id, name, capacity, outlet_id, zone, status, created_at)
                     VALUES (:id, :n, :c, :oid, :z, 'available', NOW())""",
@@ -24,7 +24,7 @@ async def create_table(body: TableIn, user=Depends(require_role("admin", "manage
 
 
 @router.put("/tables/{table_id}")
-async def update_table(table_id: str, body: TableIn, user=Depends(require_role("admin", "manager"))):
+async def update_table(table_id: str, body: TableIn, user=Depends(require_permission("tables", "update"))):
     r = await q_exec("""UPDATE tables SET name=:n, capacity=:c, outlet_id=:oid, zone=:z, updated_at=NOW()
                         WHERE id=:id""", id=table_id, n=body.name, c=body.capacity,
                      oid=_u(body.outlet_id), z=body.zone or "Utama")
@@ -34,7 +34,7 @@ async def update_table(table_id: str, body: TableIn, user=Depends(require_role("
 
 
 @router.delete("/tables/{table_id}")
-async def delete_table(table_id: str, user=Depends(require_role("admin", "manager"))):
+async def delete_table(table_id: str, user=Depends(require_permission("tables", "delete"))):
     active = await q_one("SELECT id FROM orders WHERE table_id=:t AND status='open'", t=table_id)
     if active:
         raise HTTPException(400, "Meja masih memiliki order terbuka")

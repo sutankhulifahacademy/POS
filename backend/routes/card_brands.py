@@ -14,7 +14,7 @@ async def list_card_brands(user=Depends(get_current_user)):
 
 
 @router.post("/card-brands")
-async def create_card_brand(body: CardBrandCreate, user=Depends(get_current_user)):
+async def create_card_brand(body: CardBrandCreate, user=Depends(require_permission("card_brands", "create"))):
     name = body.name.strip()
     if not name:
         raise HTTPException(400, "Nama bank/brand tidak boleh kosong")

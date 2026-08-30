@@ -1,8 +1,12 @@
 ﻿from pydantic import BaseModel, EmailStr
-from typing import Literal, Optional
+from typing import Literal, Optional, List
 
 
-UserRole = Literal["admin", "manager", "kasir"]
+UserRole = Literal["admin", "manager", "supervisor", "kasir"]
+
+
+class UserOutletAccessUpdate(BaseModel):
+    outlet_ids: List[str] = []
 
 
 class UserCreate(BaseModel):

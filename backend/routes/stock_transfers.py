@@ -11,7 +11,7 @@ async def list_transfers(user=Depends(get_current_user), limit: int = 200):
     return clean_list(rows)
 
 @router.post("/stock-transfers")
-async def create_transfer(body: TransferIn, user=Depends(require_role("admin","manager"))):
+async def create_transfer(body: TransferIn, user=Depends(require_permission("transfers", "create"))):
     if body.from_outlet_id == body.to_outlet_id: raise HTTPException(400, "Outlet sumber dan tujuan tidak boleh sama")
     if not body.items: raise HTTPException(400, "Item tidak boleh kosong")
     for it in body.items:

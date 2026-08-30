@@ -6,7 +6,7 @@ router = APIRouter()
 
 
 @router.post("/inventory/adjust")
-async def adjust_stock(body: StockAdjustIn, user=Depends(require_role("admin","manager"))):
+async def adjust_stock(body: StockAdjustIn, user=Depends(require_permission("inventory", "update"))):
     p = await q_one("SELECT * FROM products WHERE id=:id", id=body.product_id)
     if not p: raise HTTPException(404, "Product not found")
     new_stock = max(0, p["stock"] + body.delta)

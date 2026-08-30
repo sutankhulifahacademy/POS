@@ -1,60 +1,76 @@
-Add file upload system with static serving for images
+Phase 2 & 3: Multi-outlet database + authorization system
 
-## New: POST /api/uploads endpoint
+## Phase 2 — Database Changes
 
-Added a real file upload endpoint that saves images to the server:
+New tables:
+- user_outlet_access (user_id, outlet_id) — multi-outlet authorization
+- audit_logs — audit trail for all important actions
+- leave_requests — leave/permission management
+- alerts — notification/alert center
 
-- Endpoint: POST /api/uploads (multipart/form-data)
-- Accepts: jpg, jpeg, png, webp, gif, svg
-- Max size: 5MB
-- Returns: { "url": "/api/uploads/<uuid>.<ext>", "filename": "..." }
-- Auth required (any logged-in user)
+New columns:
+- attendance.outlet_id — tie attendance to outlet
+- purchase_orders.outlet_id — tie PO to outlet
 
-Files are stored in /app/uploads/ inside the backend container.
+New indexes:
+- idx_attendance_outlet, idx_purchase_orders_outlet
+- idx_orders_outlet, idx_tables_outlet
+- idx_stock_movements_outlet, idx_payment_accounts_outlet
+- All indexes for new tables
 
-## New: Static file serving
+Migration: backend/sql/migration_v2_multi_outlet.sql (executed)
+Schema: backend/sql/postgres_schema.sql (updated)
 
-Mounted StaticFiles at /api/uploads/ so uploaded images are
-publicly accessible via URL:
+Seeded user_outlet_access:
+- Admin → all outlets
+- Other users → main outlet
 
-  GET /api/uploads/<filename>  →  serves the image file
+## Phase 3 — Authorization System
 
-No authentication needed for GET (images are public).
+New dependencies (backend/routes/auth.py):
+- require_permission(module, action) — checks role_permissions table
+- require_outlet_access(outlet_id) — checks user_outlet_access table
+- get_user_outlets(user) — returns allowed outlet IDs
+- filter_outlets_for_user(user, column) — returns SQL filter clause
 
-## Docker volume for uploads
+Updated get_current_user:
+- Now loads outlet_ids for non-admin users
+- Admin gets empty list (= all outlets)
 
-Added uploads_data volume to docker-compose.yml so uploaded files
-persist across container restarts:
+New endpoints:
+- GET /outlets/my — returns user's accessible outlets + all_access flag
+- GET /users/{id}/outlets — get user's outlet access
+- PUT /users/{id}/outlets — update user's outlet access
 
-  volumes:
-    - uploads_data:/app/uploads
+Permission enforcement wired to all endpoints:
+- products: create/update/delete
+- categories: create/update/delete
+- customers: create/update/delete
+- suppliers: create/update/delete
+- outlets: create/update/delete
+- tables: create/update/delete
+- inventory: update
+- payment_accounts: create/update/delete
+- card_brands: create
+- purchase_orders: create/approve/delete
+- stock_transfers: create
+- business: manage
+- menus: manage
+- users: view/create/update
+- roles: admin-only (require_role)
 
-## Frontend: Settings logo upload
+Fix: supervisor role added to UserRole literal
 
-Replaced the URL text input for business logo with a file upload
-button. User clicks "Pilih File Logo", selects an image, and it
-uploads to the server. The returned URL is stored in logo_url.
+## Tests
 
-- Shows upload progress ("Uploading...")
-- Shows preview thumbnail
-- "Hapus logo" button to clear
-
-## Frontend: Products image upload
-
-Replaced the "URL Gambar" text input with a file upload button.
-Same flow as logo — select file, upload, get URL back.
-
-- Shows preview thumbnail
-- "Hapus gambar" button to clear
-
-## Files changed
-
-- backend/routes/uploads.py (NEW) — upload endpoint
-- backend/server.py — mount uploads router + StaticFiles
-- docker-compose.yml — add uploads_data volume
-- frontend/nginx.conf — client_max_body_size 10M (was 20M, still fine)
-- frontend/src/pages/Settings.js — logo file upload
-- frontend/src/pages/Products.js — product image file upload
+- 121 E2E tests: all pass
+- 32 multi-outlet tests: all pass
+  - Login all roles
+  - Outlet access in user object
+  - /outlets/my endpoint
+  - Outlet list filtering
+  - Permission enforcement (kasir blocked, manager allowed)
+  - User outlet access management
 
 Generated with [Devin](https://devin.ai)
 

@@ -5,6 +5,7 @@ from .users import (
     UserUpdate,
     PasswordReset,
     UserResponse,
+    UserOutletAccessUpdate,
 )
 from .products import ProductVariant, ProductCreate, ProductUpdate
 from .sales import SaleItem, SaleCreate
@@ -47,7 +48,7 @@ __all__ = [
     # auth
     "RegisterIn", "LoginIn", "AuthUser",
     # users
-    "UserRole", "UserCreate", "UserUpdate", "PasswordReset", "UserResponse",
+    "UserRole", "UserCreate", "UserUpdate", "PasswordReset", "UserResponse", "UserOutletAccessUpdate",
     # products
     "ProductVariant", "ProductCreate", "ProductUpdate",
     # sales

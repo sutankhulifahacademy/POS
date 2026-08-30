@@ -254,9 +254,11 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
     status VARCHAR(20) DEFAULT 'draft',
     note TEXT,
     created_by UUID,
+    outlet_id UUID,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     received_at TIMESTAMPTZ
 );
+CREATE INDEX IF NOT EXISTS idx_purchase_orders_outlet ON purchase_orders(outlet_id, created_at DESC);
 
 -- =============================================
 -- STOCK TRANSFERS
@@ -355,8 +357,10 @@ CREATE TABLE IF NOT EXISTS attendance (
     clock_out_note TEXT,
     duration_minutes INTEGER,
     shift_id UUID,
-    status TEXT DEFAULT 'active'
+    status TEXT DEFAULT 'active',
+    outlet_id UUID
 );
+CREATE INDEX IF NOT EXISTS idx_attendance_outlet ON attendance(outlet_id, clock_in_at DESC);
 
 -- =============================================
 -- ROLES (manajemen role)
@@ -414,3 +418,81 @@ CREATE TABLE IF NOT EXISTS role_menus (
     created_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(role_id, menu_id)
 );
+
+-- =============================================
+-- USER OUTLET ACCESS (multi-outlet authorization)
+-- =============================================
+CREATE TABLE IF NOT EXISTS user_outlet_access (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL,
+    outlet_id UUID NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(user_id, outlet_id)
+);
+CREATE INDEX IF NOT EXISTS idx_user_outlet_access_user ON user_outlet_access(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_outlet_access_outlet ON user_outlet_access(outlet_id);
+
+-- =============================================
+-- AUDIT LOGS (audit trail for all important actions)
+-- =============================================
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID,
+    user_name VARCHAR(255),
+    role VARCHAR(50),
+    outlet_id UUID,
+    action VARCHAR(50) NOT NULL,
+    entity VARCHAR(50) NOT NULL,
+    entity_id VARCHAR(255),
+    old_value JSONB,
+    new_value JSONB,
+    ip VARCHAR(45),
+    user_agent TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_user ON audit_logs(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_outlet ON audit_logs(outlet_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs(entity, entity_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at DESC);
+
+-- =============================================
+-- LEAVE REQUESTS (cuti/izin management)
+-- =============================================
+CREATE TABLE IF NOT EXISTS leave_requests (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL,
+    user_name VARCHAR(255),
+    outlet_id UUID,
+    leave_type VARCHAR(20) NOT NULL DEFAULT 'izin',
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    reason TEXT,
+    status VARCHAR(20) DEFAULT 'pending',
+    approved_by UUID,
+    approved_by_name VARCHAR(255),
+    approved_at TIMESTAMPTZ,
+    rejection_reason TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_leave_requests_user ON leave_requests(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_leave_requests_outlet ON leave_requests(outlet_id, status);
+CREATE INDEX IF NOT EXISTS idx_leave_requests_status ON leave_requests(status, start_date);
+
+-- =============================================
+-- ALERTS (notification/alert center)
+-- =============================================
+CREATE TABLE IF NOT EXISTS alerts (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    outlet_id UUID,
+    category VARCHAR(30) NOT NULL,
+    severity VARCHAR(10) NOT NULL DEFAULT 'info',
+    title VARCHAR(255) NOT NULL,
+    message TEXT,
+    data JSONB DEFAULT '{}'::jsonb,
+    is_read BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_alerts_outlet ON alerts(outlet_id, is_read, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_alerts_category ON alerts(category, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_alerts_severity ON alerts(severity, is_read, created_at DESC);

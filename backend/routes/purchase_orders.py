@@ -11,7 +11,7 @@ async def list_pos(user=Depends(get_current_user)):
     return clean_list(rows)
 
 @router.post("/purchase-orders")
-async def create_po(body: POIn, user=Depends(require_role("admin","manager"))):
+async def create_po(body: POIn, user=Depends(require_permission("purchase_orders", "create"))):
     total = sum(i.quantity * i.cost for i in body.items)
     po_no = f"PO-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
     pid = new_id()
@@ -23,7 +23,7 @@ async def create_po(body: POIn, user=Depends(require_role("admin","manager"))):
     return clean(await q_one("SELECT * FROM purchase_orders WHERE id=:id", id=pid))
 
 @router.post("/purchase-orders/{po_id}/receive")
-async def receive_po(po_id: str, user=Depends(require_role("admin","manager"))):
+async def receive_po(po_id: str, user=Depends(require_permission("purchase_orders", "approve"))):
     po = await q_one("SELECT * FROM purchase_orders WHERE id=:id", id=po_id)
     if not po: raise HTTPException(404, "PO not found")
     if po["status"] != "draft": raise HTTPException(400, f"PO status is {po['status']}")
@@ -41,13 +41,13 @@ async def receive_po(po_id: str, user=Depends(require_role("admin","manager"))):
     return {"ok": True, "po_id": po_id}
 
 @router.delete("/purchase-orders/{po_id}")
-async def delete_po(po_id: str, user=Depends(require_role("admin","manager"))):
+async def delete_po(po_id: str, user=Depends(require_permission("purchase_orders", "delete"))):
     r = await q_exec("DELETE FROM purchase_orders WHERE id=:id AND status='draft'", id=po_id)
     if r == 0: raise HTTPException(400, "Cannot delete: not draft or not found")
     return {"ok": True}
 
 @router.post("/purchase-orders/{po_id}/reject")
-async def reject_po(po_id: str, user=Depends(require_role("admin","manager"))):
+async def reject_po(po_id: str, user=Depends(require_permission("purchase_orders", "approve"))):
     po = await q_one("SELECT status FROM purchase_orders WHERE id=:id", id=po_id)
     if not po:
         raise HTTPException(404, "PO not found")

@@ -24,10 +24,10 @@ from utils import (
     _u,
     create_token,
 )
-from routes.auth import get_current_user, require_role
+from routes.auth import get_current_user, require_role, require_permission, require_outlet_access, get_user_outlets, filter_outlets_for_user
 from models import (
     RegisterIn, LoginIn, AuthUser,
-    UserRole, UserCreate, UserUpdate, PasswordReset, UserResponse,
+    UserRole, UserCreate, UserUpdate, PasswordReset, UserResponse, UserOutletAccessUpdate,
     ProductVariant, ProductCreate, ProductUpdate,
     SaleItem, SaleCreate,
     OrderItem, OrderCreate, OrderUpdate, OrderCheckout, OrderResponse,
@@ -54,10 +54,10 @@ __all__ = [
     # utils
     "verify_password", "hash_password", "new_id", "clean", "clean_list", "_u", "create_token",
     # auth
-    "get_current_user", "require_role",
+    "get_current_user", "require_role", "require_permission", "require_outlet_access", "get_user_outlets", "filter_outlets_for_user",
     # models
     "RegisterIn", "LoginIn", "AuthUser",
-    "UserRole", "UserCreate", "UserUpdate", "PasswordReset", "UserResponse",
+    "UserRole", "UserCreate", "UserUpdate", "PasswordReset", "UserResponse", "UserOutletAccessUpdate",
     "ProductVariant", "ProductCreate", "ProductUpdate",
     "SaleItem", "SaleCreate",
     "OrderItem", "OrderCreate", "OrderUpdate", "OrderCheckout", "OrderResponse",

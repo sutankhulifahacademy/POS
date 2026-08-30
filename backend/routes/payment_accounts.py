@@ -16,7 +16,7 @@ async def list_payment_accounts(user=Depends(get_current_user)):
 @router.post("/payment-accounts")
 async def create_payment_account(
     body: PaymentAccountCreate,
-    user=Depends(require_role("admin", "manager")),
+    user=Depends(require_permission("payment_accounts", "create")),
 ):
     aid = new_id()
     await q_exec(
@@ -37,7 +37,7 @@ async def create_payment_account(
 async def update_payment_account(
     account_id: str,
     body: PaymentAccountUpdate,
-    user=Depends(require_role("admin", "manager")),
+    user=Depends(require_permission("payment_accounts", "update")),
 ):
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     if not updates:
@@ -58,7 +58,7 @@ async def update_payment_account(
 @router.delete("/payment-accounts/{account_id}")
 async def delete_payment_account(
     account_id: str,
-    user=Depends(require_role("admin", "manager")),
+    user=Depends(require_permission("payment_accounts", "delete")),
 ):
     r = await q_exec("DELETE FROM payment_accounts WHERE id=:id", id=account_id)
     if r == 0:
