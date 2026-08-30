@@ -1,53 +1,35 @@
-Make POS app responsive for tablets and mobile
+Add paket/bundle product type with composition items
 
-Complete responsive redesign so the app adapts to tablet (768-1024px)
-and mobile screens:
+Products can now be either "regular" or "paket" (bundle). A paket is a
+collaboration of multiple products, each with its own selling price.
 
-Layout.js:
-- Sidebar collapses on tablet/mobile with hamburger menu toggle
-- Backdrop overlay when sidebar is open on small screens
-- Nav links auto-close sidebar on click
-- Main content margin only on lg+ screens
+Database:
+- products.product_type VARCHAR(20) DEFAULT 'regular'
+- products.bundle_items JSONB DEFAULT '[]' (array of
+  {product_id, name, price, quantity})
 
-POS.js:
-- Cart becomes overlay drawer on tablet (slides from right)
-- Cart toggle button with item count badge (lg:hidden)
-- Auto-open cart when product added on tablet
-- Product grid: 2→6 columns responsive (sm/md/lg/xl breakpoints)
-- Header wraps and avoids hamburger overlap
-- Touch targets increased (qty buttons 28px→36px)
-- Payment grids stack on mobile
-- Modals responsive width
+Backend:
+- ProductCreate/ProductUpdate models accept product_type + bundle_items
+- POST /products and PUT /products/{id} persist both fields
 
-Tables.js:
-- Dine-in order layout stacks vertically on tablet
-- Table grid better breakpoints
-- Quantity buttons 24px→36px
-- Checkout modal responsive
+Frontend (Products.js):
+- Product type selector: "Produk Reguler" vs "Paket / Bundle"
+- When "paket" is selected, a "Komposisi Paket" section appears:
+  - Dropdown to pick from existing regular products
+  - Auto-fills product name and unit price on selection
+  - Quantity field per bundle item
+  - Subtotal per row (price x qty)
+  - Total modal value of all bundle items
+  - Add/remove bundle item rows
+- Product table shows "Paket" badge or "Reguler" label
+- Paket products are excluded from the bundle item dropdown (no nested
+  bundles)
 
-All pages (Products, Shifts, Attendance, Inventory, PurchaseOrders,
-Transfers, Karyawan, Dashboard, Settings, Reports):
-- Tables wrapped in overflow-x-auto with min-width
-- Padding responsive (p-4 md:p-6 lg:p-8)
-- Grid breakpoints added (sm:/md:/lg:)
-- Modals responsive width (max-w-full sm:max-w-*)
-- Form grids stack on mobile
-- Touch targets increased (icon buttons p-2.5, icons size 16)
-- Line item rows (grid-cols-12) wrapped in overflow-x-auto
+The selling price of the paket is set in the existing "Harga Jual" field
+and can differ from the sum of component prices (allowing bundle
+discounts or markups).
 
-PageHeader.js:
-- flex-wrap for title + actions
-- Responsive title size (text-2xl md:text-3xl)
-- Left padding for hamburger menu on tablet
-
-CrudList.js:
-- Table overflow-x-auto with min-width
-- Modal responsive width
-
-index.css:
-- Tablet touch optimizations
-- Smooth scrolling for overlays
-- Full-width modals on mobile
+Schema file postgres_schema.sql updated with the two new columns.
 
 Generated with [Devin](https://devin.ai)
 
