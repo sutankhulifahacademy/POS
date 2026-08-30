@@ -212,6 +212,7 @@ export default function Layout() {
       <Toaster theme="dark" position="top-right" toastOptions={{ style: { background: '#111', border: '1px solid rgba(244,200,66,0.3)', color: '#F5F5F5' } }} />
 
       {/* ===== GLOBAL OUTLET BAR — di atas semua menu ===== */}
+      {/* Outlet dropdown hanya untuk Owner. Non-owner lihat nama outlet saja. */}
       {outlets.length > 0 && (
         <div className="sticky top-0 z-[60] w-full bg-[#2A1015] border-b border-[rgba(244,200,66,0.25)] px-4 py-2.5 flex items-center gap-3 shadow-lg">
           {/* Mobile sidebar toggle inside outlet bar */}
@@ -226,17 +227,23 @@ export default function Layout() {
             <Store size={18} className="text-[#F4C842]" />
             <span className="text-xs text-[#C4A484] uppercase tracking-wider font-semibold">Outlet:</span>
           </div>
-          <select
-            value={selectedOutlet || ""}
-            onChange={(e) => setSelectedOutlet(e.target.value || null)}
-            data-testid="outlet-selector"
-            className="bg-[#1A0810] border border-[rgba(244,200,66,0.4)] rounded-md px-4 py-2 text-sm text-[#F5F5F5] focus:outline-none focus:border-[#F4C842] font-medium min-w-[180px]"
-          >
-            {allAccess && <option value="">ALL OUTLETS</option>}
-            {outlets.map((o) => (
-              <option key={o.id} value={o.id}>{o.name}{o.is_main ? " (Utama)" : ""}</option>
-            ))}
-          </select>
+          {allAccess ? (
+            <select
+              value={selectedOutlet || ""}
+              onChange={(e) => setSelectedOutlet(e.target.value || null)}
+              data-testid="outlet-selector"
+              className="bg-[#1A0810] border border-[rgba(244,200,66,0.4)] rounded-md px-4 py-2 text-sm text-[#F5F5F5] focus:outline-none focus:border-[#F4C842] font-medium min-w-[180px]"
+            >
+              <option value="">ALL OUTLETS</option>
+              {outlets.map((o) => (
+                <option key={o.id} value={o.id}>{o.name}{o.is_main ? " (Utama)" : ""}</option>
+              ))}
+            </select>
+          ) : (
+            <span className="bg-[#1A0810] border border-[rgba(244,200,66,0.2)] rounded-md px-4 py-2 text-sm text-[#F5F5F5] font-medium min-w-[180px]" data-testid="outlet-display">
+              {outlets.find(o => o.id === selectedOutlet)?.name || outlets[0]?.name || "—"}
+            </span>
+          )}
           <div className="ml-auto flex items-center gap-4">
             <NotificationBell />
             <span className="text-xs text-[#C4A484] hidden sm:inline">{ROLE_LABEL[user?.role] || user?.role}</span>

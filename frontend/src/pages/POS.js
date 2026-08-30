@@ -819,7 +819,7 @@ export default function POS() {
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setShowShiftModal(false)}>
           <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-full sm:max-w-md w-full p-6 mx-4">
             <h3 className="font-serif-luxury text-2xl text-[#F5F5F5] mb-4">Buka Shift</h3>
-            <form onSubmit={openShiftFromPOS} className="space-y-4">
+            <form action="javascript:void(0)" onSubmit={openShiftFromPOS} className="space-y-4">
               <div>
                 <label className="text-xs uppercase tracking-widest text-[#C4A484] mb-1 block">Kas Awal (Modal Kembali)</label>
                 <input required type="number" value={shiftCash} onChange={(e) => setShiftCash(e.target.value)} className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" data-testid="pos-shift-cash" />

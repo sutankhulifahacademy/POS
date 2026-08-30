@@ -144,7 +144,7 @@ export default function PurchaseOrders() {
               <h2 className="font-serif-luxury text-2xl text-[#F5F5F5]">Buat Purchase Order</h2>
               <button onClick={() => setShowForm(false)} className="text-[#C4A484] hover:text-[#F5F5F5]"><X size={20} /></button>
             </div>
-            <form onSubmit={submit} className="p-6 space-y-4">
+            <form action="javascript:void(0)" onSubmit={submit} className="p-6 space-y-4">
               <div>
                 <label className="text-xs uppercase tracking-widest text-[#C4A484] mb-1 block">Supplier</label>
                 <select required value={supplierId} onChange={(e) => setSupplierId(e.target.value)} className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" data-testid="po-supplier">

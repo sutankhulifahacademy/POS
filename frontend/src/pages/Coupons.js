@@ -139,7 +139,7 @@ export default function Coupons() {
         </div>
 
         {showForm && (
-          <form onSubmit={handleSubmit} className="bg-[#331419] gold-border rounded-lg p-6 space-y-4">
+          <form action="javascript:void(0)" onSubmit={handleSubmit} className="bg-[#331419] gold-border rounded-lg p-6 space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="text-xs text-[#C4A484]">Kode Kupon</label>
@@ -231,7 +231,7 @@ export default function Coupons() {
           <h4 className="font-serif-luxury text-base text-[#F5F5F5] mb-4 flex items-center gap-2">
             <Ticket size={18} className="text-[#F4C842]" /> Validasi Kupon
           </h4>
-          <form onSubmit={handleValidate} className="flex flex-col md:flex-row gap-3 items-end">
+          <form action="javascript:void(0)" onSubmit={handleValidate} className="flex flex-col md:flex-row gap-3 items-end">
             <div className="flex-1 w-full">
               <label className="text-xs text-[#C4A484]">Kode</label>
               <input

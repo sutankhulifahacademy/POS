@@ -454,7 +454,7 @@ export default function Tables({ embedded = false }) {
               <h2 className="font-serif-luxury text-2xl text-[#F5F5F5]">Tambah Meja</h2>
               <button onClick={() => setShowForm(false)} className="text-[#C4A484]"><X size={20} /></button>
             </div>
-            <form onSubmit={saveTable} className="space-y-3">
+            <form action="javascript:void(0)" onSubmit={saveTable} className="space-y-3">
               <div>
                 <label className="text-xs uppercase tracking-widest text-[#C4A484] mb-1 block">Nama</label>
                 <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" data-testid="table-name" />

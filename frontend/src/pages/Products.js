@@ -149,7 +149,7 @@ export default function Products() {
               <h2 className="font-serif-luxury text-2xl text-[#F5F5F5]">{editing ? "Edit Produk" : "Tambah Produk"}</h2>
               <button onClick={() => setShowForm(false)} className="text-[#C4A484] hover:text-[#F5F5F5]"><X size={20} /></button>
             </div>
-            <form onSubmit={save} className="p-6 space-y-6" data-testid="product-form">
+            <form action="javascript:void(0)" onSubmit={save} className="p-6 space-y-6" data-testid="product-form">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="col-span-2">
                   <label className="text-xs uppercase tracking-widest text-[#C4A484] mb-1 block">Nama Produk *</label>

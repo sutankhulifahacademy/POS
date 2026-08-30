@@ -89,7 +89,7 @@ export default function CrudList({ title, subtitle, endpoint, fields, testPrefix
               <h2 className="font-serif-luxury text-2xl text-[#F5F5F5]">{editing ? "Edit" : "Tambah"} {title}</h2>
               <button onClick={() => setShowForm(false)} className="text-[#C4A484] hover:text-[#F5F5F5]"><X size={20} /></button>
             </div>
-            <form onSubmit={save} className="p-6 space-y-4">
+            <form action="javascript:void(0)" onSubmit={save} className="p-6 space-y-4">
               {fields.map((f) => (
                 <div key={f.key}>
                   <label className="text-xs uppercase tracking-widest text-[#C4A484] mb-1 block">{f.label} {f.required && "*"}</label>

@@ -115,7 +115,7 @@ export default function Shifts() {
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setShowOpen(false)}>
           <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-full sm:max-w-md mx-4 w-full p-6">
             <h3 className="font-serif-luxury text-2xl text-[#F5F5F5] mb-4">Buka Shift</h3>
-            <form onSubmit={doOpen} className="space-y-4">
+            <form action="javascript:void(0)" onSubmit={doOpen} className="space-y-4">
               <div>
                 <label className="text-xs uppercase tracking-widest text-[#C4A484] mb-1 block">Kas Awal (Modal Kembali)</label>
                 <input required type="number" value={openCash} onChange={(e) => setOpenCash(e.target.value)} className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" data-testid="opening-cash" />
@@ -141,7 +141,7 @@ export default function Shifts() {
               <div className="flex justify-between mb-1"><span>Kas Awal</span><span className="text-[#F5F5F5]">{formatIDR(active.opening_cash)}</span></div>
               <p className="text-xs italic mt-2">Sistem akan menghitung sales tunai dan selisih otomatis.</p>
             </div>
-            <form onSubmit={doClose} className="space-y-4">
+            <form action="javascript:void(0)" onSubmit={doClose} className="space-y-4">
               <div>
                 <label className="text-xs uppercase tracking-widest text-[#C4A484] mb-1 block">Kas Aktual di Laci</label>
                 <input required type="number" value={closeCash} onChange={(e) => setCloseCash(e.target.value)} className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" data-testid="closing-cash" />

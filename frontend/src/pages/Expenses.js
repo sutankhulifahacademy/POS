@@ -124,7 +124,7 @@ export default function Expenses() {
 
         {/* Form */}
         {showForm && (
-          <form onSubmit={handleSubmit} className="bg-[#331419] gold-border rounded-lg p-6 space-y-4">
+          <form action="javascript:void(0)" onSubmit={handleSubmit} className="bg-[#331419] gold-border rounded-lg p-6 space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="text-xs text-[#C4A484]">Outlet</label>

@@ -108,7 +108,7 @@ export default function Users() {
               </div>
               <button onClick={() => setShowForm(false)} className="text-[#C4A484] hover:text-[#F5F5F5]"><X size={20} /></button>
             </div>
-            <form onSubmit={submit} className="p-6 space-y-4" data-testid="user-form">
+            <form action="javascript:void(0)" onSubmit={submit} className="p-6 space-y-4" data-testid="user-form">
               <div>
                 <label className="text-xs uppercase tracking-widest text-[#C4A484] mb-1 block">Nama</label>
                 <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" data-testid="user-name" />
@@ -152,7 +152,7 @@ export default function Users() {
               <h3 className="font-serif-luxury text-xl text-[#F5F5F5]">Reset Password</h3>
             </div>
             <p className="text-sm text-[#C4A484] mb-4">Reset password untuk <span className="text-[#F5F5F5]">{resetting.name}</span></p>
-            <form onSubmit={doReset} className="space-y-3">
+            <form action="javascript:void(0)" onSubmit={doReset} className="space-y-3">
               <input required type="text" value={newPass} onChange={(e) => setNewPass(e.target.value)} placeholder="Password baru (min. 6 karakter)" className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" data-testid="reset-password-input" />
               <div className="flex gap-2">
                 <button type="button" onClick={() => setResetting(null)} className="flex-1 border border-[rgba(244,200,66,0.3)] text-[#F4C842] py-2 rounded-md text-xs uppercase tracking-widest">Batal</button>

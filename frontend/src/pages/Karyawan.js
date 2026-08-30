@@ -97,12 +97,13 @@ export default function Karyawan() {
     e.preventDefault();
     try {
       const payload = { ...form };
+      const oParam = outletIdForApi ? `?outlet_id=${outletIdForApi}` : "";
       if (editing) {
         delete payload.email; delete payload.password;
-        await api.put(`/users/${editing.id}`, payload);
+        await api.put(`/users/${editing.id}${oParam}`, payload);
         toast.success("Karyawan diperbarui");
       } else {
-        await api.post("/users", payload);
+        await api.post(`/users${oParam}`, payload);
         toast.success("Karyawan ditambahkan (langsung bisa login)");
       }
       setShowForm(false); load();
@@ -188,7 +189,7 @@ export default function Karyawan() {
               </div>
               <button onClick={() => setShowForm(false)} className="text-[#C4A484] hover:text-[#F5F5F5]"><X size={20} /></button>
             </div>
-            <form onSubmit={submit} className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4" data-testid="employee-form">
+            <form action="javascript:void(0)" onSubmit={submit} className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4" data-testid="employee-form">
               {/* Photo & KTP uploads */}
               <div className="col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="text-center">
@@ -326,7 +327,7 @@ export default function Karyawan() {
           <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-sm w-full p-6">
             <div className="flex items-center gap-2 mb-4"><KeyRound size={18} className="text-[#F4C842]" /><h3 className="font-serif-luxury text-xl text-[#F5F5F5]">Reset Password</h3></div>
             <p className="text-sm text-[#C4A484] mb-4">Reset password untuk <span className="text-[#F5F5F5]">{resetting.name}</span></p>
-            <form onSubmit={doReset} className="space-y-3">
+            <form action="javascript:void(0)" onSubmit={doReset} className="space-y-3">
               <input required type="text" value={newPass} onChange={(e) => setNewPass(e.target.value)} placeholder="Password baru (min. 6 karakter)" className="w-full bg-[#1A0810] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" data-testid="reset-password-input" />
               <div className="flex gap-2">
                 <button type="button" onClick={() => setResetting(null)} className="flex-1 border border-[rgba(244,200,66,0.3)] text-[#F4C842] py-2 rounded-md text-xs uppercase">Batal</button>

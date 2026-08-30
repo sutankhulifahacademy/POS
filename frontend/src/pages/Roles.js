@@ -1243,7 +1243,7 @@ export default function Roles() {
           icon={<Shield size={18} strokeWidth={1.5} className="text-[#F4C842]" />}
           onClose={() => setShowCreate(false)}
         >
-          <form onSubmit={submitCreate} className="p-6 space-y-4" data-testid="create-role-form">
+          <form action="javascript:void(0)" onSubmit={submitCreate} className="p-6 space-y-4" data-testid="create-role-form">
             <div>
               <label className={labelCls}>Name (lowercase)</label>
               <input
@@ -1311,7 +1311,7 @@ export default function Roles() {
           icon={<Edit size={18} strokeWidth={1.5} className="text-[#F4C842]" />}
           onClose={() => setShowEdit(false)}
         >
-          <form onSubmit={submitEdit} className="p-6 space-y-4" data-testid="edit-role-form">
+          <form action="javascript:void(0)" onSubmit={submitEdit} className="p-6 space-y-4" data-testid="edit-role-form">
             <div>
               <label className={labelCls}>Label</label>
               <input

@@ -112,7 +112,7 @@ export default function Payroll() {
         </div>
 
         {showForm && (
-          <form onSubmit={handleCreate} className="bg-[#331419] gold-border rounded-lg p-6 space-y-4">
+          <form action="javascript:void(0)" onSubmit={handleCreate} className="bg-[#331419] gold-border rounded-lg p-6 space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="text-xs text-[#C4A484]">Tanggal Mulai</label>

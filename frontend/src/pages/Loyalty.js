@@ -166,6 +166,7 @@ export default function Loyalty() {
         {adjustTarget && (
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={() => setAdjustTarget(null)}>
             <form
+              action="javascript:void(0)"
               onSubmit={handleAdjust}
               onClick={(e) => e.stopPropagation()}
               className="bg-[#331419] gold-border rounded-lg p-6 w-full max-w-md space-y-4"

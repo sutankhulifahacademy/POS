@@ -66,7 +66,7 @@ export default function Login() {
             <p className="mt-3 text-[#C4A484] text-sm">Kelola bisnis Anda dengan ketenangan dan ketelitian.</p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-5" data-testid="login-form">
+          <form action="javascript:void(0)" onSubmit={handleSubmit} className="space-y-5" data-testid="login-form">
             <div>
               <label className="text-xs tracking-widest uppercase text-[#C4A484] mb-2 block">Email</label>
               <input

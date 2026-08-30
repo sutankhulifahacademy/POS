@@ -85,7 +85,7 @@ export default function Settings() {
     <div>
       <PageHeader title="Pengaturan" subtitle="Kustomisasi bisnis, kategori, dan preferensi sistem" />
       <div className="p-4 md:p-6 lg:p-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-        <form onSubmit={saveBusiness} className="bg-[#331419] gold-border rounded-lg p-6 space-y-4" data-testid="business-form">
+        <form action="javascript:void(0)" onSubmit={saveBusiness} className="bg-[#331419] gold-border rounded-lg p-6 space-y-4" data-testid="business-form">
           <h3 className="font-serif-luxury text-xl text-[#F5F5F5]">Profil Bisnis</h3>
 
           {/* Logo Upload */}

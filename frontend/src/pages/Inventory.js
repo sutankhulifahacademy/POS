@@ -50,7 +50,7 @@ export default function Inventory() {
 
         {tab === "adjust" ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
-            <form onSubmit={submit} className="bg-[#331419] gold-border rounded-lg p-6 space-y-4" data-testid="adjust-form">
+            <form action="javascript:void(0)" onSubmit={submit} className="bg-[#331419] gold-border rounded-lg p-6 space-y-4" data-testid="adjust-form">
               <h3 className="font-serif-luxury text-xl text-[#F5F5F5]">Sesuaikan Stok</h3>
               <div>
                 <label className="text-xs uppercase tracking-widest text-[#C4A484] mb-1 block">Produk</label>

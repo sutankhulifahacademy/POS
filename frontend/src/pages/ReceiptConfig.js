@@ -118,7 +118,7 @@ export default function ReceiptConfig() {
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Form */}
-            <form onSubmit={handleSave} className="bg-[#331419] gold-border rounded-lg p-6 space-y-6">
+            <form action="javascript:void(0)" onSubmit={handleSave} className="bg-[#331419] gold-border rounded-lg p-6 space-y-6">
               <div>
                 <h3 className="font-serif-luxury text-lg text-[#F5F5F5] mb-4">Tampilan Struk</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
