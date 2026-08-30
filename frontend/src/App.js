@@ -2,6 +2,7 @@ import "@/index.css";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ThemeProvider } from "./context/ThemeContext";
+import { OutletProvider } from "./context/OutletContext";
 import Login from "./pages/Login";
 import Layout, { canAccess, defaultLandingFor } from "./components/Layout";
 import Dashboard from "./pages/Dashboard";
@@ -52,6 +53,7 @@ function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
+        <OutletProvider>
         <BrowserRouter>
           <Routes>
           <Route path="/login" element={<Public><Login /></Public>} />
@@ -78,6 +80,7 @@ function App() {
           <Route path="*" element={<HomeRedirect />} />
         </Routes>
         </BrowserRouter>
+      </OutletProvider>
       </AuthProvider>
     </ThemeProvider>
   );

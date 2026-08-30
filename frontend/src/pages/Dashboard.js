@@ -18,6 +18,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import PageHeader from "../components/PageHeader";
+import { useOutlet } from "../context/OutletContext";
 
 function MetricCard({
   icon: Icon,
@@ -97,6 +98,7 @@ export default function Dashboard() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const { outletIdForApi } = useOutlet();
 
   useEffect(() => {
     let mounted = true;
@@ -106,8 +108,9 @@ export default function Dashboard() {
       setError("");
 
       try {
+        const outletParam = outletIdForApi ? `&outlet_id=${outletIdForApi}` : "";
         const response = await api.get(
-          `/reports/dashboard?period=${period}`
+          `/reports/dashboard?period=${period}${outletParam}`
         );
 
         if (mounted) {
@@ -134,7 +137,7 @@ export default function Dashboard() {
     return () => {
       mounted = false;
     };
-  }, [period]);
+  }, [period, outletIdForApi]);
 
   const selectedPeriod =
     PERIOD_OPTIONS.find((item) => item.value === period) ||
@@ -249,6 +252,42 @@ export default function Dashboard() {
               />
 
             </div>
+
+            {/* =====================================
+                BRANCH COMPARISON (only when ALL OUTLETS)
+            ====================================== */}
+            {data.branch_comparison && data.branch_comparison.length > 0 && (
+              <div className="bg-[#331419] gold-border rounded-lg p-6">
+                <div className="mb-4">
+                  <p className="text-xs uppercase tracking-widest text-[#C4A484]">Perbandingan Outlet</p>
+                  <h3 className="font-serif-luxury text-2xl text-[#F5F5F5] mt-1">Performa Cabang</h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-[rgba(244,200,66,0.2)]">
+                        <th className="text-left py-2 px-3 text-[#C4A484]">#</th>
+                        <th className="text-left py-2 px-3 text-[#C4A484]">Outlet</th>
+                        <th className="text-right py-2 px-3 text-[#C4A484]">Pendapatan</th>
+                        <th className="text-right py-2 px-3 text-[#C4A484]">Transaksi</th>
+                        <th className="text-right py-2 px-3 text-[#C4A484]">Rata-rata</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.branch_comparison.map((b, i) => (
+                        <tr key={b.outlet_id} className="border-b border-[rgba(244,200,66,0.08)]">
+                          <td className="py-2 px-3 text-[#F4C842]">{i + 1}</td>
+                          <td className="py-2 px-3 text-[#F5F5F5]">{b.outlet_name}</td>
+                          <td className="py-2 px-3 text-right text-[#F5F5F5]">{formatIDR(b.revenue)}</td>
+                          <td className="py-2 px-3 text-right text-[#C4A484]">{b.transactions}</td>
+                          <td className="py-2 px-3 text-right text-[#C4A484]">{formatIDR(b.avg_transaction)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
 
             {/* =====================================
                 CHART + LOW STOCK

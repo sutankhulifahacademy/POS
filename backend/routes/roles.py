@@ -101,7 +101,7 @@ async def get_role(role_id: str, user=Depends(get_current_user)):
 
 
 @router.post("/roles")
-async def create_role(body: RoleCreate, user=Depends(require_role("admin"))):
+async def create_role(body: RoleCreate, user=Depends(require_role("owner"))):
     """Create a new custom role."""
     name = body.name.strip().lower().replace(" ", "_")
     existing = await q_one("SELECT id FROM roles WHERE name=:n", n=name)
@@ -116,7 +116,7 @@ async def create_role(body: RoleCreate, user=Depends(require_role("admin"))):
 
 
 @router.put("/roles/{role_id}")
-async def update_role(role_id: str, body: RoleUpdate, user=Depends(require_role("admin"))):
+async def update_role(role_id: str, body: RoleUpdate, user=Depends(require_role("owner"))):
     """Update a role's label/description/active status. System roles cannot be deactivated."""
     role = await q_one("SELECT * FROM roles WHERE id=:id", id=role_id)
     if not role:
@@ -133,7 +133,7 @@ async def update_role(role_id: str, body: RoleUpdate, user=Depends(require_role(
 
 
 @router.put("/roles/{role_id}/permissions")
-async def update_role_permissions(role_id: str, body: RolePermissionsUpdate, user=Depends(require_role("admin"))):
+async def update_role_permissions(role_id: str, body: RolePermissionsUpdate, user=Depends(require_role("owner"))):
     """Bulk update permissions for a role. Replaces existing permissions."""
     role = await q_one("SELECT * FROM roles WHERE id=:id", id=role_id)
     if not role:
@@ -150,7 +150,7 @@ async def update_role_permissions(role_id: str, body: RolePermissionsUpdate, use
 
 
 @router.delete("/roles/{role_id}")
-async def delete_role(role_id: str, user=Depends(require_role("admin"))):
+async def delete_role(role_id: str, user=Depends(require_role("owner"))):
     """Delete a custom role. System roles cannot be deleted."""
     role = await q_one("SELECT * FROM roles WHERE id=:id", id=role_id)
     if not role:

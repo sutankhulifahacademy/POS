@@ -2,7 +2,7 @@
 from typing import Literal, Optional, List
 
 
-UserRole = Literal["admin", "manager", "supervisor", "kasir"]
+UserRole = Literal["owner", "admin", "manager", "supervisor", "kasir"]
 
 
 class UserOutletAccessUpdate(BaseModel):

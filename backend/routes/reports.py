@@ -67,6 +67,7 @@ def _outlet_filter(outlet_id: Optional[str]):
 @router.get("/reports/dashboard")
 async def report_dashboard(
     period: Literal["daily", "weekly", "monthly", "yearly"] = "weekly",
+    outlet_id: Optional[str] = None,
     user=Depends(get_current_user)
 ):
     """
@@ -77,12 +78,27 @@ async def report_dashboard(
     - yearly  : tahun berjalan, chart per bulan
 
     Semua batas waktu menggunakan Asia/Jakarta.
+    Support outlet_id filter untuk multi-outlet.
     """
 
     from zoneinfo import ZoneInfo
 
     jakarta = ZoneInfo("Asia/Jakarta")
     now_local = datetime.now(jakarta)
+
+    # Build outlet filter — owner can see all or filter, others see only their outlets
+    outlet_clause = ""
+    if outlet_id:
+        outlet_clause = " AND outlet_id = :outlet_id "
+    else:
+        # Non-owner: filter to their outlets
+        if user["role"] != "owner":
+            user_outlets = user.get("outlet_ids", [])
+            if user_outlets:
+                ids_sql = ",".join(f"'{oid}'" for oid in user_outlets)
+                outlet_clause = f" AND outlet_id IN ({ids_sql}) "
+            else:
+                outlet_clause = " AND 1=0 "
 
     # ---------------------------------------------------------
     # PERIOD RANGE
@@ -94,7 +110,6 @@ async def report_dashboard(
         end_local = start_local + timedelta(days=1)
 
     elif period == "weekly":
-        # 7 hari termasuk hari ini
         start_local = (
             now_local.replace(
                 hour=0, minute=0, second=0, microsecond=0
@@ -133,25 +148,29 @@ async def report_dashboard(
             year=start_local.year + 1
         )
 
+    query_params = {"start_at": start_local, "end_at": end_local}
+    if outlet_id:
+        query_params["outlet_id"] = outlet_id
+
     # ---------------------------------------------------------
     # SUMMARY
     # ---------------------------------------------------------
-    stats = await q_one("""
+    stats = await q_one(f"""
         SELECT
             COALESCE(SUM(total), 0) AS revenue,
             COUNT(*) AS transactions
         FROM sales
         WHERE created_at >= :start_at
           AND created_at < :end_at
+          {outlet_clause}
     """,
-        start_at=start_local,
-        end_at=end_local
+        **query_params
     )
 
     # ---------------------------------------------------------
     # ITEMS SOLD
     # ---------------------------------------------------------
-    items_period = await q_one("""
+    items_period = await q_one(f"""
         SELECT
             COALESCE(
                 SUM(
@@ -163,9 +182,9 @@ async def report_dashboard(
              jsonb_array_elements(items) elem
         WHERE created_at >= :start_at
           AND created_at < :end_at
+          {outlet_clause}
     """,
-        start_at=start_local,
-        end_at=end_local
+        **query_params
     )
 
     # ---------------------------------------------------------
@@ -182,22 +201,38 @@ async def report_dashboard(
     """)
 
     # ---------------------------------------------------------
-    # LOW STOCK
+    # LOW STOCK — use outlet_stocks when outlet_id specified
     # ---------------------------------------------------------
-    low_stock = await q_all("""
-        SELECT *
-        FROM products
-        WHERE stock <= low_stock_threshold
-        ORDER BY stock ASC
-        LIMIT 10
-    """)
+    if outlet_id:
+        low_stock = await q_all("""
+            SELECT p.id, p.name, p.sku, p.low_stock_threshold,
+                   os.quantity AS stock, o.name AS outlet_name
+            FROM products p
+            JOIN outlet_stocks os ON os.product_id = p.id
+            JOIN outlets o ON o.id = os.outlet_id
+            WHERE os.outlet_id = :outlet_id
+              AND os.quantity <= p.low_stock_threshold
+            ORDER BY os.quantity ASC
+            LIMIT 10
+        """, outlet_id=outlet_id)
+    else:
+        low_stock = await q_all("""
+            SELECT p.id, p.name, p.sku, p.low_stock_threshold,
+                   COALESCE(os.quantity, p.stock) AS stock, o.name AS outlet_name
+            FROM products p
+            LEFT JOIN outlet_stocks os ON os.product_id = p.id
+            LEFT JOIN outlets o ON o.id = os.outlet_id
+            WHERE COALESCE(os.quantity, p.stock) <= p.low_stock_threshold
+            ORDER BY COALESCE(os.quantity, p.stock) ASC
+            LIMIT 10
+        """)
 
     # ---------------------------------------------------------
     # CHART
     # ---------------------------------------------------------
     if period == "daily":
 
-        chart_rows = await q_all("""
+        chart_rows = await q_all(f"""
             SELECT
                 EXTRACT(
                     HOUR FROM (created_at AT TIME ZONE 'Asia/Jakarta')
@@ -207,11 +242,11 @@ async def report_dashboard(
             FROM sales
             WHERE created_at >= :start_at
               AND created_at < :end_at
+              {outlet_clause}
             GROUP BY bucket
             ORDER BY bucket
         """,
-            start_at=start_local,
-            end_at=end_local
+            **query_params
         )
 
         chart = [
@@ -225,7 +260,7 @@ async def report_dashboard(
 
     elif period in ("weekly", "monthly"):
 
-        chart_rows = await q_all("""
+        chart_rows = await q_all(f"""
             SELECT
                 DATE(created_at AT TIME ZONE 'Asia/Jakarta') AS bucket,
                 SUM(total) AS revenue,
@@ -233,11 +268,11 @@ async def report_dashboard(
             FROM sales
             WHERE created_at >= :start_at
               AND created_at < :end_at
+              {outlet_clause}
             GROUP BY bucket
             ORDER BY bucket
         """,
-            start_at=start_local,
-            end_at=end_local
+            **query_params
         )
 
         chart = [
@@ -251,7 +286,7 @@ async def report_dashboard(
 
     else:  # yearly
 
-        chart_rows = await q_all("""
+        chart_rows = await q_all(f"""
             SELECT
                 EXTRACT(
                     MONTH FROM (created_at AT TIME ZONE 'Asia/Jakarta')
@@ -261,11 +296,11 @@ async def report_dashboard(
             FROM sales
             WHERE created_at >= :start_at
               AND created_at < :end_at
+              {outlet_clause}
             GROUP BY bucket
             ORDER BY bucket
         """,
-            start_at=start_local,
-            end_at=end_local
+            **query_params
         )
 
         month_names = [
@@ -285,7 +320,7 @@ async def report_dashboard(
     # ---------------------------------------------------------
     # TOP PRODUCTS - SESUAI PERIODE
     # ---------------------------------------------------------
-    top = await q_all("""
+    top = await q_all(f"""
         SELECT
             elem->>'product_id' AS product_id,
             COALESCE(
@@ -323,6 +358,7 @@ async def report_dashboard(
 
         WHERE created_at >= :start_at
           AND created_at < :end_at
+          {outlet_clause}
 
         GROUP BY
             elem->>'product_id',
@@ -331,15 +367,47 @@ async def report_dashboard(
         ORDER BY revenue DESC
         LIMIT 5
     """,
-        start_at=start_local,
-        end_at=end_local
+        **query_params
     )
+
+    # ---------------------------------------------------------
+    # BRANCH COMPARISON (only when no specific outlet selected)
+    # ---------------------------------------------------------
+    branch_comparison = []
+    if not outlet_id:
+        branch_rows = await q_all(f"""
+            SELECT
+                o.id AS outlet_id,
+                o.name AS outlet_name,
+                COALESCE(SUM(s.total), 0) AS revenue,
+                COUNT(s.id) AS transactions
+            FROM outlets o
+            LEFT JOIN sales s ON s.outlet_id = o.id
+                AND s.created_at >= :start_at
+                AND s.created_at < :end_at
+            GROUP BY o.id, o.name
+            ORDER BY revenue DESC
+        """,
+            start_at=start_local,
+            end_at=end_local
+        )
+        branch_comparison = [
+            {
+                "outlet_id": str(row["outlet_id"]),
+                "outlet_name": row["outlet_name"],
+                "revenue": float(row["revenue"] or 0),
+                "transactions": int(row["transactions"] or 0),
+                "avg_transaction": float(row["revenue"] or 0) / max(int(row["transactions"] or 0), 1),
+            }
+            for row in branch_rows
+        ]
 
     # ---------------------------------------------------------
     # RESPONSE
     # ---------------------------------------------------------
     return {
         "period": period,
+        "outlet_id": outlet_id,
 
         "period_start": start_local.isoformat(),
         "period_end": end_local.isoformat(),
@@ -364,6 +432,8 @@ async def report_dashboard(
             }
             for item in top
         ],
+
+        "branch_comparison": branch_comparison,
     }
 
 
@@ -917,6 +987,7 @@ async def report_profit_loss(
 async def report_shifts(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
+    outlet_id: Optional[str] = None,
     user=Depends(get_current_user)
 ):
     """Shift reconciliation report (default last 30 days)."""
@@ -937,16 +1008,32 @@ async def report_shifts(
             hour=23, minute=59, second=59, microsecond=999999
         ) + timedelta(microseconds=1)
 
-    params = {"start_at": start_local, "end_at": end_local}
+    # Build outlet filter
+    outlet_clause = ""
+    if outlet_id:
+        outlet_clause = " AND outlet_id = :outlet_id "
+    elif user["role"] != "owner":
+        user_outlets = user.get("outlet_ids", [])
+        if user_outlets:
+            ids_sql = ",".join(f"'{oid}'" for oid in user_outlets)
+            outlet_clause = f" AND outlet_id IN ({ids_sql}) "
+        else:
+            outlet_clause = " AND 1=0 "
 
-    rows = await q_all("""
+    params = {"start_at": start_local, "end_at": end_local}
+    if outlet_id:
+        params["outlet_id"] = outlet_id
+
+    rows = await q_all(f"""
         SELECT
             id, cashier_name, status, opened_at, closed_at,
             opening_cash, cash_sales, non_cash_sales,
-            expected_cash, actual_cash, difference, transaction_count
+            expected_cash, actual_cash, difference, transaction_count,
+            outlet_id
         FROM shifts
         WHERE opened_at >= :start_at
           AND opened_at < :end_at
+          {outlet_clause}
         ORDER BY opened_at DESC
     """, **params)
 
@@ -964,6 +1051,7 @@ async def report_shifts(
             "actual_cash": float(row["actual_cash"] or 0),
             "difference": float(row["difference"] or 0),
             "transaction_count": int(row["transaction_count"] or 0),
+            "outlet_id": str(row["outlet_id"]) if row.get("outlet_id") else None,
         }
         for row in rows
     ]
@@ -1304,4 +1392,137 @@ async def report_payment_reconciliation(
         "transfer_detail": transfer_detail,
         "qris_detail": qris_detail,
         "by_day": by_day,
+    }
+
+
+# ============ 7. SALES MONITORING (real-time feed) ============
+@router.get("/reports/sales-monitor")
+async def sales_monitor(
+    limit: int = 50,
+    outlet_id: Optional[str] = None,
+    user=Depends(get_current_user)
+):
+    """Recent sales for real-time monitoring. Returns latest transactions with outlet info."""
+    # Build outlet filter
+    if outlet_id:
+        o_clause = " AND s.outlet_id = :outlet_id "
+        params = {"outlet_id": outlet_id}
+    elif user["role"] != "owner":
+        user_outlets = user.get("outlet_ids", [])
+        if user_outlets:
+            ids_sql = ",".join(f"'{oid}'" for oid in user_outlets)
+            o_clause = f" AND s.outlet_id IN ({ids_sql}) "
+            params = {}
+        else:
+            return {"sales": [], "count": 0}
+    else:
+        o_clause = ""
+        params = {}
+
+    rows = await q_all(f"""
+        SELECT
+            s.id, s.invoice_no, s.total, s.payment_method, s.source,
+            s.cashier_name, s.created_at, s.outlet_id,
+            o.name AS outlet_name,
+            s.table_name
+        FROM sales s
+        LEFT JOIN outlets o ON o.id = s.outlet_id
+        WHERE 1=1
+          {o_clause}
+        ORDER BY s.created_at DESC
+        LIMIT :limit
+    """, limit=limit, **params)
+
+    sales = [
+        {
+            "id": str(row["id"]),
+            "invoice_no": row["invoice_no"],
+            "total": float(row["total"] or 0),
+            "payment_method": row["payment_method"],
+            "source": row["source"],
+            "cashier_name": row["cashier_name"],
+            "outlet_id": str(row["outlet_id"]) if row.get("outlet_id") else None,
+            "outlet_name": row["outlet_name"],
+            "table_name": row["table_name"],
+            "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+        }
+        for row in rows
+    ]
+
+    return {"sales": sales, "count": len(sales)}
+
+
+# ============ 8. BRANCH COMPARISON ============
+@router.get("/reports/branch-comparison")
+async def branch_comparison(
+    period: Literal["daily", "weekly", "monthly", "yearly"] = "weekly",
+    user=Depends(get_current_user)
+):
+    """Compare performance across all outlets."""
+    now_local = datetime.now(JAKARTA)
+
+    if period == "daily":
+        start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_local = start_local + timedelta(days=1)
+    elif period == "weekly":
+        start_local = (now_local.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=6))
+        end_local = now_local.replace(hour=23, minute=59, second=59, microsecond=999999) + timedelta(microseconds=1)
+    elif period == "monthly":
+        start_local = now_local.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        if start_local.month == 12:
+            end_local = start_local.replace(year=start_local.year + 1, month=1)
+        else:
+            end_local = start_local.replace(month=start_local.month + 1)
+    else:
+        start_local = now_local.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        end_local = start_local.replace(year=start_local.year + 1)
+
+    # Build outlet filter for non-owner
+    if user["role"] != "owner":
+        user_outlets = user.get("outlet_ids", [])
+        if not user_outlets:
+            return {"outlets": [], "period": period}
+        ids_sql = ",".join(f"'{oid}'" for oid in user_outlets)
+        o_clause = f" AND s.outlet_id IN ({ids_sql}) "
+    else:
+        o_clause = ""
+
+    rows = await q_all(f"""
+        SELECT
+            o.id AS outlet_id,
+            o.name AS outlet_name,
+            COALESCE(SUM(s.total), 0) AS revenue,
+            COUNT(s.id) AS transactions,
+            COALESCE(SUM(s.discount), 0) AS total_discount,
+            COALESCE(SUM(s.tax), 0) AS total_tax
+        FROM outlets o
+        LEFT JOIN sales s ON s.outlet_id = o.id
+            AND s.created_at >= :start_at
+            AND s.created_at < :end_at
+            {o_clause}
+        WHERE 1=1
+        GROUP BY o.id, o.name
+        ORDER BY revenue DESC
+    """, start_at=start_local, end_at=end_local)
+
+    outlets_data = []
+    for i, row in enumerate(rows):
+        tx = int(row["transactions"] or 0)
+        rev = float(row["revenue"] or 0)
+        outlets_data.append({
+            "rank": i + 1,
+            "outlet_id": str(row["outlet_id"]),
+            "outlet_name": row["outlet_name"],
+            "revenue": rev,
+            "transactions": tx,
+            "avg_transaction": rev / max(tx, 1),
+            "total_discount": float(row["total_discount"] or 0),
+            "total_tax": float(row["total_tax"] or 0),
+        })
+
+    return {
+        "period": period,
+        "period_start": start_local.isoformat(),
+        "period_end": end_local.isoformat(),
+        "outlets": outlets_data,
     }

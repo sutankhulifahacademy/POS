@@ -42,6 +42,7 @@ from routes.roles import router as roles_router
 from routes.menus import router as menus_router
 from routes.attendance import router as attendance_router
 from routes.uploads import router as uploads_router
+from routes.realtime import router as realtime_router
 
 # ============ APP ============
 app = FastAPI(title="Sutan Khulifah POS API (PostgreSQL)")
@@ -73,6 +74,7 @@ app.include_router(roles_router, prefix="/api")
 app.include_router(menus_router, prefix="/api")
 app.include_router(attendance_router, prefix="/api")
 app.include_router(uploads_router, prefix="/api")
+app.include_router(realtime_router, prefix="/api")
 
 # ============ CORS ============
 app.add_middleware(

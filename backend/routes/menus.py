@@ -64,6 +64,13 @@ async def delete_menu(menu_id: str, user=Depends(require_permission("roles", "ma
 @router.get("/menus/my-menus")
 async def get_my_menus(user=Depends(get_current_user)):
     """Get menus visible to the current user based on their role."""
+    # Owner and admin see all active menus
+    if user["role"] in ("owner", "admin"):
+        rows = await q_all(
+            "SELECT * FROM menus WHERE is_active = TRUE ORDER BY sort_order ASC, label ASC"
+        )
+        return clean_list(rows)
+
     role = await q_one("SELECT id FROM roles WHERE name=:n", n=user["role"])
     if not role:
         return []

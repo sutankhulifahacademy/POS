@@ -36,7 +36,7 @@ class RegisterIn(BaseModel):
     email: EmailStr
     password: str
     name: str
-    role: Literal["admin", "manager", "kasir"] = "kasir"
+    role: Literal["owner", "admin", "manager", "supervisor", "kasir"] = "kasir"
 
 
 class LoginIn(BaseModel):
@@ -99,15 +99,15 @@ async def get_current_user(request: Request):
 
         result = clean(user)
 
-        # Load outlet access for non-admin users
-        if result["role"] != "admin":
+        # Load outlet access — only owner gets all outlets
+        if result["role"] == "owner":
+            result["outlet_ids"] = []  # owner = all outlets
+        else:
             outlets = await q_all(
                 "SELECT outlet_id FROM user_outlet_access WHERE user_id = :uid",
                 uid=result["id"],
             )
             result["outlet_ids"] = [str(o["outlet_id"]) for o in outlets]
-        else:
-            result["outlet_ids"] = []  # admin = all outlets
 
         return result
 
@@ -153,8 +153,8 @@ def require_permission(module: str, action: str):
     async def dependency(
         user: dict = Depends(get_current_user),
     ):
-        # Admin bypasses all permission checks
-        if user["role"] == "admin":
+        # Owner bypasses all permission checks
+        if user["role"] == "owner":
             return user
 
         # Look up role_permissions for this user's role
@@ -195,7 +195,7 @@ def require_outlet_access(outlet_id_param: str = "outlet_id"):
         request: Request,
         user: dict = Depends(get_current_user),
     ):
-        if user["role"] == "admin":
+        if user["role"] == "owner":
             return user
 
         # Get outlet_id from query params, path params, or body
@@ -231,8 +231,8 @@ def require_outlet_access(outlet_id_param: str = "outlet_id"):
 
 
 async def get_user_outlets(user: dict) -> list:
-    """Get list of outlet IDs the user can access. Empty = all outlets (admin)."""
-    if user["role"] == "admin":
+    """Get list of outlet IDs the user can access. Empty = all outlets (owner)."""
+    if user["role"] == "owner":
         return []  # all outlets
     return user.get("outlet_ids", [])
 
@@ -240,10 +240,10 @@ async def get_user_outlets(user: dict) -> list:
 async def filter_outlets_for_user(user: dict, sql_filter: str = "outlet_id") -> str:
     """
     Returns SQL filter clause for outlet scoping.
-    For admin: returns empty string (no filter).
+    For owner: returns empty string (no filter).
     For others: returns 'AND {sql_filter} IN (...)' with their outlet_ids.
     """
-    if user["role"] == "admin":
+    if user["role"] == "owner":
         return ""
 
     outlet_ids = user.get("outlet_ids", [])

@@ -214,24 +214,57 @@ async def create_sale(
             "Sale berhasil diproses tetapi data transaksi tidak ditemukan"
         )
 
+    # Emit real-time event
+    try:
+        from routes.realtime import emit_new_sale
+        await emit_new_sale({
+            "id": str(row["id"]),
+            "invoice_no": row["invoice_no"],
+            "total": float(row["total"] or 0),
+            "payment_method": row["payment_method"],
+            "cashier_name": row["cashier_name"],
+            "outlet_name": row.get("outlet_name"),
+        }, outlet_id=str(row["outlet_id"]) if row.get("outlet_id") else None)
+    except Exception:
+        pass  # Don't fail sale if realtime fails
+
     return clean(row)
 
 
 @router.get("/sales")
 async def list_sales(
     user=Depends(get_current_user),
-    limit: int = 200
+    limit: int = 200,
+    outlet_id: Optional[str] = None
 ):
+    # Build outlet filter
+    if outlet_id:
+        o_clause = " AND outlet_id = :outlet_id "
+        params = {"l": limit, "outlet_id": outlet_id}
+    elif user["role"] != "owner":
+        user_outlets = user.get("outlet_ids", [])
+        if user_outlets:
+            ids_sql = ",".join(f"'{oid}'" for oid in user_outlets)
+            o_clause = f" AND outlet_id IN ({ids_sql}) "
+            params = {"l": limit}
+        else:
+            return []
+    else:
+        o_clause = ""
+        params = {"l": limit}
+
     rows = await q_all(
-        """
+        f"""
         SELECT
             *,
             change_amount AS change
         FROM sales
+        WHERE 1=1
+          {o_clause}
         ORDER BY created_at DESC
         LIMIT :l
         """,
-        l=limit
+        **params
     )
 
     return clean_list(rows)

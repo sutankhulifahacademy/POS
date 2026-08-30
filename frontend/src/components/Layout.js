@@ -25,6 +25,7 @@ import {
 import { Toaster } from "sonner";
 import api from "../lib/api";
 import { useTheme } from "../context/ThemeContext";
+import { useOutlet } from "../context/OutletContext";
 
 const DEFAULT_LOGO = "https://customer-assets-gfyr7b9c.emergentagent.net/job_inventory-hub-3002/artifacts/3xyqa9jm_WhatsApp%20Image%202026-08-25%20at%2009.54.11.jpeg";
 
@@ -96,11 +97,12 @@ export function defaultLandingFor(role) {
   return "/dashboard";
 }
 
-const ROLE_LABEL = { admin: "Owner / Admin", manager: "Manager", kasir: "Kasir", supervisor: "Supervisor" };
+const ROLE_LABEL = { owner: "Owner", admin: "Admin", manager: "Manager", kasir: "Kasir", supervisor: "Supervisor" };
 
 export default function Layout() {
   const { user, logout } = useAuth();
   const { business } = useTheme();
+  const { outlets, selectedOutlet, setSelectedOutlet, allAccess } = useOutlet();
   const nav = useNavigate();
   const [menus, setMenus] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -212,6 +214,29 @@ export default function Layout() {
         </div>
       </aside>
       <main className="flex-1 lg:ml-64 min-h-screen">
+        {/* Outlet Selector Bar */}
+        {outlets.length > 0 && (
+          <div className="sticky top-0 z-30 bg-[#2A1015] border-b border-[rgba(244,200,66,0.15)] px-4 py-2 flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <Store size={16} className="text-[#F4C842]" />
+              <span className="text-xs text-[#C4A484] uppercase tracking-wider">Outlet:</span>
+            </div>
+            <select
+              value={selectedOutlet || ""}
+              onChange={(e) => setSelectedOutlet(e.target.value || null)}
+              data-testid="outlet-selector"
+              className="bg-[#1A0810] border border-[rgba(244,200,66,0.3)] rounded-md px-3 py-1.5 text-sm text-[#F5F5F5] focus:outline-none focus:border-[#F4C842]"
+            >
+              {allAccess && <option value="">ALL OUTLETS</option>}
+              {outlets.map((o) => (
+                <option key={o.id} value={o.id}>{o.name}</option>
+              ))}
+            </select>
+            <div className="ml-auto flex items-center gap-2">
+              <span className="text-xs text-[#C4A484]">{ROLE_LABEL[user?.role] || user?.role}</span>
+            </div>
+          </div>
+        )}
         <Outlet />
       </main>
     </div>

@@ -1,76 +1,99 @@
-Phase 2 & 3: Multi-outlet database + authorization system
+Phase 4 & 5: Multi-outlet reporting, realtime, owner role
 
-## Phase 2 — Database Changes
+## Role Hierarchy Change
 
-New tables:
-- user_outlet_access (user_id, outlet_id) — multi-outlet authorization
-- audit_logs — audit trail for all important actions
-- leave_requests — leave/permission management
-- alerts — notification/alert center
+- NEW: owner role — akses SEMUA outlet, bypass semua permission
+- CHANGED: admin role — per-cabang, akses penuh HANYA ke outlet yang assigned
+- owner@republikdimsum.id sekarang role=owner (sebelumnya admin)
 
-New columns:
-- attendance.outlet_id — tie attendance to outlet
-- purchase_orders.outlet_id — tie PO to outlet
+## Phase 4: Multi-Outlet Reporting
 
-New indexes:
-- idx_attendance_outlet, idx_purchase_orders_outlet
-- idx_orders_outlet, idx_tables_outlet
-- idx_stock_movements_outlet, idx_payment_accounts_outlet
-- All indexes for new tables
+### Dashboard (GET /reports/dashboard)
+- Support outlet_id query parameter
+- Owner: ALL OUTLETS atau filter ke outlet specific
+- Non-owner: auto-filter ke outlet yang diizinkan
+- Low-stock sekarang pakai outlet_stocks (per outlet) bukan products.stock (global)
+- NEW: branch_comparison field — ranking outlet by revenue
+- NEW: outlet_id field di response
 
-Migration: backend/sql/migration_v2_multi_outlet.sql (executed)
-Schema: backend/sql/postgres_schema.sql (updated)
+### Reports/Shifts (GET /reports/shifts)
+- Support outlet_id query parameter
+- Auto-filter untuk non-owner
+- outlet_id ditambahkan ke response
 
-Seeded user_outlet_access:
-- Admin → all outlets
-- Other users → main outlet
+### Sales Monitoring (NEW: GET /reports/sales-monitor)
+- Real-time sales feed dengan outlet info
+- Filter by outlet_id
+- Returns: invoice_no, total, payment_method, cashier, outlet_name, timestamp
 
-## Phase 3 — Authorization System
+### Branch Comparison (NEW: GET /reports/branch-comparison)
+- Compare all outlets: revenue, transactions, avg transaction, discount, tax
+- Ranking by revenue
+- Auto-filter untuk non-owner
 
-New dependencies (backend/routes/auth.py):
-- require_permission(module, action) — checks role_permissions table
-- require_outlet_access(outlet_id) — checks user_outlet_access table
-- get_user_outlets(user) — returns allowed outlet IDs
-- filter_outlets_for_user(user, column) — returns SQL filter clause
+### Sales List (GET /sales)
+- Support outlet_id query parameter
+- Auto-filter untuk non-owner
 
-Updated get_current_user:
-- Now loads outlet_ids for non-admin users
-- Admin gets empty list (= all outlets)
+## Phase 5: Realtime WebSocket
 
-New endpoints:
-- GET /outlets/my — returns user's accessible outlets + all_access flag
-- GET /users/{id}/outlets — get user's outlet access
-- PUT /users/{id}/outlets — update user's outlet access
+### Backend (NEW: backend/routes/realtime.py)
+- WebSocket endpoint: /api/ws/realtime
+- Auth via first message (token)
+- ConnectionManager: broadcast events to connected clients
+- Owner receives ALL events
+- Non-owner receives only their outlet events
+- Events: NEW_SALE, SHIFT_OPENED, SHIFT_CLOSED, LOW_STOCK, etc.
+- Ping/pong keep-alive
 
-Permission enforcement wired to all endpoints:
-- products: create/update/delete
-- categories: create/update/delete
-- customers: create/update/delete
-- suppliers: create/update/delete
-- outlets: create/update/delete
-- tables: create/update/delete
-- inventory: update
-- payment_accounts: create/update/delete
-- card_brands: create
-- purchase_orders: create/approve/delete
-- stock_transfers: create
-- business: manage
-- menus: manage
-- users: view/create/update
-- roles: admin-only (require_role)
+### Integration
+- POST /sales sekarang emit NEW_SALE event setelah sukses
+- Helper functions: emit_new_sale, emit_shift_opened, etc.
 
-Fix: supervisor role added to UserRole literal
+### Nginx (frontend/nginx.conf)
+- NEW: /api/ws/ location block dengan WebSocket upgrade headers
+- Timeout 7d untuk long-lived connections
+
+### Frontend
+- NEW: OutletContext (context/OutletContext.js)
+  - Global outlet selector state
+  - Load outlets from /outlets/my
+  - Owner: ALL OUTLETS option
+  - Non-owner: only assigned outlets
+
+- NEW: useRealtime hook (hooks/useRealtime.js)
+  - WebSocket connection management
+  - Auto-reconnect on disconnect
+  - Ping keep-alive
+  - Status: connected, reconnecting, disconnected
+
+- UPDATED: Layout.js
+  - Outlet selector bar di top (sticky)
+  - Role label updated: owner, admin, manager, kasir, supervisor
+
+- UPDATED: Dashboard.js
+  - Use OutletContext for outlet filtering
+  - Branch comparison table (when ALL OUTLETS selected)
+  - Reload on outlet change
+
+- UPDATED: App.js
+  - OutletProvider wrapping app
+
+### Docker
+- requirements.txt: uvicorn[standard] + websockets
+- Backend rebuilt with WebSocket support
 
 ## Tests
 
 - 121 E2E tests: all pass
-- 32 multi-outlet tests: all pass
-  - Login all roles
-  - Outlet access in user object
-  - /outlets/my endpoint
-  - Outlet list filtering
-  - Permission enforcement (kasir blocked, manager allowed)
-  - User outlet access management
+- WebSocket test: CONNECTED, PONG, NEW_SALE event — all pass
+- Manual tests:
+  - Owner: dashboard all outlets + branch comparison (3 outlets)
+  - Owner: dashboard filter by outlet_id
+  - Sales monitor: 5 recent transactions
+  - Branch comparison: 3 outlets ranked
+  - Shifts with outlet filter
+  - Sales list with outlet filter
 
 Generated with [Devin](https://devin.ai)
 

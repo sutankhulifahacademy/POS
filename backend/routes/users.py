@@ -19,8 +19,8 @@ async def get_user(user_id: str, user=Depends(require_permission("users", "view"
 @router.post("/users")
 async def create_user(body: UserCreate, user=Depends(require_permission("users", "create"))):
     email = body.email.lower()
-    if body.role == "admin" and user["role"] != "admin":
-        raise HTTPException(403, "Hanya owner yang bisa membuat akun admin")
+    if body.role in ("owner", "admin") and user["role"] != "owner":
+        raise HTTPException(403, "Hanya owner yang bisa membuat akun owner/admin")
     exists = await q_one("SELECT id FROM users WHERE email = :e", e=email)
     if exists: raise HTTPException(400, "Email sudah terdaftar")
     uid = new_id()
@@ -37,8 +37,8 @@ async def create_user(body: UserCreate, user=Depends(require_permission("users",
 async def update_user(user_id: str, body: UserUpdate, user=Depends(require_permission("users", "update"))):
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     if not updates: raise HTTPException(400, "No updates")
-    if updates.get("role") == "admin" and user["role"] != "admin":
-        raise HTTPException(403, "Hanya owner yang bisa mengubah peran ke admin")
+    if updates.get("role") in ("owner", "admin") and user["role"] != "owner":
+        raise HTTPException(403, "Hanya owner yang bisa mengubah peran ke owner/admin")
     sets = ", ".join(f"{k}=:{k}" for k in updates.keys())
     updates["id"] = user_id
     r = await q_exec(f"UPDATE users SET {sets}, updated_at=NOW() WHERE id=:id", **updates)
@@ -54,7 +54,7 @@ async def reset_pw(user_id: str, body: PasswordReset, user=Depends(require_permi
     return {"ok": True}
 
 @router.delete("/users/{user_id}")
-async def delete_user(user_id: str, user=Depends(require_role("admin"))):
+async def delete_user(user_id: str, user=Depends(require_role("owner"))):
     if str(user_id) == str(user["id"]): raise HTTPException(400, "Tidak bisa menghapus akun sendiri")
     r = await q_exec("DELETE FROM users WHERE id=:id", id=user_id)
     if r == 0: raise HTTPException(404, "User not found")

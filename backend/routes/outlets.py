@@ -12,7 +12,7 @@ ROLES = ("admin", "manager")
 @router.get("/outlets")
 async def list_items(user=Depends(get_current_user)):
     # For admin, return all outlets. For others, return only their outlets.
-    if user["role"] == "admin":
+    if user["role"] == "owner":
         rows = await q_all(f"SELECT * FROM {TABLE} ORDER BY created_at DESC NULLS LAST")
     else:
         outlet_ids = user.get("outlet_ids", [])
@@ -26,7 +26,7 @@ async def list_items(user=Depends(get_current_user)):
 @router.get("/outlets/my")
 async def get_my_outlets(user=Depends(get_current_user)):
     """Get outlets the current user can access."""
-    if user["role"] == "admin":
+    if user["role"] == "owner":
         rows = await q_all(f"SELECT * FROM {TABLE} ORDER BY is_main DESC, created_at")
         return {"outlets": clean_list(rows), "all_access": True}
     outlet_ids = user.get("outlet_ids", [])
