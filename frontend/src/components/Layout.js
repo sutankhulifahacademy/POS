@@ -99,6 +99,87 @@ export function defaultLandingFor(role) {
 
 const ROLE_LABEL = { owner: "Owner", admin: "Admin", manager: "Manager", kasir: "Kasir", supervisor: "Supervisor" };
 
+function NotificationBell() {
+  const [alerts, setAlerts] = useState([]);
+  const [unread, setUnread] = useState(0);
+  const [showDropdown, setShowDropdown] = useState(false);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const { data } = await api.get("/alerts?limit=10");
+        setAlerts(data.alerts || []);
+        setUnread(data.unread_count || 0);
+      } catch (e) { /* ignore */ }
+    };
+    load();
+    const interval = setInterval(load, 30000); // refresh every 30s
+    return () => clearInterval(interval);
+  }, []);
+
+  const markAllRead = async () => {
+    try {
+      await api.put("/alerts/read-all");
+      setUnread(0);
+      setAlerts(alerts.map(a => ({ ...a, is_read: true })));
+    } catch (e) { /* ignore */ }
+  };
+
+  const severityColors = {
+    critical: "text-red-400",
+    warning: "text-yellow-400",
+    info: "text-blue-400",
+  };
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setShowDropdown(!showDropdown)}
+        className="relative w-9 h-9 flex items-center justify-center rounded-md hover:bg-[#331419]"
+        data-testid="notification-bell"
+      >
+        <Bell size={18} className="text-[#C4A484]" />
+        {unread > 0 && (
+          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+            {unread > 9 ? "9+" : unread}
+          </span>
+        )}
+      </button>
+      {showDropdown && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setShowDropdown(false)} />
+          <div className="absolute right-0 mt-2 w-80 bg-[#2A1015] border border-[rgba(244,200,66,0.3)] rounded-lg shadow-xl z-50 max-h-96 overflow-y-auto">
+            <div className="flex items-center justify-between p-3 border-b border-[rgba(244,200,66,0.15)]">
+              <span className="text-sm text-[#F5F5F5] font-medium">Notifikasi</span>
+              {unread > 0 && (
+                <button onClick={markAllRead} className="text-xs text-[#F4C842] hover:underline">
+                  Tandai semua dibaca
+                </button>
+              )}
+            </div>
+            {alerts.length === 0 ? (
+              <div className="p-6 text-center text-sm text-[#C4A484]">Tidak ada notifikasi</div>
+            ) : (
+              alerts.map((a) => (
+                <div key={a.id} className={`p-3 border-b border-[rgba(244,200,66,0.08)] ${!a.is_read ? "bg-[rgba(244,200,66,0.05)]" : ""}`}>
+                  <div className="flex items-start gap-2">
+                    <span className={`text-xs mt-0.5 ${severityColors[a.severity] || "text-[#C4A484]"}`}>●</span>
+                    <div className="flex-1">
+                      <p className="text-sm text-[#F5F5F5]">{a.title}</p>
+                      <p className="text-xs text-[#C4A484] mt-0.5">{a.message}</p>
+                      {a.outlet_name && <p className="text-xs text-[#C4A484] mt-1">📍 {a.outlet_name}</p>}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function Layout() {
   const { user, logout } = useAuth();
   const { business } = useTheme();
@@ -214,7 +295,7 @@ export default function Layout() {
         </div>
       </aside>
       <main className="flex-1 lg:ml-64 min-h-screen">
-        {/* Outlet Selector Bar */}
+        {/* Outlet Selector Bar + Notification Bell */}
         {outlets.length > 0 && (
           <div className="sticky top-0 z-30 bg-[#2A1015] border-b border-[rgba(244,200,66,0.15)] px-4 py-2 flex items-center gap-3">
             <div className="flex items-center gap-2">
@@ -232,7 +313,9 @@ export default function Layout() {
                 <option key={o.id} value={o.id}>{o.name}</option>
               ))}
             </select>
-            <div className="ml-auto flex items-center gap-2">
+            <div className="ml-auto flex items-center gap-4">
+              {/* Notification Bell */}
+              <NotificationBell />
               <span className="text-xs text-[#C4A484]">{ROLE_LABEL[user?.role] || user?.role}</span>
             </div>
           </div>

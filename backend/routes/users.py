@@ -7,7 +7,29 @@ router = APIRouter()
 async def list_users(user=Depends(require_permission("users", "view"))):
     rows = await q_all("""SELECT id, email, name, role, is_active, phone, address, job_title, photo,
                                   ktp_number, created_at, updated_at FROM users ORDER BY created_at DESC""")
-    return clean_list(rows)
+    users_list = clean_list(rows)
+    # Attach outlet info for each user
+    for u in users_list:
+        outlets = await q_all("""
+            SELECT uoa.outlet_id, o.name AS outlet_name, uoa.is_primary, uoa.assigned_at
+            FROM user_outlet_access uoa
+            JOIN outlets o ON o.id = uoa.outlet_id
+            WHERE uoa.user_id = :uid
+            ORDER BY uoa.is_primary DESC, o.name ASC
+        """, uid=u["id"])
+        u["outlets"] = [
+            {
+                "outlet_id": str(o["outlet_id"]),
+                "outlet_name": o["outlet_name"],
+                "is_primary": o["is_primary"],
+                "assigned_at": o["assigned_at"].isoformat() if o.get("assigned_at") else None,
+            }
+            for o in outlets
+        ]
+        # Primary outlet name for quick display
+        primary = next((o for o in outlets if o["is_primary"]), None)
+        u["primary_outlet"] = primary["outlet_name"] if primary else (outlets[0]["outlet_name"] if outlets else None)
+    return users_list
 
 @router.get("/users/{user_id}")
 async def get_user(user_id: str, user=Depends(require_permission("users", "view"))):
@@ -64,11 +86,25 @@ async def delete_user(user_id: str, user=Depends(require_role("owner"))):
 # ============ USER OUTLET ACCESS ============
 @router.get("/users/{user_id}/outlets")
 async def get_user_outlets_access(user_id: str, user=Depends(require_permission("users", "update"))):
-    rows = await q_all(
-        "SELECT outlet_id FROM user_outlet_access WHERE user_id = :uid",
-        uid=user_id,
-    )
-    return {"outlet_ids": [str(r["outlet_id"]) for r in rows]}
+    rows = await q_all("""
+        SELECT uoa.outlet_id, o.name AS outlet_name, uoa.is_primary, uoa.assigned_at
+        FROM user_outlet_access uoa
+        JOIN outlets o ON o.id = uoa.outlet_id
+        WHERE uoa.user_id = :uid
+        ORDER BY uoa.is_primary DESC, o.name ASC
+    """, uid=user_id)
+    return {
+        "outlet_ids": [str(r["outlet_id"]) for r in rows],
+        "outlets": [
+            {
+                "outlet_id": str(r["outlet_id"]),
+                "outlet_name": r["outlet_name"],
+                "is_primary": r["is_primary"],
+                "assigned_at": r["assigned_at"].isoformat() if r.get("assigned_at") else None,
+            }
+            for r in rows
+        ],
+    }
 
 
 @router.put("/users/{user_id}/outlets")
@@ -78,10 +114,18 @@ async def update_user_outlets_access(
     user=Depends(require_permission("users", "update")),
 ):
     outlet_ids = body.get("outlet_ids", [])
+    primary_outlet_id = body.get("primary_outlet_id")
     await q_exec("DELETE FROM user_outlet_access WHERE user_id = :uid", uid=user_id)
     for oid in outlet_ids:
+        is_primary = (oid == primary_outlet_id)
         await q_exec(
-            "INSERT INTO user_outlet_access (user_id, outlet_id) VALUES (:uid, :oid) ON CONFLICT DO NOTHING",
-            uid=user_id, oid=oid,
+            "INSERT INTO user_outlet_access (user_id, outlet_id, is_primary, assigned_at) VALUES (:uid, :oid, :ip, NOW()) ON CONFLICT DO NOTHING",
+            uid=user_id, oid=oid, ip=is_primary,
+        )
+    # If no primary specified, set first as primary
+    if not primary_outlet_id and outlet_ids:
+        await q_exec(
+            "UPDATE user_outlet_access SET is_primary = TRUE WHERE user_id = :uid AND outlet_id = :oid",
+            uid=user_id, oid=outlet_ids[0],
         )
     return {"ok": True, "outlet_ids": outlet_ids}

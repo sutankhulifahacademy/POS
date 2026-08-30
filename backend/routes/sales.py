@@ -228,6 +228,38 @@ async def create_sale(
     except Exception:
         pass  # Don't fail sale if realtime fails
 
+    # Audit log
+    try:
+        from routes.audit_logs import log_action
+        await log_action(user, "create", "sale", entity_id=str(row["id"]),
+                         outlet_id=str(row["outlet_id"]) if row.get("outlet_id") else None,
+                         new_value={"invoice_no": row["invoice_no"], "total": float(row["total"] or 0)})
+    except Exception:
+        pass
+
+    # Check for low stock after sale and create alert
+    try:
+        from routes.alerts import create_alert
+        outlet_id_str = str(row["outlet_id"]) if row.get("outlet_id") else None
+        if outlet_id_str:
+            low_items = await q_all("""
+                SELECT p.name, os.quantity, p.low_stock_threshold
+                FROM products p
+                JOIN outlet_stocks os ON os.product_id = p.id
+                WHERE os.outlet_id = :oid AND os.quantity <= p.low_stock_threshold
+            """, oid=outlet_id_str)
+            for item in low_items:
+                await create_alert(
+                    category="inventory",
+                    severity="critical" if int(item["quantity"] or 0) <= 0 else "warning",
+                    title=f"Stok menipis: {item['name']}",
+                    message=f"Stok {item['name']} tersisa {item['quantity']} (min: {item['low_stock_threshold']})",
+                    outlet_id=outlet_id_str,
+                    data={"product_name": item["name"], "quantity": int(item["quantity"] or 0)},
+                )
+    except Exception:
+        pass
+
     return clean(row)
 
 

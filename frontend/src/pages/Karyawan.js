@@ -101,8 +101,8 @@ export default function Karyawan() {
     catch (err) { toast.error(err.response?.data?.detail || "Gagal"); }
   };
 
-  const roleLabel = { admin: "OWNER", manager: "MANAGER", kasir: "KASIR" };
-  const roleColor = (r) => r === "admin" ? "text-[#F4C842] bg-[#F4C842]/10" : r === "manager" ? "text-[#7FD68F] bg-[#7FD68F]/10" : "text-[#C4A484] bg-[#C4A484]/10";
+  const roleLabel = { owner: "OWNER", admin: "ADMIN", manager: "MANAGER", kasir: "KASIR", supervisor: "SUPERVISOR" };
+  const roleColor = (r) => r === "owner" ? "text-[#F4C842] bg-[#F4C842]/10" : r === "admin" ? "text-[#F4C842] bg-[#F4C842]/10" : r === "manager" ? "text-[#7FD68F] bg-[#7FD68F]/10" : r === "supervisor" ? "text-blue-400 bg-blue-400/10" : "text-[#C4A484] bg-[#C4A484]/10";
 
   return (
     <div>
@@ -135,6 +135,12 @@ export default function Karyawan() {
               <div className="mt-4 pt-3 border-t border-[rgba(244,200,66,0.1)] space-y-1 text-xs text-[#C4A484]">
                 <p className="truncate">📧 {u.email}</p>
                 {u.phone && <p>📱 {u.phone}</p>}
+                {u.primary_outlet && (
+                  <p className="text-[#F4C842]">
+                    🏪 {u.primary_outlet}
+                    {u.outlets && u.outlets.length > 1 && ` (+${u.outlets.length - 1} lainnya)`}
+                  </p>
+                )}
                 {u.address && <p className="truncate">📍 {u.address}</p>}
               </div>
               <div className="mt-3 flex gap-2">

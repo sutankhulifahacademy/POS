@@ -1,125 +1,103 @@
-Phase 6 & 7: AI Business Assistant + Comprehensive Testing
+Phase 8: Employee-Outlet Assignment, Audit Logs, Alerts, Expenses
 
-## Phase 6: AI Business Assistant
+## Schema Changes (migration_v2_2_phase8.sql)
 
-### Backend (NEW: backend/services/ai_service.py)
-- Data-driven AI — no hallucination, all answers from database queries
-- Respects outlet authorization (owner=all, non-owner=assigned only)
+### user_outlet_access (ALTER)
+- Added is_primary BOOLEAN DEFAULT FALSE
+- Added assigned_at TIMESTAMPTZ DEFAULT NOW()
+- Auto-set first outlet as primary for existing records
 
-### Backend (NEW: backend/routes/ai.py)
-- POST /ai/assistant — Q&A with business data
-  - Pattern matching for common questions
-  - Returns: answer, facts, observations, recommendations, data_sources
-  - Supports: top outlet, top products, total sales, late employees,
-    most transactions, low stock, sales decline analysis, general overview
-- GET /ai/daily-briefing — daily business summary
-  - Today vs 7-day average comparison
-  - Top outlet, low stock count, active shifts, attendance
-- GET /ai/anomalies — anomaly detection
-  - Sales spike/drop (>50% deviation)
-  - Discount anomaly (>3x average)
-  - Stockout detection (quantity <= 0)
-  - Severity: critical, warning
-- GET /ai/forecast — sales forecasting
-  - Moving average based
-  - Confidence: high/medium/low based on coefficient of variation
-  - Returns "Insufficient data" if <7 days
+### expenses (NEW TABLE)
+- id, outlet_id, category, description, amount, expense_date
+- payment_method, vendor, receipt_no, created_by, created_at, updated_at
+- Indexes: outlet+date, category+date, date
 
-### Permission Enforcement
-- AI endpoints require require_permission("ai", "query"/"briefing"/"anomaly"/"forecast")
-- Owner: bypass all checks
-- Admin: has ai permissions (per-cabang)
-- Manager/Kasir: no AI access by default
+### Permissions Added
+- expenses: view/create/update/delete (owner, admin)
+- expenses: view/create (manager)
+- audit: view (owner, admin)
+- alerts: view/manage (owner, admin), view (manager)
 
-### Frontend (NEW: frontend/src/pages/AIAssistant.js)
-- 4 tabs: Assistant, Daily Briefing, Anomaly Detection, Forecasting
-- Suggested questions for quick start
-- Answer display with facts, observations, recommendations
-- Outlet-aware (uses OutletContext)
-- Briefing summary cards
-- Anomaly cards with severity colors
-- Forecast table with confidence indicator
+### Menus Added
+- expenses (Pengeluaran) — id: ...b19
+- audit_logs (Audit Log) — id: ...b20
 
-### Database
-- NEW: seed_ai_menu.sql
-  - Added ai_assistant menu (id: ...b18)
-  - Role menus: owner, admin, manager
-  - Role permissions: ai:view, query, briefing, anomaly, forecast
+## 1. Employee-Outlet Assignment
 
-### Server Integration
-- server.py: added ai_router
-- Login response now includes outlet_ids
+### Backend (users.py)
+- GET /users now returns outlet info per user:
+  - outlets[]: outlet_id, outlet_name, is_primary, assigned_at
+  - primary_outlet: name of primary outlet
+- GET /users/{id}/outlets returns outlet details with is_primary
+- PUT /users/{id}/outlets accepts primary_outlet_id
 
-## Phase 7: Comprehensive Testing
+### Frontend (Karyawan.js)
+- Employee cards now show "🏪 Outlet Utama (+1 lainnya)"
+- Role labels updated: owner, admin, manager, supervisor, kasir
+- Role colors: owner/admin=gold, manager=green, supervisor=blue, kasir=gray
 
-### Test Suite (NEW: backend/tests/test_phase7.py)
-66 tests covering:
+## 2. Audit Logs
 
-1. Login & Role Verification (8 tests)
-   - Owner/Manager/Kasir login
-   - Role verification
-   - Outlet IDs in response
+### Backend (NEW: routes/audit_logs.py)
+- GET /audit-logs — list with filtering (outlet, entity, action, user, date)
+- GET /audit-logs/stats — by_action, by_entity, today_count
+- log_action() helper — called from other routes
+- Outlet-scoped: non-owner sees only their outlet logs
 
-2. Outlet Access (7 tests)
-   - Owner: all_access=True, sees 3 outlets
-   - Manager: all_access=False, sees 1 outlet
-   - Kasir: all_access=False
+### Integration
+- POST /sales now logs to audit_logs
+- POST /expenses logs to audit_logs
+- PUT/DELETE /expenses logs to audit_logs
 
-3. Dashboard Outlet Filtering (5 tests)
-   - Owner: all outlets + branch_comparison
-   - Owner: filtered by outlet_id
-   - Manager: auto-filtered
-   - Manager: blocked from other outlet (403)
+### Frontend (NEW: pages/AuditLogs.js)
+- Filterable table (entity, action)
+- Color-coded actions (create=green, update=yellow, delete=red)
+- Shows: time, user, role, action, entity, outlet
 
-4. Sales Monitoring (4 tests)
-   - Owner/Manager/Kasir access
+## 3. Alerts + Notifications
 
-5. Branch Comparison (4 tests)
-   - Owner: sees all outlets
-   - Manager: sees only assigned outlet
+### Backend (NEW: routes/alerts.py)
+- GET /alerts — list with filtering (is_read, category, severity, outlet)
+- PUT /alerts/{id}/read — mark single alert as read
+- PUT /alerts/read-all — mark all as read
+- DELETE /alerts/{id} — delete (manage permission)
+- create_alert() helper — called from other routes
 
-6. Shifts Report (3 tests)
-   - Owner: all + filtered
-   - Manager: auto-filtered
+### Auto-Generated Alerts
+- Low stock after sale → inventory/critical or inventory/warning
+- Large expense (>=1,000,000) → expense/warning
 
-7. Sales List (3 tests)
-   - Owner: all + filtered
-   - Manager: auto-filtered
+### Frontend (Layout.js)
+- NotificationBell component in top bar
+- Shows unread count badge
+- Dropdown with alert list
+- Auto-refresh every 30 seconds
+- Mark all as read button
+- Severity color indicators
 
-8. Permission Enforcement (5 tests)
-   - Owner: can list roles/users
-   - Manager/Kasir: cannot list roles (403)
-   - Kasir: cannot list users (403)
+## 4. Expense Tracking
 
-9. AI Endpoints (12 tests)
-   - Owner: assistant, briefing, anomalies, forecast
-   - Manager: blocked (no ai permission)
-   - Kasir: blocked
-   - Unauth: blocked
+### Backend (NEW: routes/expenses.py)
+- GET /expenses — list with filtering (outlet, category, date range)
+- GET /expenses/summary — by_category, total, by_outlet
+- POST /expenses — create with outlet authorization
+- PUT /expenses/{id} — update with ownership check
+- DELETE /expenses/{id} — delete with ownership check
+- Categories: rent, utilities, salary, supplies, maintenance, marketing, other
+- Auto-alert for expenses >= 1,000,000
 
-10. Menu Visibility (6 tests)
-    - Owner: sees all menus (>=17)
-    - Manager: sees menus
-    - Kasir: sees limited menus (<=5)
+### Frontend (NEW: pages/Expenses.js)
+- Summary cards (total, count, top categories)
+- Add expense form with outlet selector
+- Table with date, outlet, category, description, amount
+- Delete button per row
+- Outlet-aware filtering
 
-11. Unauthenticated Access (4 tests)
-    - Dashboard, sales, users, AI all blocked
-
-12. Outlet Authorization (2 tests)
-    - Manager/Kasir: cannot create outlet (403)
-
-### Bug Fixes During Testing
-- Login response now includes outlet_ids
-- Dashboard: non-owner requesting other outlet_id → 403
-- Branch comparison: non-owner only sees assigned outlets
-- GET /roles: now requires owner role
-- AI endpoints: now require ai permission
-- Outlet CRUD: now requires owner role (was require_permission)
-
-### Test Results
-- Phase 7 suite: 66 passed, 0 failed
+## Test Results
 - E2E regression: 121 passed, 0 failed
-- Total: 187 tests, all pass
+- Phase 7 suite: 66 passed, 0 failed
+- Phase 8 manual: all endpoints 200
+- Total: 187+ tests, all pass
 
 Generated with [Devin](https://devin.ai)
 

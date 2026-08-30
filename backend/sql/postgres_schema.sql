@@ -426,6 +426,8 @@ CREATE TABLE IF NOT EXISTS user_outlet_access (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL,
     outlet_id UUID NOT NULL,
+    is_primary BOOLEAN DEFAULT FALSE,
+    assigned_at TIMESTAMPTZ DEFAULT NOW(),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(user_id, outlet_id)
 );
@@ -496,3 +498,24 @@ CREATE TABLE IF NOT EXISTS alerts (
 CREATE INDEX IF NOT EXISTS idx_alerts_outlet ON alerts(outlet_id, is_read, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_alerts_category ON alerts(category, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_alerts_severity ON alerts(severity, is_read, created_at DESC);
+
+-- =============================================
+-- EXPENSES (operational expense tracking per outlet)
+-- =============================================
+CREATE TABLE IF NOT EXISTS expenses (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    outlet_id UUID REFERENCES outlets(id) ON DELETE SET NULL,
+    category VARCHAR(50) NOT NULL,
+    description TEXT,
+    amount NUMERIC(14,2) NOT NULL DEFAULT 0,
+    expense_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    payment_method VARCHAR(20) DEFAULT 'cash',
+    vendor VARCHAR(255),
+    receipt_no VARCHAR(100),
+    created_by UUID REFERENCES users(id),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_expenses_outlet ON expenses(outlet_id, expense_date DESC);
+CREATE INDEX IF NOT EXISTS idx_expenses_category ON expenses(category, expense_date DESC);
+CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(expense_date DESC);
