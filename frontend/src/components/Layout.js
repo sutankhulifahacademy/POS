@@ -273,7 +273,7 @@ export default function Layout() {
         )}
 
         <aside
-          className={`w-64 bg-[#2A1015] border-r border-[rgba(244,200,66,0.15)] flex flex-col fixed h-screen z-50 transition-transform duration-300 ${
+          className={`w-64 bg-[#2A1015] border-r border-[rgba(244,200,66,0.15)] flex flex-col fixed bottom-0 z-50 transition-transform duration-300 ${
             sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
           } ${outlets.length > 0 ? "top-[49px]" : "top-0"}`}
           data-testid="app-sidebar"
