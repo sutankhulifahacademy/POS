@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import api, { formatIDR } from "../lib/api";
 import PageHeader from "../components/PageHeader";
-import { Plus, Users as UsersIcon, X, ShoppingBag, Trash2, Search, MapPin } from "lucide-react";
+import { Plus, Users as UsersIcon, X, ShoppingBag, Trash2, Search, MapPin, Package } from "lucide-react";
 import { toast } from "sonner";
 
 const emptyTable = { name: "", capacity: 2, zone: "Utama" };
@@ -9,6 +9,7 @@ const emptyTable = { name: "", capacity: 2, zone: "Utama" };
 export default function Tables({ embedded = false }) {
   const [tables, setTables] = useState([]);
   const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyTable);
@@ -37,16 +38,18 @@ export default function Tables({ embedded = false }) {
   const [paymentAccounts, setPaymentAccounts] = useState([]);
   const [cardBrands, setCardBrands] = useState([]);
   const [cardBrandOther, setCardBrandOther] = useState("");
+  const [paketComposer, setPaketComposer] = useState(null);
 
   const load = async () => {
-    const [t, p, c, pa, cb] = await Promise.all([
+    const [t, p, cat, c, pa, cb] = await Promise.all([
       api.get("/tables"),
       api.get("/products"),
+      api.get("/categories"),
       api.get("/customers"),
       api.get("/payment-accounts"),
       api.get("/card-brands"),
     ]);
-    setTables(t.data); setProducts(p.data); setCustomers(c.data);
+    setTables(t.data); setProducts(p.data); setCategories(cat.data || []); setCustomers(c.data);
     setPaymentAccounts(pa.data || []);
     setCardBrands(cb.data || []);
   };
@@ -81,7 +84,8 @@ export default function Tables({ embedded = false }) {
             price: Number(i.price) || 0,
             quantity: Number(i.quantity ?? i.qty ?? 1),
             variant_name: String(i.variant_name || ""),
-            note: String(i.note || "")
+            note: String(i.note || ""),
+            paket_items: i.paket_items || null
           }));
           setOrderItems(items);
           setGuests(order.guest_count || 1);
@@ -97,6 +101,62 @@ export default function Tables({ embedded = false }) {
     setOrderItems([]);
     setGuests(1);
     setOpenTable(table);
+  };
+
+  const paketCategoryId = categories.find(c => c.name === "Paket")?.id;
+  const isPaketProduct = (p) => p.category_id === paketCategoryId;
+
+  const handleProductClick = (product) => {
+    if (isPaketProduct(product)) {
+      setPaketComposer({ product, selections: {} });
+    } else {
+      addItem(product);
+    }
+  };
+
+  const updatePaketSelection = (productId, delta) =>
+    setPaketComposer(prev => ({
+      ...prev,
+      selections: {
+        ...prev.selections,
+        [productId]: Math.max(0, (prev.selections[productId] || 0) + delta)
+      }
+    }));
+
+  const paketTotalItems = paketComposer ? Object.values(paketComposer.selections).reduce((a, b) => a + b, 0) : 0;
+
+  const addPaketToOrder = () => {
+    const items = Object.entries(paketComposer.selections)
+      .filter(([_, qty]) => qty > 0)
+      .map(([pid, qty]) => {
+        const p = products.find(x => String(x.id) === String(pid));
+        return { product_id: String(pid), name: p?.name || "", price: p?.price || 0, quantity: qty };
+      });
+    if (items.length === 0) {
+      return toast.error("Pilih minimal 1 item untuk paket");
+    }
+    const product = paketComposer.product;
+    setOrderItems(prev => {
+      const ex = prev.find(i => i.product_id === String(product.id));
+      if (ex) {
+        return prev.map(i => i.product_id === String(product.id)
+          ? { ...i, quantity: i.quantity + 1, paket_items: items }
+          : i);
+      }
+      return [
+        ...prev,
+        {
+          product_id: String(product.id),
+          name: product.name,
+          price: Number(product.price),
+          quantity: 1,
+          variant_name: "",
+          note: "",
+          paket_items: items
+        }
+      ];
+    });
+    setPaketComposer(null);
   };
 
   const addItem = (p) => {
@@ -130,7 +190,8 @@ export default function Tables({ embedded = false }) {
       price: Number(i.price) || 0,
       quantity: Number(i.quantity) || 0,
       variant_name: String(i.variant_name || ""),
-      note: String(i.note || "")
+      note: String(i.note || ""),
+      paket_items: i.paket_items || null
     }));
 
     try {
@@ -232,8 +293,17 @@ export default function Tables({ embedded = false }) {
     try {
       // Save items first (in case edited)
       let oid;
+      const checkoutItems = orderItems.map(i => ({
+        product_id: String(i.product_id),
+        name: String(i.name || ""),
+        price: Number(i.price) || 0,
+        quantity: Number(i.quantity) || 0,
+        variant_name: String(i.variant_name || ""),
+        note: String(i.note || ""),
+        paket_items: i.paket_items || null
+      }));
       if (activeOrder) {
-        await api.put(`/orders/${activeOrder.id}/items`, { items: orderItems });
+        await api.put(`/orders/${activeOrder.id}/items`, { items: checkoutItems });
         oid = activeOrder.id;
       } else {
         // Cek apakah meja sudah punya order terbuka
@@ -241,12 +311,12 @@ export default function Tables({ embedded = false }) {
         const existing = openOrders.find(o => o.table_id === openTable.id);
         if (existing) {
           // Order sudah ada → update items saja
-          await api.put(`/orders/${existing.id}/items`, { items: orderItems });
+          await api.put(`/orders/${existing.id}/items`, { items: checkoutItems });
           oid = existing.id;
           setActiveOrder(existing);
         } else {
           // Buka order baru
-          const { data } = await api.post("/orders", { table_id: openTable.id, guest_count: Number(guests), items: orderItems });
+          const { data } = await api.post("/orders", { table_id: openTable.id, guest_count: Number(guests), items: checkoutItems });
           oid = data.id;
           setActiveOrder(data);
         }
@@ -429,7 +499,12 @@ export default function Tables({ embedded = false }) {
               </div>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {filteredProducts.map(p => (
-                  <button key={p.id} onClick={() => addItem(p)} disabled={p.stock <= 0} data-testid={`dinein-product-${p.id}`} className="bg-[#331419] gold-border rounded-md p-3 text-left card-hover disabled:opacity-40">
+                  <button key={p.id} onClick={() => handleProductClick(p)} disabled={p.stock <= 0} data-testid={`dinein-product-${p.id}`} className="bg-[#331419] gold-border rounded-md p-3 text-left card-hover disabled:opacity-40">
+                    {isPaketProduct(p) && (
+                      <span className="inline-flex items-center gap-1 mb-1 text-[9px] uppercase tracking-widest bg-[#F4C842] text-[#1A0810] px-1.5 py-0.5 rounded font-semibold">
+                        <Package size={9} /> Paket
+                      </span>
+                    )}
                     <p className="text-sm text-[#F5F5F5] truncate">{p.name}</p>
                     <p className="text-[10px] text-[#C4A484]">Stok: {p.stock}</p>
                     <p className="text-[#F4C842] font-semibold text-sm mt-1">{formatIDR(p.price)}</p>
@@ -447,9 +522,19 @@ export default function Tables({ embedded = false }) {
               <div className="flex-1 overflow-y-auto space-y-2 mb-4">
                 {orderItems.length === 0 ? <p className="text-xs text-[#C4A484] italic text-center py-8">Belum ada item</p> : orderItems.map(i => (
                   <div key={i.product_id} className="bg-[#331419] rounded-md p-2 flex items-center justify-between text-sm">
-                    <div className="flex-1">
-                      <p className="text-[#F5F5F5]">{i.name}</p>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[#F5F5F5] truncate">{i.name}</p>
                       <p className="text-xs text-[#C4A484]">{formatIDR(i.price)}</p>
+                      {i.paket_items && i.paket_items.length > 0 && (
+                        <ul className="mt-1 space-y-0.5">
+                          {i.paket_items.map((pi, idx) => (
+                            <li key={idx} className="text-[10px] text-[#C4A484] flex items-center gap-1">
+                              <span className="text-[#F4C842]">×{pi.quantity}</span>
+                              <span className="truncate">{pi.name}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       <button onClick={() => changeQty(i.product_id, -1)} className="w-9 h-9 rounded bg-[#2A1015] border border-[rgba(244,200,66,0.2)] text-[#F4C842] text-base">−</button>
@@ -747,6 +832,50 @@ export default function Tables({ embedded = false }) {
                 <button onClick={() => setShowCheckout(false)} className="flex-1 border border-[rgba(244,200,66,0.3)] text-[#F4C842] py-2.5 rounded-md text-xs uppercase tracking-widest">Batal</button>
                 <button onClick={doCheckout} data-testid="dinein-confirm-checkout" className="flex-1 bg-[#F4C842] text-[#1A0810] py-2.5 rounded-md text-xs font-semibold uppercase tracking-widest">Konfirmasi</button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Paket composer modal */}
+      {paketComposer && (
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-[60] p-4" onClick={() => setPaketComposer(null)}>
+          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-full sm:max-w-lg mx-4 w-full max-h-[90vh] overflow-y-auto p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <p className="text-xs uppercase tracking-widest text-[#F4C842] flex items-center gap-1"><Package size={12} /> Paket</p>
+                <h3 className="font-serif-luxury text-2xl text-[#F5F5F5]">{paketComposer.product.name}</h3>
+                <p className="text-sm text-[#F4C842] font-semibold mt-1">{formatIDR(paketComposer.product.price)}</p>
+              </div>
+              <button onClick={() => setPaketComposer(null)} className="text-[#C4A484] hover:text-[#F5F5F5]"><X size={20} /></button>
+            </div>
+            <p className="text-xs text-[#C4A484] mb-3">Pilih item dimsum yang masuk ke dalam paket ini:</p>
+            <div className="max-h-[40vh] overflow-y-auto space-y-2 pr-1">
+              {products.filter(p => p.is_active && !isPaketProduct(p)).map(p => {
+                const qty = paketComposer.selections[p.id] || 0;
+                return (
+                  <div key={p.id} className="bg-[#331419] gold-border rounded-md p-2 flex items-center justify-between text-sm">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[#F5F5F5] truncate">{p.name}</p>
+                      <p className="text-[10px] text-[#C4A484]">{formatIDR(p.price)} · Stok: {p.stock}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => updatePaketSelection(p.id, -1)} className="w-8 h-8 rounded bg-[#2A1015] border border-[rgba(244,200,66,0.2)] text-[#F4C842] text-base">−</button>
+                      <span className="text-[#F5F5F5] min-w-[20px] text-center">{qty}</span>
+                      <button onClick={() => updatePaketSelection(p.id, 1)} className="w-8 h-8 rounded bg-[#2A1015] border border-[rgba(244,200,66,0.2)] text-[#F4C842] text-base">+</button>
+                    </div>
+                  </div>
+                );
+              })}
+              {products.filter(p => p.is_active && !isPaketProduct(p)).length === 0 && (
+                <p className="text-xs text-[#C4A484] italic text-center py-6">Tidak ada produk tersedia</p>
+              )}
+            </div>
+            <div className="border-t border-[rgba(244,200,66,0.15)] pt-3 mt-3 flex items-center justify-between">
+              <span className="text-xs text-[#C4A484]">Total item: <span className="text-[#F4C842] font-semibold">{paketTotalItems}</span></span>
+              <button onClick={addPaketToOrder} disabled={paketTotalItems === 0} data-testid="add-paket-to-order" className="bg-[#F4C842] text-[#1A0810] px-5 py-2 rounded-md text-xs font-semibold uppercase tracking-widest hover:bg-[#FFDD5C] transition-colors disabled:opacity-50">
+                Tambah ke Pesanan
+              </button>
             </div>
           </div>
         </div>

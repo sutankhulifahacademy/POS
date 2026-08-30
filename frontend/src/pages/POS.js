@@ -43,7 +43,8 @@ export default function POS() {
   const [receipt, setReceipt] = useState(null);
   const [showScanner, setShowScanner] = useState(false);
   const [variantPick, setVariantPick] = useState(null);
-  const [paketPick, setPaketPick] = useState(null);
+  const [paketComposer, setPaketComposer] = useState(null);
+  const [paketSearch, setPaketSearch] = useState("");
   const [activeShift, setActiveShift] = useState(null);
   const [showShiftModal, setShowShiftModal] = useState(false);
   const [shiftCash, setShiftCash] = useState(0);
@@ -91,7 +92,7 @@ export default function POS() {
     return true;
   }), [products, activeCategory, search]);
 
-  const addToCart = (product, variant = null) => {
+  const addToCart = (product, variant = null, paketItems = null) => {
     const stock = variant ? variant.stock : getStock(product);
     const price = variant ? variant.price : product.price;
     const displayName = variant ? `${product.name} - ${variant.name}` : product.name;
@@ -104,13 +105,27 @@ export default function POS() {
         if (existing.quantity >= stock) { toast.error(`Stok ${displayName} tidak cukup`); return prev; }
         return prev.map((i) => i.key === key ? { ...i, quantity: i.quantity + 1 } : i);
       }
-      return [...prev, { key, product_id: product.id, variant_name: variant?.name || "", name: displayName, price, quantity: 1, max: stock }];
+      return [...prev, { key, product_id: product.id, variant_name: variant?.name || "", name: displayName, price, quantity: 1, max: stock, paket_items: paketItems || [] }];
     });
+  };
+
+  const paketCategoryId = categories.find((c) => c.name === "Paket")?.id;
+  const isPaketProduct = (p) => p.category_id === paketCategoryId;
+  const openPaketComposer = (product) => { setPaketComposer({ product, selections: {} }); setPaketSearch(""); };
+  const updatePaketSelection = (productId, delta) => setPaketComposer((prev) => ({ ...prev, selections: { ...prev.selections, [productId]: Math.max(0, (prev.selections[productId] || 0) + delta) } }));
+  const paketTotalItems = paketComposer ? Object.values(paketComposer.selections).reduce((a, b) => a + b, 0) : 0;
+  const addPaketToCart = () => {
+    const items = Object.entries(paketComposer.selections).filter(([_, qty]) => qty > 0).map(([pid, qty]) => {
+      const p = products.find((x) => x.id === pid);
+      return { product_id: pid, name: p?.name || "", price: p?.price || 0, quantity: qty };
+    });
+    addToCart(paketComposer.product, null, items);
+    setPaketComposer(null);
   };
 
   const handleProductClick = (product) => {
     if (product.variants && product.variants.length > 0) setVariantPick(product);
-    else if (product.product_type === "paket") setPaketPick(product);
+    else if (isPaketProduct(product)) openPaketComposer(product);
     else addToCart(product);
   };
 
@@ -191,7 +206,8 @@ export default function POS() {
         variant_name: i.variant_name,
         name: i.name,
         price: i.price,
-        quantity: i.quantity
+        quantity: i.quantity,
+        paket_items: i.paket_items || []
       })),
 
       customer_id: customerId || "",
@@ -385,7 +401,7 @@ export default function POS() {
                   <div className="aspect-square rounded-md bg-[#4A1A22] mb-3 overflow-hidden flex items-center justify-center relative">
                     {p.image_url ? <img src={p.image_url} alt={p.name} className="w-full h-full object-cover" /> : <PackageIcon size={32} strokeWidth={1.2} className="text-[#C4A484] opacity-40" />}
                     {p.variants && p.variants.length > 0 && <span className="absolute top-2 right-2 text-[9px] uppercase tracking-widest bg-[#F4C842] text-[#1A0810] px-1.5 py-0.5 rounded">Varian</span>}
-                    {p.product_type === "paket" && <span className="absolute top-2 right-2 text-[9px] uppercase tracking-widest bg-[#F4C842] text-[#1A0810] px-1.5 py-0.5 rounded">Paket</span>}
+                    {isPaketProduct(p) && <span className="absolute top-2 right-2 text-[9px] uppercase tracking-widest bg-[#F4C842] text-[#1A0810] px-1.5 py-0.5 rounded">Paket</span>}
                   </div>
                   <p className="text-sm text-[#F5F5F5] truncate">{p.name}</p>
                   <p className="text-xs text-[#C4A484] mt-1">Stok outlet: {s} {p.unit}</p>
@@ -420,6 +436,13 @@ export default function POS() {
                 <p className="text-sm text-[#F5F5F5] flex-1">{i.name}</p>
                 <button onClick={() => removeItem(i.key)} className="text-[#C4A484] hover:text-[#8B0000]"><Trash2 size={14} /></button>
               </div>
+              {i.paket_items && i.paket_items.length > 0 && (
+                <div className="mb-2 pl-2 border-l border-[rgba(244,200,66,0.2)] space-y-0.5">
+                  {i.paket_items.map((pi, idx) => (
+                    <p key={idx} className="text-[11px] text-[#C4A484]">{idx === i.paket_items.length - 1 ? "└" : "├"} {pi.name} ×{pi.quantity}</p>
+                  ))}
+                </div>
+              )}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <button onClick={() => changeQty(i.key, -1)} className="w-9 h-9 rounded-md bg-[#2A1015] border border-[rgba(244,200,66,0.2)] text-[#F4C842]"><Minus size={16} className="mx-auto" /></button>
@@ -713,29 +736,46 @@ export default function POS() {
         </div>
       )}
 
-      {paketPick && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPaketPick(null)}>
-          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-full sm:max-w-md w-full p-6 mx-4" data-testid="paket-picker">
-            <h3 className="font-serif-luxury text-2xl text-[#F5F5F5] mb-1">{paketPick.name}</h3>
-            <p className="text-xs text-[#C4A484] mb-4">Paket berisi {paketPick.bundle_items?.length || 0} item</p>
+      {paketComposer && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPaketComposer(null)}>
+          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-full sm:max-w-lg w-full p-6 mx-4 max-h-[90vh] overflow-y-auto" data-testid="paket-composer">
+            <div className="flex items-start justify-between gap-2 mb-1">
+              <h3 className="font-serif-luxury text-2xl text-[#F5F5F5]">{paketComposer.product.name}</h3>
+              <span className="text-lg text-[#F4C842] font-semibold whitespace-nowrap">{formatIDR(paketComposer.product.price)}</span>
+            </div>
+            <p className="text-xs text-[#C4A484] mb-2">Pilih item untuk paket ini</p>
+            <p className="text-xs text-[#F4C842] mb-4">Total item dipilih: {paketTotalItems}</p>
+
+            <div className="relative mb-4">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#C4A484]" strokeWidth={1.5} />
+              <input value={paketSearch} onChange={(e) => setPaketSearch(e.target.value)} placeholder="Cari item..." className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md pl-10 pr-4 py-2 text-sm text-[#F5F5F5] focus:outline-none focus:ring-1 focus:ring-[#F4C842]" data-testid="paket-composer-search" />
+            </div>
+
             <div className="space-y-1 mb-4 max-h-[40vh] overflow-y-auto">
-              {(paketPick.bundle_items || []).map((b, i) => (
-                <div key={i} className="flex items-center justify-between bg-[#331419] gold-border rounded-md p-3">
-                  <div className="text-left">
-                    <p className="text-sm text-[#F5F5F5]">{b.name}</p>
-                    <p className="text-xs text-[#C4A484]">@ {formatIDR(b.price)} × {b.quantity}</p>
-                  </div>
-                  <span className="text-xs text-[#F4C842]">{formatIDR(Number(b.price) * Number(b.quantity))}</span>
-                </div>
-              ))}
+              {products
+                .filter((p) => p.is_active && p.category_id !== paketCategoryId)
+                .filter((p) => !paketSearch || p.name.toLowerCase().includes(paketSearch.toLowerCase()))
+                .map((p) => {
+                  const qty = paketComposer.selections[p.id] || 0;
+                  return (
+                    <div key={p.id} className="flex items-center justify-between bg-[#331419] gold-border rounded-md p-3" data-testid={`paket-composer-item-${p.id}`}>
+                      <div className="text-left flex-1 min-w-0">
+                        <p className="text-sm text-[#F5F5F5] truncate">{p.name}</p>
+                        <p className="text-xs text-[#C4A484]">{formatIDR(p.price)}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => updatePaketSelection(p.id, -1)} className="w-8 h-8 rounded-md bg-[#2A1015] border border-[rgba(244,200,66,0.2)] text-[#F4C842]"><Minus size={14} className="mx-auto" /></button>
+                        <span className="text-sm text-[#F5F5F5] min-w-[24px] text-center">{qty}</span>
+                        <button onClick={() => updatePaketSelection(p.id, 1)} className="w-8 h-8 rounded-md bg-[#2A1015] border border-[rgba(244,200,66,0.2)] text-[#F4C842]"><Plus size={14} className="mx-auto" /></button>
+                      </div>
+                    </div>
+                  );
+                })}
             </div>
-            <div className="flex justify-between items-center pt-3 border-t border-[rgba(244,200,66,0.15)] mb-4">
-              <span className="text-xs text-[#C4A484]">Harga Paket:</span>
-              <span className="text-lg text-[#F4C842] font-semibold">{formatIDR(paketPick.price)}</span>
-            </div>
+
             <div className="flex gap-2">
-              <button onClick={() => setPaketPick(null)} className="flex-1 border border-[rgba(244,200,66,0.3)] text-[#F4C842] py-2.5 rounded-md text-xs uppercase tracking-widest">Batal</button>
-              <button onClick={() => { addToCart(paketPick); setPaketPick(null); }} data-testid="paket-add-to-cart" className="flex-1 bg-[#F4C842] text-[#1A0810] py-2.5 rounded-md text-xs font-semibold uppercase tracking-widest">Tambah ke Keranjang</button>
+              <button onClick={() => setPaketComposer(null)} className="flex-1 border border-[rgba(244,200,66,0.3)] text-[#F4C842] py-2.5 rounded-md text-xs uppercase tracking-widest">Batal</button>
+              <button onClick={addPaketToCart} disabled={paketTotalItems === 0} data-testid="paket-add-to-cart" className="flex-1 bg-[#F4C842] text-[#1A0810] py-2.5 rounded-md text-xs font-semibold uppercase tracking-widest disabled:opacity-50">Tambah ke Keranjang</button>
             </div>
           </div>
         </div>

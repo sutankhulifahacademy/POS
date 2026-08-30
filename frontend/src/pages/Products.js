@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import api, { formatIDR } from "../lib/api";
 import PageHeader from "../components/PageHeader";
-import { Plus, Edit3, Trash2, X, Search, Package, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus, Edit3, Trash2, X, Search, Package } from "lucide-react";
 import { toast } from "sonner";
 
-const empty = { name: "", sku: "", barcode: "", category_id: "", price: 0, cost: 0, stock: 0, low_stock_threshold: 5, unit: "pcs", image_url: "", description: "", is_active: true, variants: [], product_type: "regular", bundle_items: [] };
+const empty = { name: "", sku: "", barcode: "", category_id: "", price: 0, cost: 0, stock: 0, low_stock_threshold: 5, unit: "pcs", image_url: "", description: "", is_active: true, variants: [] };
 
 export default function Products() {
   const [items, setItems] = useState([]);
@@ -13,7 +13,6 @@ export default function Products() {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(empty);
   const [search, setSearch] = useState("");
-  const [expandedPaket, setExpandedPaket] = useState({});
 
   const load = async () => {
     const [p, c] = await Promise.all([api.get("/products"), api.get("/categories")]);
@@ -21,8 +20,10 @@ export default function Products() {
   };
   useEffect(() => { load(); }, []);
 
+  const paketCategoryId = categories.find(c => c.name === "Paket")?.id;
+
   const openNew = () => { setForm(empty); setEditing(null); setShowForm(true); };
-  const openEdit = (p) => { setForm({ ...empty, ...p, variants: p.variants || [], product_type: p.product_type || "regular", bundle_items: p.bundle_items || [] }); setEditing(p.id); setShowForm(true); };
+  const openEdit = (p) => { setForm({ ...empty, ...p, variants: p.variants || [] }); setEditing(p.id); setShowForm(true); };
 
   const save = async (e) => {
     e.preventDefault();
@@ -30,8 +31,6 @@ export default function Products() {
       ...form,
       price: Number(form.price), cost: Number(form.cost), stock: Number(form.stock), low_stock_threshold: Number(form.low_stock_threshold),
       variants: (form.variants || []).map(v => ({ name: v.name, sku: v.sku || "", price: Number(v.price), stock: Number(v.stock) })),
-      product_type: form.product_type || "regular",
-      bundle_items: (form.bundle_items || []).map(b => ({ product_id: b.product_id, name: b.name, price: Number(b.price), quantity: Number(b.quantity) })),
     };
     try {
       if (editing) await api.put(`/products/${editing}`, payload);
@@ -50,16 +49,6 @@ export default function Products() {
   const addVariant = () => setForm({ ...form, variants: [...(form.variants || []), { name: "", sku: "", price: form.price || 0, stock: 0 }] });
   const updateVariant = (idx, patch) => setForm({ ...form, variants: form.variants.map((v, i) => i === idx ? { ...v, ...patch } : v) });
   const removeVariant = (idx) => setForm({ ...form, variants: form.variants.filter((_, i) => i !== idx) });
-
-  // Bundle helpers
-  const addBundleItem = () => setForm({ ...form, bundle_items: [...(form.bundle_items || []), { product_id: "", name: "", price: 0, quantity: 1 }] });
-  const updateBundleItem = (idx, patch) => setForm({ ...form, bundle_items: (form.bundle_items || []).map((b, i) => i === idx ? { ...b, ...patch } : b) });
-  const removeBundleItem = (idx) => setForm({ ...form, bundle_items: (form.bundle_items || []).filter((_, i) => i !== idx) });
-  const onBundleProductSelect = (idx, productId) => {
-    const prod = items.find(p => p.id === productId);
-    if (prod) updateBundleItem(idx, { product_id: productId, name: prod.name, price: prod.price });
-  };
-  const bundleTotal = (form.bundle_items || []).reduce((sum, b) => sum + (Number(b.price) * Number(b.quantity || 1)), 0);
 
   const filtered = items.filter((p) => !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase()));
 
@@ -87,6 +76,7 @@ export default function Products() {
                 <th className="px-6 py-4">Produk</th>
                 <th className="px-6 py-4">Tipe</th>
                 <th className="px-6 py-4">SKU</th>
+                <th className="px-6 py-4">Kategori</th>
                 <th className="px-6 py-4">Varian</th>
                 <th className="px-6 py-4 text-right">Harga</th>
                 <th className="px-6 py-4 text-right">Stok</th>
@@ -96,76 +86,34 @@ export default function Products() {
             <tbody>
               {filtered.length === 0 && <tr><td colSpan={7} className="px-6 py-12 text-center text-[#C4A484]">Belum ada produk. Tambahkan produk pertama Anda.</td></tr>}
               {filtered.map((p) => (
-                <>
-                  <tr key={p.id} className="border-b border-[rgba(244,200,66,0.08)] last:border-0 hover:bg-[#4A1A22] transition-colors" data-testid={`product-row-${p.id}`}>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        {p.product_type === "paket" && (
-                          <button
-                            onClick={() => setExpandedPaket({ ...expandedPaket, [p.id]: !expandedPaket[p.id] })}
-                            className="text-[#F4C842] hover:text-[#FFDD5C] flex-shrink-0"
-                            data-testid={`expand-paket-${p.id}`}
-                          >
-                            {expandedPaket[p.id] ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                          </button>
-                        )}
-                        {p.image_url ? <img src={p.image_url} alt="" className="w-10 h-10 rounded-md object-cover" /> : <div className="w-10 h-10 rounded-md bg-[#4A1A22]" />}
-                        <div>
-                          <p className="text-sm text-[#F5F5F5]">{p.name}</p>
-                          <p className="text-xs text-[#C4A484]">{p.unit}</p>
-                        </div>
+                <tr key={p.id} className="border-b border-[rgba(244,200,66,0.08)] last:border-0 hover:bg-[#4A1A22] transition-colors" data-testid={`product-row-${p.id}`}>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-3">
+                      {p.image_url ? <img src={p.image_url} alt="" className="w-10 h-10 rounded-md object-cover" /> : <div className="w-10 h-10 rounded-md bg-[#4A1A22]" />}
+                      <div>
+                        <p className="text-sm text-[#F5F5F5]">{p.name}</p>
+                        <p className="text-xs text-[#C4A484]">{p.unit}</p>
                       </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      {p.product_type === "paket" ? (
-                        <span className="inline-flex items-center gap-1 text-xs bg-[rgba(244,200,66,0.15)] text-[#F4C842] px-2 py-1 rounded"><Package size={12} /> Paket</span>
-                      ) : (
-                        <span className="text-xs text-[#C4A484]">Reguler</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-[#C4A484]">{p.sku}</td>
-                    <td className="px-6 py-4 text-sm text-[#C4A484]">
-                      {p.product_type === "paket"
-                        ? `${p.bundle_items?.length || 0} item`
-                        : p.variants?.length ? `${p.variants.length} varian` : "—"}
-                    </td>
-                    <td className="px-6 py-4 text-right text-sm text-[#F4C842]">{formatIDR(p.price)}</td>
-                    <td className="px-6 py-4 text-right"><span className={`text-sm ${p.stock <= (p.low_stock_threshold || 5) ? 'text-[#8B0000]' : 'text-[#F5F5F5]'}`}>{p.stock}</span></td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex justify-end gap-2">
-                        <button onClick={() => openEdit(p)} data-testid={`edit-product-${p.id}`} className="p-2.5 text-[#C4A484] hover:text-[#F4C842]"><Edit3 size={16} /></button>
-                        <button onClick={() => remove(p.id)} data-testid={`delete-product-${p.id}`} className="p-2.5 text-[#C4A484] hover:text-[#8B0000]"><Trash2 size={16} /></button>
-                      </div>
-                    </td>
-                  </tr>
-                  {p.product_type === "paket" && expandedPaket[p.id] && (p.bundle_items || []).length > 0 && (
-                    <tr key={`${p.id}-bundle`} className="bg-[#1A0810]">
-                      <td colSpan={7} className="px-6 py-3">
-                        <div className="ml-8 border-l-2 border-[rgba(244,200,66,0.3)] pl-4">
-                          <p className="text-xs uppercase tracking-widest text-[#C4A484] mb-2">Komposisi Paket</p>
-                          <div className="space-y-1">
-                            {(p.bundle_items || []).map((b, i) => (
-                              <div key={i} className="flex items-center justify-between text-sm py-1.5 border-b border-[rgba(244,200,66,0.05)] last:border-0">
-                                <div className="flex items-center gap-3">
-                                  <span className="text-[#F5F5F5]">{b.name}</span>
-                                  <span className="text-xs text-[#C4A484]">@ {formatIDR(b.price)}</span>
-                                </div>
-                                <div className="flex items-center gap-4">
-                                  <span className="text-xs text-[#C4A484]">Qty: <span className="text-[#F4C842] font-semibold">{b.quantity}</span></span>
-                                  <span className="text-xs text-[#F4C842]">{formatIDR(Number(b.price) * Number(b.quantity))}</span>
-                                </div>
-                              </div>
-                            ))}
-                            <div className="flex justify-between pt-2 mt-1 border-t border-[rgba(244,200,66,0.15)]">
-                              <span className="text-xs text-[#C4A484]">Total nilai item:</span>
-                              <span className="text-sm text-[#F4C842] font-semibold">{formatIDR((p.bundle_items || []).reduce((s, b) => s + Number(b.price) * Number(b.quantity), 0))}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    {p.category_id === paketCategoryId ? (
+                      <span className="inline-flex items-center gap-1 text-xs bg-[rgba(244,200,66,0.15)] text-[#F4C842] px-2 py-1 rounded"><Package size={12} /> Paket</span>
+                    ) : (
+                      <span className="text-xs text-[#C4A484]">{categories.find(c => c.id === p.category_id)?.name || "—"}</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-[#C4A484]">{p.sku}</td>
+                  <td className="px-6 py-4 text-sm text-[#C4A484]">{p.variants?.length ? `${p.variants.length} varian` : "—"}</td>
+                  <td className="px-6 py-4 text-right text-sm text-[#F4C842]">{formatIDR(p.price)}</td>
+                  <td className="px-6 py-4 text-right"><span className={`text-sm ${p.stock <= (p.low_stock_threshold || 5) ? 'text-[#8B0000]' : 'text-[#F5F5F5]'}`}>{p.stock}</span></td>
+                  <td className="px-6 py-4 text-right">
+                    <div className="flex justify-end gap-2">
+                      <button onClick={() => openEdit(p)} data-testid={`edit-product-${p.id}`} className="p-2.5 text-[#C4A484] hover:text-[#F4C842]"><Edit3 size={16} /></button>
+                      <button onClick={() => remove(p.id)} data-testid={`delete-product-${p.id}`} className="p-2.5 text-[#C4A484] hover:text-[#8B0000]"><Trash2 size={16} /></button>
+                    </div>
+                  </td>
+                </tr>
               ))}
             </tbody>
           </table>
@@ -225,72 +173,6 @@ export default function Products() {
                   <input value={form.image_url} onChange={(e) => setForm({ ...form, image_url: e.target.value })} placeholder="https://..." className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" />
                 </div>
               </div>
-
-              {/* Product Type Selector */}
-              <div className="border-t border-[rgba(244,200,66,0.15)] pt-4">
-                <label className="text-xs uppercase tracking-widest text-[#C4A484] mb-2 block">Tipe Produk</label>
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setForm({ ...form, product_type: "regular" })}
-                    className={`flex items-center gap-2 px-4 py-2.5 rounded-md text-sm transition-colors ${form.product_type !== "paket" ? "bg-[rgba(244,200,66,0.15)] text-[#F4C842] border border-[#F4C842]" : "bg-[#2A1015] text-[#C4A484] border border-[rgba(244,200,66,0.2)]"}`}
-                    data-testid="type-regular"
-                  >
-                    Produk Reguler
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setForm({ ...form, product_type: "paket" })}
-                    className={`flex items-center gap-2 px-4 py-2.5 rounded-md text-sm transition-colors ${form.product_type === "paket" ? "bg-[rgba(244,200,66,0.15)] text-[#F4C842] border border-[#F4C842]" : "bg-[#2A1015] text-[#C4A484] border border-[rgba(244,200,66,0.2)]"}`}
-                    data-testid="type-paket"
-                  >
-                    <Package size={16} /> Paket / Bundle
-                  </button>
-                </div>
-              </div>
-
-              {/* Bundle Items — only show when product_type is "paket" */}
-              {form.product_type === "paket" && (
-                <div className="border-t border-[rgba(244,200,66,0.15)] pt-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <div>
-                      <h3 className="font-serif-luxury text-lg text-[#F5F5F5]">Komposisi Paket</h3>
-                      <p className="text-xs text-[#C4A484]">Pilih produk yang menjadi campuran paket ini. Harga jual paket ditentukan di field "Harga Jual" di atas.</p>
-                    </div>
-                    <button type="button" onClick={addBundleItem} data-testid="add-bundle-btn" className="flex items-center gap-1 text-xs text-[#F4C842] hover:text-[#FFDD5C]"><Plus size={16} /> Tambah Item</button>
-                  </div>
-                  <div className="space-y-2">
-                    {(form.bundle_items || []).map((b, i) => (
-                      <div key={i} className="overflow-x-auto" data-testid={`bundle-row-${i}`}>
-                        <div className="grid grid-cols-12 gap-2 items-center min-w-[700px]">
-                          <select
-                            value={b.product_id}
-                            onChange={(e) => onBundleProductSelect(i, e.target.value)}
-                            className="col-span-5 bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-2 py-2 text-sm text-[#F5F5F5]"
-                            data-testid={`bundle-product-${i}`}
-                          >
-                            <option value="">-- Pilih Produk --</option>
-                            {items.filter(p => p.id !== editing && p.product_type !== "paket").map(p => (
-                              <option key={p.id} value={p.id}>{p.name} ({formatIDR(p.price)})</option>
-                            ))}
-                          </select>
-                          <input type="number" placeholder="Qty" value={b.quantity} onChange={(e) => updateBundleItem(i, { quantity: e.target.value })} className="col-span-2 bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-2 py-2 text-sm text-[#F5F5F5]" data-testid={`bundle-qty-${i}`} />
-                          <input type="number" placeholder="Harga Satuan" value={b.price} onChange={(e) => updateBundleItem(i, { price: e.target.value })} className="col-span-3 bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-2 py-2 text-sm text-[#F5F5F5]" />
-                          <div className="col-span-1 text-xs text-[#C4A484] text-center">{formatIDR(Number(b.price) * Number(b.quantity || 1))}</div>
-                          <button type="button" onClick={() => removeBundleItem(i)} className="col-span-1 text-[#C4A484] hover:text-[#8B0000]"><Trash2 size={16} /></button>
-                        </div>
-                      </div>
-                    ))}
-                    {(!form.bundle_items || form.bundle_items.length === 0) && <p className="text-xs text-[#C4A484] italic">Belum ada item dalam paket. Klik "Tambah Item" untuk memilih produk.</p>}
-                    {(form.bundle_items || []).length > 0 && (
-                      <div className="flex justify-between items-center pt-3 border-t border-[rgba(244,200,66,0.1)]">
-                        <span className="text-xs text-[#C4A484]">Total nilai item (modal):</span>
-                        <span className="text-sm text-[#F4C842] font-semibold">{formatIDR(bundleTotal)}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
 
               {/* Variants */}
               <div className="border-t border-[rgba(244,200,66,0.15)] pt-4">

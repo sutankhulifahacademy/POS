@@ -1,17 +1,51 @@
-Enhance paket UI with expandable composition in product list and POS
+Rombak paket system: category-based with dynamic composer in POS/Dine-In
 
-Products.js:
-- Paket rows in product table now have expand/collapse chevron
-- Clicking chevron shows full composition: item name, unit price,
-  quantity, subtotal per item, and total bundle value
-- Column "Varian" shows "N item" for paket products
+The paket/bundle system has been completely reworked. Instead of
+pre-defining bundle_items on each product, paket is now simply a
+product with category "Paket". The composition is chosen dynamically
+at the point of sale.
 
-POS.js:
-- Paket products show "Paket" badge on product card
-- Clicking a paket product opens a composition preview modal showing
-  all bundle items with prices and quantities
-- Modal has "Tambah ke Keranjang" button to add the paket to cart
-- Pattern matches the user's example: paket name, item list, quantities
+## How it works now:
+
+1. **Product setup (Products page):**
+   - Create a product with category "Paket" (e.g. "Paket Suka-Suka")
+   - Set the paket selling price (e.g. Rp 75.000)
+   - No pre-defined bundle items needed
+
+2. **POS (Kasir):**
+   - Paket products show a "Paket" badge
+   - Clicking a paket opens a composer modal showing ALL dimsum/products
+   - Cashier picks which items and quantities go into this paket
+   - Search box to filter products
+   - Total item count shown
+   - "Tambah ke Keranjang" adds paket to cart with paket_items
+
+3. **Dine-In (Tables):**
+   - Same paket composer modal in the order panel
+   - Composition chosen at order time
+   - paket_items saved with the order
+
+4. **Cart display:**
+   - Paket items in cart show their composition as a sub-list:
+     Paket Suka-Suka           Rp 75.000
+       ├ Dimsum Udang ×2
+       ├ Dimsum Mix ×1
+       └ ...
+
+5. **Revenue tracking:**
+   - paket_items are saved in sales.items JSONB
+   - Each sale item includes paket_items: [{product_id, name, price, quantity}]
+   - Reports can track which individual products were sold as part of pakets
+
+## Files changed:
+- Products.js: removed product_type selector and bundle_items UI;
+  paket is now just a category. Table shows category name with "Paket"
+  badge for paket products.
+- POS.js: replaced static paketPick modal with dynamic paketComposer
+  modal. Cashier selects items at sale time.
+- Tables.js: same dynamic paket composer in dine-in order panel.
+- Backend: no changes needed — paket_items flow through existing
+  JSONB items storage in sales table.
 
 Generated with [Devin](https://devin.ai)
 
