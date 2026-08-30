@@ -401,11 +401,22 @@ async def login(
         path="/",
     )
 
+    # Load outlet access
+    if user["role"] == "owner":
+        outlet_ids = []
+    else:
+        outlets = await q_all(
+            "SELECT outlet_id FROM user_outlet_access WHERE user_id = :uid",
+            uid=str(user["id"]),
+        )
+        outlet_ids = [str(o["outlet_id"]) for o in outlets]
+
     return {
         "id": str(user["id"]),
         "email": user["email"],
         "name": user["name"],
         "role": user["role"],
+        "outlet_ids": outlet_ids,
         "token": token,
     }
 

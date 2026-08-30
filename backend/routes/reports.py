@@ -89,6 +89,9 @@ async def report_dashboard(
     # Build outlet filter — owner can see all or filter, others see only their outlets
     outlet_clause = ""
     if outlet_id:
+        # Non-owner cannot access other outlet
+        if user["role"] != "owner" and outlet_id not in user.get("outlet_ids", []):
+            raise HTTPException(403, "Anda tidak memiliki akses ke outlet ini")
         outlet_clause = " AND outlet_id = :outlet_id "
     else:
         # Non-owner: filter to their outlets
@@ -1484,8 +1487,10 @@ async def branch_comparison(
             return {"outlets": [], "period": period}
         ids_sql = ",".join(f"'{oid}'" for oid in user_outlets)
         o_clause = f" AND s.outlet_id IN ({ids_sql}) "
+        where_clause = f" AND o.id IN ({ids_sql}) "
     else:
         o_clause = ""
+        where_clause = ""
 
     rows = await q_all(f"""
         SELECT
@@ -1501,6 +1506,7 @@ async def branch_comparison(
             AND s.created_at < :end_at
             {o_clause}
         WHERE 1=1
+            {where_clause}
         GROUP BY o.id, o.name
         ORDER BY revenue DESC
     """, start_at=start_local, end_at=end_local)

@@ -26,7 +26,7 @@ async def get_permission_tree(user=Depends(get_current_user)):
 
 
 @router.get("/roles")
-async def list_roles(user=Depends(get_current_user)):
+async def list_roles(user=Depends(require_role("owner"))):
     """List all roles with their permissions grouped by module."""
     roles = await q_all("SELECT * FROM roles ORDER BY is_system DESC, label ASC")
     result = []

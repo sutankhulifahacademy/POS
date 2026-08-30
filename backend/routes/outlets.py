@@ -38,7 +38,7 @@ async def get_my_outlets(user=Depends(get_current_user)):
 
 
 @router.post("/outlets")
-async def create_item(body: MODEL, user=Depends(require_permission("outlets", "create"))):
+async def create_item(body: MODEL, user=Depends(require_role("owner"))):
     d = body.model_dump()
     d["id"] = new_id()
     col_list = ", ".join(["id"] + COLS + ["created_at"])
@@ -48,7 +48,7 @@ async def create_item(body: MODEL, user=Depends(require_permission("outlets", "c
 
 
 @router.put("/outlets/{item_id}")
-async def update_item(item_id: str, body: MODEL, user=Depends(require_permission("outlets", "update"))):
+async def update_item(item_id: str, body: MODEL, user=Depends(require_role("owner"))):
     d = body.model_dump()
     sets = ", ".join([f"{c}=:{c}" for c in COLS])
     r = await q_exec(f"UPDATE {TABLE} SET {sets}, updated_at=NOW() WHERE id=:id", id=item_id, **{c: d.get(c) for c in COLS})
@@ -58,7 +58,7 @@ async def update_item(item_id: str, body: MODEL, user=Depends(require_permission
 
 
 @router.delete("/outlets/{item_id}")
-async def delete_item(item_id: str, user=Depends(require_permission("outlets", "delete"))):
+async def delete_item(item_id: str, user=Depends(require_role("owner"))):
     r = await q_exec(f"DELETE FROM {TABLE} WHERE id=:id", id=item_id)
     if r == 0:
         raise HTTPException(404, "Not found")

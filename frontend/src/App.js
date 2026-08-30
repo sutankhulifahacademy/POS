@@ -22,6 +22,7 @@ import Tables from "./pages/Tables";
 import Attendance from "./pages/Attendance";
 import PaymentAccounts from "./pages/PaymentAccounts";
 import Roles from "./pages/Roles";
+import AIAssistant from "./pages/AIAssistant";
 
 function Protected({ children, path }) {
   const { user, loading } = useAuth();
@@ -74,6 +75,7 @@ function App() {
             <Route path="/settings" element={<Protected path="/settings"><Settings /></Protected>} />
             <Route path="/payment-accounts" element={<Protected path="/payment-accounts"><PaymentAccounts /></Protected>} />
             <Route path="/roles" element={<Protected path="/roles"><Roles /></Protected>} />
+            <Route path="/ai-assistant" element={<Protected path="/ai-assistant"><AIAssistant /></Protected>} />
           </Route>
           <Route path="/pos" element={<Protected><POS /></Protected>} />
           <Route path="/" element={<HomeRedirect />} />
