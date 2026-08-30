@@ -76,6 +76,30 @@ body {
 
 .print-only { display: none; }
 
+/* Tablet & touch optimizations */
+@media (max-width: 1024px) {
+  /* Larger touch targets on tablet */
+  button:active {
+    transform: scale(0.97);
+  }
+  /* Prevent text size adjustment on orientation change */
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  /* Smooth scrolling for overlays */
+  .overflow-y-auto {
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+@media (max-width: 768px) {
+  /* Full-width modals on mobile */
+  .modal-responsive {
+    max-width: 100% !important;
+    margin: 0 1rem !important;
+  }
+}
+
 @media print {
   body * { visibility: hidden; }
   #print-receipt, #print-receipt * { visibility: visible; }

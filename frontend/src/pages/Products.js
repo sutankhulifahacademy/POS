@@ -61,14 +61,14 @@ export default function Products() {
           </button>
         }
       />
-      <div className="p-8">
+      <div className="p-4 md:p-6 lg:p-8">
         <div className="mb-6 relative max-w-md">
           <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#C4A484]" strokeWidth={1.5} />
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari produk..." className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md pl-12 pr-4 py-3 text-[#F5F5F5] focus:outline-none focus:ring-1 focus:ring-[#F4C842]" data-testid="products-search" />
         </div>
 
-        <div className="bg-[#331419] gold-border rounded-lg overflow-hidden">
-          <table className="w-full">
+        <div className="bg-[#331419] gold-border rounded-lg overflow-x-auto">
+          <table className="w-full min-w-[600px]">
             <thead>
               <tr className="text-left text-xs uppercase tracking-wider text-[#C4A484] border-b border-[rgba(244,200,66,0.15)]">
                 <th className="px-6 py-4">Produk</th>
@@ -98,8 +98,8 @@ export default function Products() {
                   <td className="px-6 py-4 text-right"><span className={`text-sm ${p.stock <= (p.low_stock_threshold || 5) ? 'text-[#8B0000]' : 'text-[#F5F5F5]'}`}>{p.stock}</span></td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-2">
-                      <button onClick={() => openEdit(p)} data-testid={`edit-product-${p.id}`} className="p-2 text-[#C4A484] hover:text-[#F4C842]"><Edit3 size={15} /></button>
-                      <button onClick={() => remove(p.id)} data-testid={`delete-product-${p.id}`} className="p-2 text-[#C4A484] hover:text-[#8B0000]"><Trash2 size={15} /></button>
+                      <button onClick={() => openEdit(p)} data-testid={`edit-product-${p.id}`} className="p-2.5 text-[#C4A484] hover:text-[#F4C842]"><Edit3 size={16} /></button>
+                      <button onClick={() => remove(p.id)} data-testid={`delete-product-${p.id}`} className="p-2.5 text-[#C4A484] hover:text-[#8B0000]"><Trash2 size={16} /></button>
                     </div>
                   </td>
                 </tr>
@@ -111,13 +111,13 @@ export default function Products() {
 
       {showForm && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setShowForm(false)}>
-          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-full sm:max-w-3xl mx-4 w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-[rgba(244,200,66,0.15)] flex items-center justify-between">
               <h2 className="font-serif-luxury text-2xl text-[#F5F5F5]">{editing ? "Edit Produk" : "Tambah Produk"}</h2>
               <button onClick={() => setShowForm(false)} className="text-[#C4A484] hover:text-[#F5F5F5]"><X size={20} /></button>
             </div>
             <form onSubmit={save} className="p-6 space-y-6" data-testid="product-form">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="col-span-2">
                   <label className="text-xs uppercase tracking-widest text-[#C4A484] mb-1 block">Nama Produk *</label>
                   <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" data-testid="form-name" />
@@ -170,16 +170,18 @@ export default function Products() {
                     <h3 className="font-serif-luxury text-lg text-[#F5F5F5]">Varian Produk</h3>
                     <p className="text-xs text-[#C4A484]">Opsional. Untuk fashion (S/M/L), F&B (rasa/topping), dll.</p>
                   </div>
-                  <button type="button" onClick={addVariant} data-testid="add-variant-btn" className="flex items-center gap-1 text-xs text-[#F4C842] hover:text-[#FFDD5C]"><Plus size={12} /> Tambah Varian</button>
+                  <button type="button" onClick={addVariant} data-testid="add-variant-btn" className="flex items-center gap-1 text-xs text-[#F4C842] hover:text-[#FFDD5C]"><Plus size={16} /> Tambah Varian</button>
                 </div>
                 <div className="space-y-2">
                   {(form.variants || []).map((v, i) => (
-                    <div key={i} className="grid grid-cols-12 gap-2 items-center" data-testid={`variant-row-${i}`}>
-                      <input placeholder="Nama (e.g. Large / Red)" value={v.name} onChange={(e) => updateVariant(i, { name: e.target.value })} className="col-span-4 bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-2 py-2 text-sm text-[#F5F5F5]" />
-                      <input placeholder="SKU" value={v.sku} onChange={(e) => updateVariant(i, { sku: e.target.value })} className="col-span-3 bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-2 py-2 text-sm text-[#F5F5F5]" />
-                      <input type="number" placeholder="Harga" value={v.price} onChange={(e) => updateVariant(i, { price: e.target.value })} className="col-span-2 bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-2 py-2 text-sm text-[#F5F5F5]" />
-                      <input type="number" placeholder="Stok" value={v.stock} onChange={(e) => updateVariant(i, { stock: e.target.value })} className="col-span-2 bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-2 py-2 text-sm text-[#F5F5F5]" />
-                      <button type="button" onClick={() => removeVariant(i)} className="col-span-1 text-[#C4A484] hover:text-[#8B0000]"><Trash2 size={14} /></button>
+                    <div key={i} className="overflow-x-auto" data-testid={`variant-row-${i}`}>
+                      <div className="grid grid-cols-12 gap-2 items-center min-w-[700px]">
+                        <input placeholder="Nama (e.g. Large / Red)" value={v.name} onChange={(e) => updateVariant(i, { name: e.target.value })} className="col-span-4 bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-2 py-2 text-sm text-[#F5F5F5]" />
+                        <input placeholder="SKU" value={v.sku} onChange={(e) => updateVariant(i, { sku: e.target.value })} className="col-span-3 bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-2 py-2 text-sm text-[#F5F5F5]" />
+                        <input type="number" placeholder="Harga" value={v.price} onChange={(e) => updateVariant(i, { price: e.target.value })} className="col-span-2 bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-2 py-2 text-sm text-[#F5F5F5]" />
+                        <input type="number" placeholder="Stok" value={v.stock} onChange={(e) => updateVariant(i, { stock: e.target.value })} className="col-span-2 bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-2 py-2 text-sm text-[#F5F5F5]" />
+                        <button type="button" onClick={() => removeVariant(i)} className="col-span-1 text-[#C4A484] hover:text-[#8B0000]"><Trash2 size={16} /></button>
+                      </div>
                     </div>
                   ))}
                   {(!form.variants || form.variants.length === 0) && <p className="text-xs text-[#C4A484] italic">Tidak ada varian. Produk akan dijual sebagai item tunggal.</p>}

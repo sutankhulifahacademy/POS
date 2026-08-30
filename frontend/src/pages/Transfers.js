@@ -53,9 +53,9 @@ export default function Transfers() {
           <Plus size={16} /> Buat Transfer
         </button>
       } />
-      <div className="p-8">
-        <div className="bg-[#331419] gold-border rounded-lg overflow-hidden">
-          <table className="w-full">
+      <div className="p-4 md:p-6 lg:p-8">
+        <div className="bg-[#331419] gold-border rounded-lg overflow-x-auto">
+          <table className="w-full min-w-[600px]">
             <thead>
               <tr className="text-left text-xs uppercase tracking-wider text-[#C4A484] border-b border-[rgba(244,200,66,0.15)]">
                 <th className="px-6 py-4">No. Transfer</th>
@@ -72,7 +72,7 @@ export default function Transfers() {
                 <tr key={t.id} onClick={() => setDetail(t)} className="border-b border-[rgba(244,200,66,0.08)] last:border-0 hover:bg-[#4A1A22] transition-colors cursor-pointer" data-testid={`transfer-row-${t.id}`}>
                   <td className="px-6 py-3 text-sm text-[#F4C842]">{t.transfer_no}</td>
                   <td className="px-6 py-3 text-sm text-[#F5F5F5]">{t.from_outlet_name}</td>
-                  <td className="px-6 py-3 text-[#F4C842]"><ArrowRightLeft size={14} /></td>
+                  <td className="px-6 py-3 text-[#F4C842]"><ArrowRightLeft size={16} /></td>
                   <td className="px-6 py-3 text-sm text-[#F5F5F5]">{t.to_outlet_name}</td>
                   <td className="px-6 py-3 text-sm text-[#C4A484]">{t.total_quantity} unit ({t.items.length} produk)</td>
                   <td className="px-6 py-3 text-xs text-[#C4A484]">{new Date(t.created_at).toLocaleString("id-ID")}</td>
@@ -85,13 +85,13 @@ export default function Transfers() {
 
       {showForm && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setShowForm(false)}>
-          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-full sm:max-w-3xl mx-4 w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-[rgba(244,200,66,0.15)] flex items-center justify-between">
               <h2 className="font-serif-luxury text-2xl text-[#F5F5F5]">Buat Transfer Stok</h2>
               <button onClick={() => setShowForm(false)} className="text-[#C4A484] hover:text-[#F5F5F5]"><X size={20} /></button>
             </div>
             <form onSubmit={submit} className="p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-4 items-end">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
                 <div>
                   <label className="text-xs uppercase tracking-widest text-[#C4A484] mb-1 block">Dari Outlet</label>
                   <select required value={fromOutlet} onChange={(e) => setFromOutlet(e.target.value)} className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" data-testid="transfer-from">
@@ -111,20 +111,22 @@ export default function Transfers() {
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="text-xs uppercase tracking-widest text-[#C4A484]">Item Transfer</label>
-                  <button type="button" onClick={addLine} data-testid="transfer-add-line" className="text-xs text-[#F4C842] hover:text-[#FFDD5C] flex items-center gap-1"><Plus size={12} /> Tambah baris</button>
+                  <button type="button" onClick={addLine} data-testid="transfer-add-line" className="text-xs text-[#F4C842] hover:text-[#FFDD5C] flex items-center gap-1"><Plus size={16} /> Tambah baris</button>
                 </div>
                 <div className="space-y-2">
                   {items.map((it, idx) => (
-                    <div key={idx} className="grid grid-cols-12 gap-2 items-center">
-                      <select value={it.product_id} onChange={(e) => {
-                        const p = products.find(pr => pr.id === e.target.value);
-                        updateLine(idx, { product_id: e.target.value, name: p?.name || "" });
-                      }} className="col-span-8 bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-2 py-2 text-sm text-[#F5F5F5]">
-                        <option value="">Pilih produk</option>
-                        {products.map(p => <option key={p.id} value={p.id}>{p.name} (stok: {p.stock})</option>)}
-                      </select>
-                      <input type="number" min="1" value={it.quantity} onChange={(e) => updateLine(idx, { quantity: e.target.value })} placeholder="Qty" className="col-span-3 bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-2 py-2 text-sm text-[#F5F5F5]" />
-                      <button type="button" onClick={() => removeLine(idx)} className="col-span-1 text-[#C4A484] hover:text-[#8B0000]"><Trash2 size={14} /></button>
+                    <div key={idx} className="overflow-x-auto">
+                      <div className="grid grid-cols-12 gap-2 items-center min-w-[700px]">
+                        <select value={it.product_id} onChange={(e) => {
+                          const p = products.find(pr => pr.id === e.target.value);
+                          updateLine(idx, { product_id: e.target.value, name: p?.name || "" });
+                        }} className="col-span-8 bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-2 py-2 text-sm text-[#F5F5F5]">
+                          <option value="">Pilih produk</option>
+                          {products.map(p => <option key={p.id} value={p.id}>{p.name} (stok: {p.stock})</option>)}
+                        </select>
+                        <input type="number" min="1" value={it.quantity} onChange={(e) => updateLine(idx, { quantity: e.target.value })} placeholder="Qty" className="col-span-3 bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-2 py-2 text-sm text-[#F5F5F5]" />
+                        <button type="button" onClick={() => removeLine(idx)} className="col-span-1 text-[#C4A484] hover:text-[#8B0000]"><Trash2 size={16} /></button>
+                      </div>
                     </div>
                   ))}
                   {items.length === 0 && <p className="text-xs text-[#C4A484] italic">Belum ada item. Klik "Tambah baris".</p>}
@@ -147,11 +149,11 @@ export default function Transfers() {
 
       {detail && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setDetail(null)}>
-          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-lg w-full p-8">
+          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-full sm:max-w-lg mx-4 w-full p-8">
             <h3 className="font-serif-luxury text-2xl text-[#F4C842] text-center">{detail.transfer_no}</h3>
             <div className="flex items-center justify-center gap-3 text-sm text-[#C4A484] my-3">
               <span className="text-[#F5F5F5]">{detail.from_outlet_name}</span>
-              <ArrowRightLeft size={14} className="text-[#F4C842]" />
+              <ArrowRightLeft size={16} className="text-[#F4C842]" />
               <span className="text-[#F5F5F5]">{detail.to_outlet_name}</span>
             </div>
             <p className="text-xs text-[#C4A484] text-center mb-4">{new Date(detail.created_at).toLocaleString("id-ID")} · oleh {detail.created_by_name}</p>

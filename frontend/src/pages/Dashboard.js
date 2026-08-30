@@ -155,7 +155,7 @@ export default function Dashboard() {
         subtitle={selectedPeriod.subtitle}
       />
 
-      <div className="p-8 space-y-8">
+      <div className="p-4 md:p-6 lg:p-8 space-y-8">
 
         {/* =========================================
             PERIOD FILTER
@@ -253,7 +253,7 @@ export default function Dashboard() {
             {/* =====================================
                 CHART + LOW STOCK
             ====================================== */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
 
               <div
                 className="lg:col-span-2 bg-[#331419] gold-border rounded-lg p-6"
@@ -400,7 +400,8 @@ export default function Dashboard() {
                   Belum ada data.
                 </p>
               ) : (
-                <table className="w-full">
+                <div className="overflow-x-auto">
+                <table className="w-full min-w-[500px]">
                   <thead>
                     <tr className="text-left text-xs uppercase tracking-wider text-[#C4A484] border-b border-[rgba(244,200,66,0.15)]">
                       <th className="py-3">
@@ -438,6 +439,7 @@ export default function Dashboard() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               )}
             </div>
           </>

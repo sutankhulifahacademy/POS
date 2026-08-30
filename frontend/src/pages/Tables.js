@@ -330,7 +330,7 @@ export default function Tables({ embedded = false }) {
           </button>
         } />
       )}
-      <div className={embedded ? "space-y-8" : "p-8 space-y-8"}>
+      <div className={embedded ? "space-y-8" : "p-4 md:p-6 lg:p-8 space-y-8"}>
         {tables.length === 0 && (
           <div className="bg-[#331419] gold-border rounded-lg p-12 text-center">
             <MapPin size={40} strokeWidth={1.2} className="mx-auto mb-3 text-[#F4C842] opacity-40" />
@@ -342,7 +342,7 @@ export default function Tables({ embedded = false }) {
             <h2 className="font-serif-luxury text-2xl text-[#F5F5F5] mb-4 flex items-center gap-2">
               <MapPin size={18} strokeWidth={1.5} className="text-[#F4C842]" /> Zona {zone}
             </h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
               {tables.filter(t => (t.zone || "Utama") === zone).map(t => (
                 <div
                   key={t.id}
@@ -354,7 +354,7 @@ export default function Tables({ embedded = false }) {
                       : "bg-[#331419] gold-border hover:border-[#F4C842]"
                   }`}
                 >
-                  <button onClick={(e) => { e.stopPropagation(); deleteTable(t.id, t.name); }} className="absolute top-2 right-2 text-[#C4A484] hover:text-[#8B0000] opacity-0 group-hover:opacity-100"><Trash2 size={12} /></button>
+                  <button onClick={(e) => { e.stopPropagation(); deleteTable(t.id, t.name); }} className="absolute top-2 right-2 w-8 h-8 flex items-center justify-center text-[#C4A484] hover:text-[#8B0000] opacity-0 group-hover:opacity-100"><Trash2 size={14} /></button>
                   <p className="font-serif-luxury text-2xl text-[#F5F5F5]">{t.name}</p>
                   <p className="text-xs text-[#C4A484] mt-1 flex items-center gap-1"><UsersIcon size={11} /> {t.capacity} orang</p>
                   <div className={`mt-3 text-[10px] uppercase tracking-widest px-2 py-1 rounded inline-block ${
@@ -407,9 +407,9 @@ export default function Tables({ embedded = false }) {
       {/* Dine-in Order UI */}
       {openTable && (
         <div className="fixed inset-0 bg-black/90 z-40 flex" onClick={() => { if (!activeOrder) setOpenTable(null); }}>
-          <div onClick={(e) => e.stopPropagation()} className="flex w-full max-w-6xl mx-auto my-6">
+          <div onClick={(e) => e.stopPropagation()} className="flex flex-col lg:flex-row w-full max-w-6xl mx-auto my-6">
             {/* Left: product picker */}
-            <div className="flex-1 bg-[#2A1015] gold-border rounded-l-lg p-6 overflow-y-auto">
+            <div className="flex-1 bg-[#2A1015] gold-border rounded-l-lg p-6 overflow-y-auto max-h-[50vh] lg:max-h-[80vh]">
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <p className="text-xs uppercase tracking-widest text-[#F4C842]">Meja {openTable.name}</p>
@@ -420,7 +420,7 @@ export default function Tables({ embedded = false }) {
               {!activeOrder && (
                 <div className="mb-4">
                   <label className="text-xs uppercase tracking-widest text-[#C4A484] mb-1 block">Jumlah Tamu</label>
-                  <input type="number" min="1" value={guests} onChange={(e) => setGuests(e.target.value)} className="w-32 bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" />
+                  <input type="number" min="1" value={guests} onChange={(e) => setGuests(e.target.value)} className="w-24 sm:w-32 bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" />
                 </div>
               )}
               <div className="mb-4 relative">
@@ -438,7 +438,7 @@ export default function Tables({ embedded = false }) {
               </div>
             </div>
             {/* Right: order cart */}
-            <div className="w-96 bg-[#1A0810] gold-border rounded-r-lg p-6 flex flex-col">
+            <div className="w-full lg:w-96 bg-[#1A0810] gold-border rounded-r-lg p-6 flex flex-col overflow-y-auto max-h-[50vh] lg:max-h-[80vh]">
               <div className="flex items-center gap-2 mb-4">
                 <ShoppingBag size={18} strokeWidth={1.5} className="text-[#F4C842]" />
                 <h3 className="font-serif-luxury text-xl text-[#F5F5F5]">Order</h3>
@@ -452,9 +452,9 @@ export default function Tables({ embedded = false }) {
                       <p className="text-xs text-[#C4A484]">{formatIDR(i.price)}</p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <button onClick={() => changeQty(i.product_id, -1)} className="w-6 h-6 rounded bg-[#2A1015] border border-[rgba(244,200,66,0.2)] text-[#F4C842]">−</button>
+                      <button onClick={() => changeQty(i.product_id, -1)} className="w-9 h-9 rounded bg-[#2A1015] border border-[rgba(244,200,66,0.2)] text-[#F4C842] text-base">−</button>
                       <span className="text-[#F5F5F5] min-w-[20px] text-center">{i.quantity}</span>
-                      <button onClick={() => changeQty(i.product_id, 1)} className="w-6 h-6 rounded bg-[#2A1015] border border-[rgba(244,200,66,0.2)] text-[#F4C842]">+</button>
+                      <button onClick={() => changeQty(i.product_id, 1)} className="w-9 h-9 rounded bg-[#2A1015] border border-[rgba(244,200,66,0.2)] text-[#F4C842] text-base">+</button>
                     </div>
                   </div>
                 ))}
@@ -484,14 +484,14 @@ export default function Tables({ embedded = false }) {
       {/* Checkout modal */}
       {showCheckout && openTable && (
         <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#2A1015] gold-border rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto p-6">
+          <div className="bg-[#2A1015] gold-border rounded-lg max-w-full sm:max-w-md mx-4 w-full max-h-[90vh] overflow-y-auto p-6">
             <h3 className="font-serif-luxury text-2xl text-[#F5F5F5] mb-4">Bayar - Meja {openTable.name}</h3>
             <div className="space-y-3">
               <select value={customerId} onChange={(e) => setCustomerId(e.target.value)} className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]">
                 <option value="">Pelanggan (opsional)</option>
                 {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-[10px] uppercase tracking-widest text-[#C4A484]">Metode</label>
                   <select value={payMethod} onChange={(e) => setPayMethod(e.target.value)} className="mt-1 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]" data-testid="dinein-payment">
@@ -516,7 +516,7 @@ export default function Tables({ embedded = false }) {
                     Detail Pembayaran Kartu
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
 
                     <div>
                       <label className="text-[10px] uppercase tracking-widest text-[#C4A484]">
@@ -596,7 +596,7 @@ export default function Tables({ embedded = false }) {
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
 
                     <div>
                       <label className="text-[10px] uppercase tracking-widest text-[#C4A484]">

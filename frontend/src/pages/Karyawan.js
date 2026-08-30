@@ -111,7 +111,7 @@ export default function Karyawan() {
           <Plus size={16} /> Tambah Karyawan
         </button>
       } />
-      <div className="p-8">
+      <div className="p-4 md:p-6 lg:p-8">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {users.length === 0 && <div className="col-span-full text-center py-16 text-[#C4A484]">Belum ada karyawan</div>}
           {users.map((u) => (
@@ -139,9 +139,9 @@ export default function Karyawan() {
               </div>
               <div className="mt-3 flex gap-2">
                 <button onClick={() => setDetail(u)} className="flex-1 text-xs text-[#F4C842] border border-[rgba(244,200,66,0.3)] py-1.5 rounded hover:bg-[#F4C842]/10 transition-colors">Detail</button>
-                <button onClick={() => openEdit(u)} data-testid={`edit-employee-${u.id}`} className="p-1.5 text-[#C4A484] hover:text-[#F4C842]"><UserCog size={14} /></button>
-                <button onClick={() => setResetting(u)} data-testid={`reset-employee-${u.id}`} className="p-1.5 text-[#C4A484] hover:text-[#F4C842]"><KeyRound size={14} /></button>
-                <button onClick={() => remove(u.id, u.name)} className="p-1.5 text-[#C4A484] hover:text-[#8B0000]"><Trash2 size={14} /></button>
+                <button onClick={() => openEdit(u)} data-testid={`edit-employee-${u.id}`} className="p-2.5 text-[#C4A484] hover:text-[#F4C842]"><UserCog size={16} /></button>
+                <button onClick={() => setResetting(u)} data-testid={`reset-employee-${u.id}`} className="p-2.5 text-[#C4A484] hover:text-[#F4C842]"><KeyRound size={16} /></button>
+                <button onClick={() => remove(u.id, u.name)} className="p-2.5 text-[#C4A484] hover:text-[#8B0000]"><Trash2 size={16} /></button>
               </div>
             </div>
           ))}
@@ -150,7 +150,7 @@ export default function Karyawan() {
 
       {showForm && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setShowForm(false)}>
-          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-full sm:max-w-3xl mx-4 w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-[rgba(244,200,66,0.15)] flex items-center justify-between sticky top-0 bg-[#2A1015]">
               <div className="flex items-center gap-2">
                 <Shield size={18} strokeWidth={1.5} className="text-[#F4C842]" />
@@ -158,9 +158,9 @@ export default function Karyawan() {
               </div>
               <button onClick={() => setShowForm(false)} className="text-[#C4A484] hover:text-[#F5F5F5]"><X size={20} /></button>
             </div>
-            <form onSubmit={submit} className="p-6 grid grid-cols-2 gap-4" data-testid="employee-form">
+            <form onSubmit={submit} className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4" data-testid="employee-form">
               {/* Photo & KTP uploads */}
-              <div className="col-span-2 grid grid-cols-2 gap-4">
+              <div className="col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="text-center">
                   <label className="text-xs uppercase tracking-widest text-[#C4A484] mb-2 block">Foto Karyawan</label>
                   <div className="relative inline-block">
@@ -258,7 +258,7 @@ export default function Karyawan() {
 
       {detail && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setDetail(null)}>
-          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto">
+          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-full sm:max-w-lg mx-4 w-full p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-serif-luxury text-2xl text-[#F4C842]">Detail Karyawan</h3>
               <button onClick={() => setDetail(null)} className="text-[#C4A484]"><X size={20} /></button>

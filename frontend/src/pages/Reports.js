@@ -129,7 +129,7 @@ function OutletSelect({ outlets, value, onChange }) {
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5] min-w-[160px]"
+        className="bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5] min-w-[120px] md:min-w-[160px]"
       >
         <option value="">Semua Outlet</option>
         {outlets.map((o) => (
@@ -149,13 +149,13 @@ function ExportButtons({ onExcel, onPDF }) {
         onClick={onExcel}
         className="flex items-center gap-2 bg-[#331419] border border-[#2E8B57] text-[#2E8B57] hover:bg-[#2E8B57]/10 px-4 py-2 rounded-md text-sm uppercase tracking-widest font-semibold transition-colors"
       >
-        <FileSpreadsheet size={14} strokeWidth={1.8} /> Excel
+        <FileSpreadsheet size={16} strokeWidth={1.8} /> Excel
       </button>
       <button
         onClick={onPDF}
         className="flex items-center gap-2 bg-[#F4C842] text-[#1A0810] hover:bg-[#FFDD5C] px-4 py-2 rounded-md text-sm uppercase tracking-widest font-semibold transition-colors"
       >
-        <FileText size={14} strokeWidth={1.8} /> PDF
+        <FileText size={16} strokeWidth={1.8} /> PDF
       </button>
     </div>
   );
@@ -177,7 +177,7 @@ function Card({ label, value, icon: Icon, accent = "text-[#F4C842]" }) {
 
 function SectionCard({ title, children, action }) {
   return (
-    <div className="bg-[#331419] gold-border rounded-lg overflow-hidden">
+    <div className="bg-[#331419] gold-border rounded-lg overflow-x-auto">
       <div className="flex items-center justify-between px-6 py-4 border-b border-[rgba(244,200,66,0.12)]">
         <h3 className="text-sm uppercase tracking-widest text-[#C4A484] font-semibold">
           {title}
@@ -192,7 +192,7 @@ function SectionCard({ title, children, action }) {
 function Table({ headers, rows, empty = "Tidak ada data" }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full">
+      <table className="w-full min-w-[600px]">
         <thead>
           <tr className="text-left text-xs uppercase tracking-wider text-[#C4A484] border-b border-[rgba(244,200,66,0.12)]">
             {headers.map((h, i) => (
@@ -471,7 +471,7 @@ function ReceiptPopup({ saleId, onClose }) {
       >
         <div
           onClick={(e) => e.stopPropagation()}
-          className="bg-[#2A1015] gold-border rounded-lg max-w-md w-full p-8"
+          className="bg-[#2A1015] gold-border rounded-lg max-w-full sm:max-w-md mx-4 w-full p-8"
         >
           <h3 className="font-serif-luxury text-2xl text-[#F4C842] text-center">
             {sale.invoice_no}
@@ -510,7 +510,7 @@ function ReceiptPopup({ saleId, onClose }) {
               onClick={printReceipt}
               className="flex-1 border border-[#F4C842] text-[#F4C842] py-2.5 rounded-md text-sm font-semibold uppercase tracking-widest hover:bg-[#F4C842]/10 transition-colors flex items-center justify-center gap-2"
             >
-              <Printer size={14} /> Cetak Ulang
+              <Printer size={16} /> Cetak Ulang
             </button>
             <button
               onClick={onClose}
@@ -563,7 +563,7 @@ function DashboardTab() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
         <Card label="Revenue" value={formatIDR(data.revenue)} icon={DollarSign} />
         <Card label="Transaksi" value={data.transactions} icon={ShoppingCart} accent="text-[#F5F5F5]" />
         <Card label="Item Terjual" value={data.items_sold} icon={Package} accent="text-[#F5F5F5]" />
@@ -578,7 +578,7 @@ function DashboardTab() {
       </SectionCard>
 
       {/* Top products + Low stock */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <SectionCard title="Produk Terlaris">
           <Table
             headers={[
@@ -803,7 +803,7 @@ function SalesTab({ outlets }) {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
         <Card label="Revenue" value={formatIDR(s.revenue)} icon={DollarSign} />
         <Card label="Transaksi" value={s.transactions} icon={ShoppingCart} accent="text-[#F5F5F5]" />
         <Card label="Avg Transaksi" value={formatIDR(s.avg_transaction)} icon={TrendingUp} />
@@ -818,7 +818,7 @@ function SalesTab({ outlets }) {
       </SectionCard>
 
       {/* Sub-sections grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <SectionCard title="Berdasarkan Metode Pembayaran">
           <Table
             headers={[
@@ -1105,7 +1105,7 @@ function ProfitLossTab({ outlets }) {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
         <Card label="Revenue" value={formatIDR(data.revenue)} icon={DollarSign} />
         <Card label="COGS" value={formatIDR(data.cogs)} icon={DollarSign} accent="text-red-400" />
         <Card
@@ -1306,7 +1306,7 @@ function ShiftsTab() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
         <Card label="Total Cash Sales" value={formatIDR(s.total_cash_sales)} icon={Banknote} />
         <Card label="Total Non-Cash" value={formatIDR(s.total_non_cash_sales)} icon={CreditCard} accent="text-[#F5F5F5]" />
         <Card label="Total Expected" value={formatIDR(s.total_expected)} icon={Wallet} accent="text-[#F5F5F5]" />
@@ -1526,7 +1526,7 @@ function StockTab({ outlets }) {
       </div>
 
       {/* By reason + By product */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <SectionCard title="Berdasarkan Alasan">
           <Table
             headers={[
@@ -1803,7 +1803,7 @@ function ReconciliationTab({ outlets }) {
       </SectionCard>
 
       {/* Detail cards grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Cash detail */}
         <SectionCard title="Detail Cash">
           <div className="p-6 space-y-3">
@@ -1852,7 +1852,7 @@ function ReconciliationTab({ outlets }) {
       </div>
 
       {/* Card detail + Transfer detail */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <SectionCard title="Detail Kartu">
           <Table
             headers={[
@@ -1921,7 +1921,7 @@ export default function Reports() {
         title="Laporan"
         subtitle="Pusat laporan manajerial: dashboard, penjualan, laba rugi, shift, stok & rekonsiliasi"
       />
-      <div className="p-8 space-y-6">
+      <div className="p-4 md:p-6 lg:p-8 space-y-6">
         {/* Tab bar */}
         <div className="flex flex-wrap gap-1 bg-[#331419] gold-border rounded-lg p-1.5">
           {TABS.map((tab) => {

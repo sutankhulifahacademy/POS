@@ -51,7 +51,7 @@ function CameraModal({ mode, onCapture, onClose }) {
   };
   return (
     <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4" data-testid="camera-modal">
-      <div className="bg-[#2A1015] gold-border rounded-lg max-w-md w-full p-6">
+      <div className="bg-[#2A1015] gold-border rounded-lg max-w-full sm:max-w-md mx-4 w-full p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-serif-luxury text-2xl text-[#F4C842]">
             {mode === "in" ? "Absen Masuk" : "Absen Keluar"}
@@ -61,7 +61,7 @@ function CameraModal({ mode, onCapture, onClose }) {
         <div className="relative rounded-md overflow-hidden bg-black mb-3">
           <video ref={videoRef} autoPlay playsInline className="w-full" style={{ transform: "scaleX(-1)" }} />
           <div className="absolute top-2 left-2 flex items-center gap-2 bg-black/60 px-2 py-1 rounded text-xs text-[#F4C842]">
-            <Camera size={12} /> LIVE
+            <Camera size={16} /> LIVE
           </div>
         </div>
         <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Catatan (opsional)" className="w-full bg-[#1A0810] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5] mb-3" data-testid="attendance-note" />
@@ -127,7 +127,7 @@ export default function Attendance() {
           </button>
         )
       } />
-      <div className="p-8 space-y-6">
+      <div className="p-4 md:p-6 lg:p-8 space-y-6">
         {active && (
           <div className="bg-gradient-to-r from-[#331419] to-[#4A1A22] gold-border-active rounded-lg p-6" data-testid="active-attendance">
             <div className="flex items-center gap-4">
@@ -145,8 +145,8 @@ export default function Attendance() {
           </div>
         )}
 
-        <div className="bg-[#331419] gold-border rounded-lg overflow-hidden">
-          <table className="w-full">
+        <div className="bg-[#331419] gold-border rounded-lg overflow-x-auto">
+          <table className="w-full min-w-[600px]">
             <thead>
               <tr className="text-left text-xs uppercase tracking-wider text-[#C4A484] border-b border-[rgba(244,200,66,0.15)]">
                 <th className="px-6 py-4">Karyawan</th>
@@ -184,12 +184,12 @@ export default function Attendance() {
 
       {detail && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setDetail(null)}>
-          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
+          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-full sm:max-w-md mx-4 w-full p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-serif-luxury text-xl text-[#F4C842]">{detail.cashier_name}</h3>
               <button onClick={() => setDetail(null)} className="text-[#C4A484]"><X size={20} /></button>
             </div>
-            <div className="grid grid-cols-2 gap-3 mb-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
               <div>
                 <p className="text-xs uppercase text-[#C4A484] mb-1">Absen Masuk</p>
                 {detail.clock_in_photo ? <img src={detail.clock_in_photo} alt="in" className="w-full rounded border border-[#F4C842]/30" style={{ transform: "scaleX(-1)" }} /> : <div className="text-xs text-[#C4A484] italic">Tanpa foto</div>}

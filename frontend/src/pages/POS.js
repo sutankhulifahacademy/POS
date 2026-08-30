@@ -50,6 +50,7 @@ export default function POS() {
   const [shiftSaving, setShiftSaving] = useState(false);
   const [showQRIS, setShowQRIS] = useState(false);
   const [activeTab, setActiveTab] = useState("pos"); // "pos" | "dinein"
+  const [cartOpen, setCartOpen] = useState(false);
   const nav = useNavigate();
   const bufferRef = useRef({ chars: "", lastTs: 0 });
 
@@ -95,6 +96,7 @@ export default function POS() {
     const displayName = variant ? `${product.name} - ${variant.name}` : product.name;
     const key = variant ? `${product.id}::${variant.name}` : product.id;
     if (stock <= 0) { toast.error(`${displayName}: stok habis`); return; }
+    setCartOpen(true);
     setCart((prev) => {
       const existing = prev.find((i) => i.key === key);
       if (existing) {
@@ -292,8 +294,8 @@ export default function POS() {
   return (
     <div className="min-h-screen flex bg-[#1A0810]">
       <Toaster theme="dark" position="top-right" toastOptions={{ style: { background: '#111', border: '1px solid rgba(244,200,66,0.3)', color: '#F5F5F5' } }} />
-      <div className={activeTab === "pos" ? "flex-1 p-8 pb-32 mr-96" : "flex-1 p-8"}>
-        <div className="mb-6 flex items-start justify-between">
+      <div className={activeTab === "pos" ? "flex-1 p-4 md:p-6 lg:p-8 pb-32 lg:mr-96" : "flex-1 p-4 md:p-6 lg:p-8"}>
+        <div className="mb-6 flex items-start justify-between flex-wrap lg:pl-0 pl-12">
           <div>
             <p className="text-xs tracking-[0.3em] text-[#F4C842] uppercase">Terminal Kasir</p>
             <h1 className="font-serif-luxury text-4xl text-[#F5F5F5]">Point of Sale</h1>
@@ -316,6 +318,9 @@ export default function POS() {
             </div>
           </div>
           <div className="flex gap-2 items-center flex-wrap justify-end">
+            <button onClick={() => setCartOpen(true)} data-testid="pos-cart-toggle" className="lg:hidden flex items-center gap-2 bg-[#F4C842] text-[#1A0810] px-4 py-2 rounded-md text-xs font-semibold uppercase tracking-wider hover:bg-[#FFDD5C] transition-colors min-h-[44px]">
+              <ShoppingCart size={16} strokeWidth={2} /> Cart{cart.length > 0 && <span className="ml-1 bg-[#1A0810] text-[#F4C842] rounded-full px-1.5 text-[10px]">{cart.length}</span>}
+            </button>
             <div className="flex items-center gap-2 bg-[#331419] gold-border rounded-md px-3 py-2 text-xs">
               <span className="text-[#C4A484]">{user?.name}</span>
               <span className="text-[10px] uppercase tracking-widest text-[#F4C842]">{user?.role}</span>
@@ -370,7 +375,7 @@ export default function POS() {
         {filtered.length === 0 ? (
           <div className="text-center py-20 text-[#C4A484]"><PackageIcon size={40} strokeWidth={1.2} className="mx-auto mb-4 opacity-40" /><p>Belum ada produk.</p></div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4" data-testid="pos-product-grid">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3" data-testid="pos-product-grid">
             {filtered.map((p) => {
               const s = getStock(p);
               return (
@@ -392,12 +397,18 @@ export default function POS() {
       </div>
 
       {activeTab === "pos" && (
+        <>
+      {/* Backdrop overlay for tablet/mobile cart drawer */}
+      {cartOpen && (
+        <div className="fixed inset-0 bg-black/60 z-40 lg:hidden" onClick={() => setCartOpen(false)} data-testid="pos-cart-backdrop" />
+      )}
       <aside
-  className="w-96 bg-[#2A1015] border-l border-[rgba(244,200,66,0.2)] flex flex-col fixed right-0 top-0 h-screen z-40" data-testid="pos-cart-panel">
+  className={`w-full max-w-sm lg:w-96 bg-[#2A1015] border-l border-[rgba(244,200,66,0.2)] flex flex-col fixed right-0 top-0 h-screen z-50 lg:z-40 transition-transform duration-300 ${cartOpen ? "translate-x-0" : "translate-x-full lg:translate-x-0"}`} data-testid="pos-cart-panel">
         <div className="p-6 border-b border-[rgba(244,200,66,0.15)] flex items-center gap-2">
           <ShoppingCart size={20} strokeWidth={1.5} className="text-[#F4C842]" />
           <h2 className="font-serif-luxury text-2xl text-[#F5F5F5]">Keranjang</h2>
           <span className="ml-auto text-xs text-[#C4A484]">{cart.length} item</span>
+          <button onClick={() => setCartOpen(false)} className="lg:hidden text-[#C4A484] hover:text-[#F5F5F5] ml-2" data-testid="pos-cart-close" aria-label="Tutup keranjang">✕</button>
         </div>
         <div className="flex-1 overflow-y-auto p-6 space-y-3">
           {cart.length === 0 ? <p className="text-sm text-[#C4A484] text-center py-12">Keranjang kosong.</p> : cart.map((i) => (
@@ -408,9 +419,9 @@ export default function POS() {
               </div>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <button onClick={() => changeQty(i.key, -1)} className="w-7 h-7 rounded-md bg-[#2A1015] border border-[rgba(244,200,66,0.2)] text-[#F4C842]"><Minus size={12} className="mx-auto" /></button>
+                  <button onClick={() => changeQty(i.key, -1)} className="w-9 h-9 rounded-md bg-[#2A1015] border border-[rgba(244,200,66,0.2)] text-[#F4C842]"><Minus size={16} className="mx-auto" /></button>
                   <span className="text-sm text-[#F5F5F5] min-w-[24px] text-center">{i.quantity}</span>
-                  <button onClick={() => changeQty(i.key, 1)} className="w-7 h-7 rounded-md bg-[#2A1015] border border-[rgba(244,200,66,0.2)] text-[#F4C842]"><Plus size={12} className="mx-auto" /></button>
+                  <button onClick={() => changeQty(i.key, 1)} className="w-9 h-9 rounded-md bg-[#2A1015] border border-[rgba(244,200,66,0.2)] text-[#F4C842]"><Plus size={16} className="mx-auto" /></button>
                 </div>
                 <p className="text-sm text-[#F4C842] font-semibold">{formatIDR(i.price * i.quantity)}</p>
               </div>
@@ -425,7 +436,7 @@ export default function POS() {
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="text-[10px] uppercase tracking-widest text-[#C4A484]">Metode</label>
-              <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} className="mt-1 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]" data-testid="pos-payment-method">
+              <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} className="mt-1 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5] min-h-[44px]" data-testid="pos-payment-method">
                 <option value="cash">Tunai</option><option value="card">Kartu</option><option value="qris">QRIS</option><option value="transfer">Transfer</option>
               </select>
             </div>
@@ -446,7 +457,7 @@ export default function POS() {
                 Detail Pembayaran Kartu
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
                   <label className="text-[10px] uppercase tracking-widest text-[#C4A484]">
                     Tipe Kartu
@@ -489,7 +500,7 @@ export default function POS() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
                   <label className="text-[10px] uppercase tracking-widest text-[#C4A484]">
                     4 Digit Terakhir
@@ -521,7 +532,7 @@ export default function POS() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
                   <label className="text-[10px] uppercase tracking-widest text-[#C4A484]">
                     Approval Code
@@ -679,11 +690,12 @@ export default function POS() {
           </button>
         </div>
       </aside>
+        </>
       )}
 
       {variantPick && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setVariantPick(null)}>
-          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-md w-full p-6" data-testid="variant-picker">
+          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-full sm:max-w-md w-full p-6 mx-4" data-testid="variant-picker">
             <h3 className="font-serif-luxury text-2xl text-[#F5F5F5] mb-4">{variantPick.name}</h3>
             <div className="space-y-2">
               {variantPick.variants.map((v, i) => (
@@ -704,7 +716,7 @@ export default function POS() {
       {receipt && (
         <>
           <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 no-print" onClick={() => setReceipt(null)}>
-            <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] border border-[rgba(244,200,66,0.3)] rounded-lg p-8 max-w-md w-full" data-testid="receipt-modal">
+            <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] border border-[rgba(244,200,66,0.3)] rounded-lg p-8 max-w-full sm:max-w-md w-full mx-4" data-testid="receipt-modal">
               <div className="text-center border-b border-dashed border-[rgba(244,200,66,0.2)] pb-4 mb-4">
                 <h3 className="font-serif-luxury text-2xl text-[#F4C842]">Republik Dimsum Imperium</h3>
                 <p className="text-xs text-[#C4A484] mt-1">Jl. Gadjah Mada No.15 Pakualaman, Yogyakarta</p>
@@ -733,7 +745,7 @@ export default function POS() {
 
       {showShiftModal && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setShowShiftModal(false)}>
-          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-md w-full p-6">
+          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-full sm:max-w-md w-full p-6 mx-4">
             <h3 className="font-serif-luxury text-2xl text-[#F5F5F5] mb-4">Buka Shift</h3>
             <form onSubmit={openShiftFromPOS} className="space-y-4">
               <div>

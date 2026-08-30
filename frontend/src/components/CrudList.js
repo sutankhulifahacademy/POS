@@ -43,9 +43,9 @@ export default function CrudList({ title, subtitle, endpoint, fields, testPrefix
           <Plus size={16} strokeWidth={2} /> Tambah
         </button>
       } />
-      <div className="p-8">
-        <div className="bg-[#331419] gold-border rounded-lg overflow-hidden">
-          <table className="w-full">
+      <div className="p-4 md:p-6 lg:p-8">
+        <div className="bg-[#331419] gold-border rounded-lg overflow-x-auto">
+          <table className="w-full min-w-[600px]">
             <thead>
               <tr className="text-left text-xs uppercase tracking-wider text-[#C4A484] border-b border-[rgba(244,200,66,0.15)]">
                 {fields.filter(f => f.showInList !== false).map((f) => <th key={f.key} className="px-6 py-4">{f.label}</th>)}
@@ -81,7 +81,7 @@ export default function CrudList({ title, subtitle, endpoint, fields, testPrefix
 
       {showForm && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setShowForm(false)}>
-          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-lg w-full max-h-[90vh] overflow-y-auto">
+          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-full sm:max-w-lg w-full max-h-[90vh] overflow-y-auto mx-4">
             <div className="p-6 border-b border-[rgba(244,200,66,0.15)] flex items-center justify-between">
               <h2 className="font-serif-luxury text-2xl text-[#F5F5F5]">{editing ? "Edit" : "Tambah"} {title}</h2>
               <button onClick={() => setShowForm(false)} className="text-[#C4A484] hover:text-[#F5F5F5]"><X size={20} /></button>

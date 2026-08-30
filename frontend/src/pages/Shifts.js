@@ -51,14 +51,14 @@ export default function Shifts() {
           </button>
         )
       } />
-      <div className="p-8 space-y-6">
+      <div className="p-4 md:p-6 lg:p-8 space-y-6">
         {active && (
           <div className="bg-gradient-to-r from-[#331419] to-[#4A1A22] gold-border-active rounded-lg p-6" data-testid="active-shift-card">
             <div className="flex items-center gap-2 mb-4">
               <Clock size={18} strokeWidth={1.5} className="text-[#F4C842]" />
               <h3 className="font-serif-luxury text-xl text-[#F4C842]">Shift Aktif</h3>
             </div>
-            <div className="grid grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
               <div>
                 <p className="text-xs uppercase tracking-widest text-[#C4A484]">Kasir</p>
                 <p className="text-lg text-[#F5F5F5] mt-1">{active.cashier_name}</p>
@@ -75,8 +75,8 @@ export default function Shifts() {
           </div>
         )}
 
-        <div className="bg-[#331419] gold-border rounded-lg overflow-hidden">
-          <table className="w-full">
+        <div className="bg-[#331419] gold-border rounded-lg overflow-x-auto">
+          <table className="w-full min-w-[600px]">
             <thead>
               <tr className="text-left text-xs uppercase tracking-wider text-[#C4A484] border-b border-[rgba(244,200,66,0.15)]">
                 <th className="px-6 py-4">Kasir</th>
@@ -110,7 +110,7 @@ export default function Shifts() {
 
       {showOpen && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setShowOpen(false)}>
-          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-md w-full p-6">
+          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-full sm:max-w-md mx-4 w-full p-6">
             <h3 className="font-serif-luxury text-2xl text-[#F5F5F5] mb-4">Buka Shift</h3>
             <form onSubmit={doOpen} className="space-y-4">
               <div>
@@ -132,7 +132,7 @@ export default function Shifts() {
 
       {showClose && active && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setShowClose(false)}>
-          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-md w-full p-6">
+          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-full sm:max-w-md mx-4 w-full p-6">
             <h3 className="font-serif-luxury text-2xl text-[#F5F5F5] mb-4">Tutup Shift</h3>
             <div className="text-sm text-[#C4A484] mb-4 border border-[rgba(244,200,66,0.15)] rounded-md p-3 bg-[#331419]">
               <div className="flex justify-between mb-1"><span>Kas Awal</span><span className="text-[#F5F5F5]">{formatIDR(active.opening_cash)}</span></div>
@@ -158,7 +158,7 @@ export default function Shifts() {
 
       {closedResult && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setClosedResult(null)}>
-          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-md w-full p-6" data-testid="shift-summary">
+          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-full sm:max-w-md mx-4 w-full p-6" data-testid="shift-summary">
             <h3 className="font-serif-luxury text-2xl text-[#F4C842] text-center">Ringkasan Shift</h3>
             <div className="mt-6 space-y-2 text-sm">
               <div className="flex justify-between"><span className="text-[#C4A484]">Kasir</span><span className="text-[#F5F5F5]">{closedResult.cashier_name}</span></div>

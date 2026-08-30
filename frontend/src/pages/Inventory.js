@@ -36,14 +36,14 @@ export default function Inventory() {
   return (
     <div>
       <PageHeader title="Inventory" subtitle="Sesuaikan stok, lihat riwayat pergerakan, dan pantau stok rendah" />
-      <div className="p-8">
+      <div className="p-4 md:p-6 lg:p-8">
         <div className="flex gap-3 mb-6">
           <button onClick={() => setTab("adjust")} data-testid="tab-adjust" className={`px-5 py-2 rounded-md text-sm uppercase tracking-wider transition-colors ${tab === "adjust" ? "bg-[#F4C842] text-[#1A0810]" : "bg-[#331419] text-[#C4A484] hover:text-[#F5F5F5]"}`}>Penyesuaian</button>
           <button onClick={() => setTab("history")} data-testid="tab-history" className={`px-5 py-2 rounded-md text-sm uppercase tracking-wider transition-colors ${tab === "history" ? "bg-[#F4C842] text-[#1A0810]" : "bg-[#331419] text-[#C4A484] hover:text-[#F5F5F5]"}`}>Riwayat</button>
         </div>
 
         {tab === "adjust" ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
             <form onSubmit={submit} className="bg-[#331419] gold-border rounded-lg p-6 space-y-4" data-testid="adjust-form">
               <h3 className="font-serif-luxury text-xl text-[#F5F5F5]">Sesuaikan Stok</h3>
               <div>
@@ -93,8 +93,8 @@ export default function Inventory() {
             </div>
           </div>
         ) : (
-          <div className="bg-[#331419] gold-border rounded-lg overflow-hidden">
-            <table className="w-full">
+          <div className="bg-[#331419] gold-border rounded-lg overflow-x-auto">
+            <table className="w-full min-w-[600px]">
               <thead>
                 <tr className="text-left text-xs uppercase tracking-wider text-[#C4A484] border-b border-[rgba(244,200,66,0.15)]">
                   <th className="px-6 py-4">Waktu</th>

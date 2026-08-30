@@ -66,7 +66,7 @@ export default function Settings() {
   return (
     <div>
       <PageHeader title="Pengaturan" subtitle="Kustomisasi bisnis, kategori, dan preferensi sistem" />
-      <div className="p-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="p-4 md:p-6 lg:p-8 grid grid-cols-1 md:grid-cols-2 gap-6">
         <form onSubmit={saveBusiness} className="bg-[#331419] gold-border rounded-lg p-6 space-y-4" data-testid="business-form">
           <h3 className="font-serif-luxury text-xl text-[#F5F5F5]">Profil Bisnis</h3>
 
@@ -98,7 +98,7 @@ export default function Settings() {
               <option value="general">Umum / Lainnya</option>
             </select>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-xs uppercase tracking-widest text-[#C4A484] mb-1 block">Mata Uang</label>
               <input value={business.currency} onChange={(e) => setBusiness({ ...business, currency: e.target.value })} className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" />
@@ -121,7 +121,7 @@ export default function Settings() {
             <div className="flex justify-between items-center">
               <h3 className="font-serif-luxury text-xl text-[#F5F5F5]">Tema Warna</h3>
               <button type="button" onClick={resetColors} data-testid="reset-colors" className="flex items-center gap-1 text-xs uppercase tracking-widest text-[#C4A484] hover:text-[#F4C842] transition-colors">
-                <RotateCcw size={12} /> Reset ke Default
+                <RotateCcw size={16} /> Reset ke Default
               </button>
             </div>
 
@@ -133,7 +133,7 @@ export default function Settings() {
                     type="color"
                     value={business[key] || DEFAULT_COLORS[key]}
                     onChange={(e) => setBusiness({ ...business, [key]: e.target.value })}
-                    className="w-10 h-10 rounded-md bg-[#2A1015] border border-[rgba(244,200,66,0.2)] cursor-pointer p-1"
+                    className="w-12 h-12 rounded-md bg-[#2A1015] border border-[rgba(244,200,66,0.2)] cursor-pointer p-1"
                     data-testid={`color-${key}`}
                   />
                   <input
@@ -206,7 +206,7 @@ export default function Settings() {
               {categories.map((c) => (
                 <div key={c.id} className="flex justify-between items-center py-2 px-3 bg-[#2A1015] rounded-md border border-[rgba(244,200,66,0.1)]">
                   <span className="text-sm text-[#F5F5F5]">{c.name}</span>
-                  <button onClick={() => removeCat(c.id)} className="text-[#C4A484] hover:text-[#8B0000]"><Trash2 size={14} /></button>
+                  <button onClick={() => removeCat(c.id)} className="text-[#C4A484] hover:text-[#8B0000]"><Trash2 size={16} /></button>
                 </div>
               ))}
             </div>

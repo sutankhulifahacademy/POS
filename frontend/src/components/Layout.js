@@ -20,7 +20,7 @@ import {
   Navigation, Globe, Flag, Bookmark, BookOpen, Book, File,
   Folder, FolderOpen, Paperclip, Share, Forward, Reply, Inbox,
   Archive, Megaphone, MessageCircle, Video, Mic, PlayCircle,
-  PauseCircle, PlusSquare, MinusSquare,
+  PauseCircle, PlusSquare, MinusSquare, Menu,
 } from "lucide-react";
 import { Toaster } from "sonner";
 import api from "../lib/api";
@@ -103,6 +103,7 @@ export default function Layout() {
   const { business } = useTheme();
   const nav = useNavigate();
   const [menus, setMenus] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const logoUrl = business?.logo_url || DEFAULT_LOGO;
   const bizName = business?.name || "Republik Dimsum";
 
@@ -126,13 +127,45 @@ export default function Layout() {
   return (
     <div className="min-h-screen bg-[#1A0810] text-[#F5F5F5] flex">
       <Toaster theme="dark" position="top-right" toastOptions={{ style: { background: '#111', border: '1px solid rgba(244,200,66,0.3)', color: '#F5F5F5' } }} />
-      <aside className="w-64 bg-[#2A1015] border-r border-[rgba(244,200,66,0.15)] flex flex-col fixed h-screen" data-testid="app-sidebar">
+
+      {/* Mobile/tablet sidebar toggle button */}
+      <button
+        onClick={() => setSidebarOpen(true)}
+        data-testid="sidebar-toggle"
+        className="lg:hidden fixed top-3 left-3 z-50 w-10 h-10 flex items-center justify-center bg-[#2A1015] border border-[rgba(244,200,66,0.3)] rounded-md text-[#F4C842]"
+      >
+        <Menu size={20} />
+      </button>
+
+      {/* Overlay backdrop for tablet/mobile */}
+      {sidebarOpen && (
+        <div
+          className="lg:hidden fixed inset-0 bg-black/60 z-40"
+          onClick={() => setSidebarOpen(false)}
+          data-testid="sidebar-backdrop"
+        />
+      )}
+
+      <aside
+        className={`w-64 bg-[#2A1015] border-r border-[rgba(244,200,66,0.15)] flex flex-col fixed h-screen z-50 transition-transform duration-300 ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+        }`}
+        data-testid="app-sidebar"
+      >
+        {/* Close button on tablet/mobile */}
+        <button
+          onClick={() => setSidebarOpen(false)}
+          className="lg:hidden absolute top-3 right-3 w-8 h-8 flex items-center justify-center text-[#C4A484] hover:text-[#F5F5F5]"
+          data-testid="sidebar-close"
+        >
+          <X size={18} />
+        </button>
         <div className="p-6 border-b border-[rgba(244,200,66,0.15)]">
           <div className="flex flex-col items-center gap-3">
             <img src={logoUrl} alt={bizName} className="w-16 h-16 object-contain" data-testid="brand-logo" />
             <div className="text-center">
               <h1 className="font-serif-luxury text-lg text-[#F4C842] leading-tight">{bizName}</h1>
-              <p className="text-[10px] tracking-widest text-[#C4A484] uppercase">{business?.business_type || "POS"}</p>
+              <p className="text-xs tracking-widest text-[#C4A484] uppercase">{business?.business_type || "POS"}</p>
             </div>
           </div>
         </div>
@@ -146,6 +179,7 @@ export default function Layout() {
               <NavLink
                 key={n.route}
                 to={n.route}
+                onClick={() => setSidebarOpen(false)}
                 data-testid={`nav-${n.name}`}
                 className={({ isActive }) =>
                   `flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors ${
@@ -155,7 +189,7 @@ export default function Layout() {
                   }`
                 }
               >
-                <Icon size={17} strokeWidth={1.5} />
+                <Icon size={18} strokeWidth={1.5} />
                 <span>{n.label}</span>
               </NavLink>
             );
@@ -165,19 +199,19 @@ export default function Layout() {
           <div className="px-3 py-2 mb-2">
             <p className="text-xs text-[#C4A484]">Masuk sebagai</p>
             <p className="text-sm text-[#F5F5F5] truncate" data-testid="user-name">{user?.name}</p>
-            <p className="text-[10px] text-[#F4C842] uppercase tracking-wider" data-testid="user-role-badge">{ROLE_LABEL[user?.role] || user?.role}</p>
+            <p className="text-xs text-[#F4C842] uppercase tracking-wider" data-testid="user-role-badge">{ROLE_LABEL[user?.role] || user?.role}</p>
           </div>
           <button
             onClick={handleLogout}
             data-testid="logout-btn"
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm text-[#C4A484] hover:text-[#F5F5F5] hover:bg-[#331419] transition-colors"
           >
-            <LogOut size={17} strokeWidth={1.5} />
+            <LogOut size={18} strokeWidth={1.5} />
             <span>Keluar</span>
           </button>
         </div>
       </aside>
-      <main className="flex-1 ml-64 min-h-screen">
+      <main className="flex-1 lg:ml-64 min-h-screen">
         <Outlet />
       </main>
     </div>

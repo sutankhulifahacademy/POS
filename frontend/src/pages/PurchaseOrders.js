@@ -87,9 +87,9 @@ export default function PurchaseOrders() {
           <Plus size={16} /> Buat PO
         </button>
       } />
-      <div className="p-8">
-        <div className="bg-[#331419] gold-border rounded-lg overflow-hidden">
-          <table className="w-full">
+      <div className="p-4 md:p-6 lg:p-8">
+        <div className="bg-[#331419] gold-border rounded-lg overflow-x-auto">
+          <table className="w-full min-w-[600px]">
             <thead>
               <tr className="text-left text-xs uppercase tracking-wider text-[#C4A484] border-b border-[rgba(244,200,66,0.15)]">
                 <th className="px-6 py-4">No. PO</th>
@@ -115,8 +115,8 @@ export default function PurchaseOrders() {
                     <div className="flex justify-end gap-2">
                       {o.status === "draft" && (
                         <>
-                          <button onClick={() => receive(o.id)} data-testid={`po-receive-${o.id}`} className="flex items-center gap-1 text-xs text-[#2E8B57] hover:text-[#3EA867] transition-colors"><PackageCheck size={14} strokeWidth={1.5} /> Terima</button>
-                          <button onClick={() => remove(o.id)} className="text-[#C4A484] hover:text-[#8B0000]"><Trash2 size={14} strokeWidth={1.5} /></button>
+                          <button onClick={() => receive(o.id)} data-testid={`po-receive-${o.id}`} className="flex items-center gap-1 text-xs text-[#2E8B57] hover:text-[#3EA867] transition-colors"><PackageCheck size={16} strokeWidth={1.5} /> Terima</button>
+                          <button onClick={() => remove(o.id)} className="text-[#C4A484] hover:text-[#8B0000]"><Trash2 size={16} strokeWidth={1.5} /></button>
                         </>
                       )}
                     </div>
@@ -130,7 +130,7 @@ export default function PurchaseOrders() {
 
       {showForm && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setShowForm(false)}>
-          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-full sm:max-w-3xl mx-4 w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-[rgba(244,200,66,0.15)] flex items-center justify-between">
               <h2 className="font-serif-luxury text-2xl text-[#F5F5F5]">Buat Purchase Order</h2>
               <button onClick={() => setShowForm(false)} className="text-[#C4A484] hover:text-[#F5F5F5]"><X size={20} /></button>
@@ -146,21 +146,23 @@ export default function PurchaseOrders() {
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="text-xs uppercase tracking-widest text-[#C4A484]">Item Barang</label>
-                  <button type="button" onClick={addLine} data-testid="po-add-line" className="text-xs text-[#F4C842] hover:text-[#FFDD5C] flex items-center gap-1"><Plus size={12} /> Tambah baris</button>
+                  <button type="button" onClick={addLine} data-testid="po-add-line" className="text-xs text-[#F4C842] hover:text-[#FFDD5C] flex items-center gap-1"><Plus size={16} /> Tambah baris</button>
                 </div>
                 <div className="space-y-2">
                   {items.map((it, idx) => (
-                    <div key={idx} className="grid grid-cols-12 gap-2 items-center">
-                      <select value={it.product_id} onChange={(e) => {
-                        const p = products.find(pr => pr.id === e.target.value);
-                        updateLine(idx, { product_id: e.target.value, name: p?.name || "", cost: p?.cost || 0 });
-                      }} className="col-span-6 bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-2 py-2 text-sm text-[#F5F5F5]">
-                        <option value="">Pilih produk</option>
-                        {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                      </select>
-                      <input type="number" value={it.quantity} onChange={(e) => updateLine(idx, { quantity: e.target.value })} placeholder="Qty" className="col-span-2 bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-2 py-2 text-sm text-[#F5F5F5]" />
-                      <input type="number" value={it.cost} onChange={(e) => updateLine(idx, { cost: e.target.value })} placeholder="Harga modal" className="col-span-3 bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-2 py-2 text-sm text-[#F5F5F5]" />
-                      <button type="button" onClick={() => removeLine(idx)} className="col-span-1 text-[#C4A484] hover:text-[#8B0000]"><Trash2 size={14} /></button>
+                    <div key={idx} className="overflow-x-auto">
+                      <div className="grid grid-cols-12 gap-2 items-center min-w-[700px]">
+                        <select value={it.product_id} onChange={(e) => {
+                          const p = products.find(pr => pr.id === e.target.value);
+                          updateLine(idx, { product_id: e.target.value, name: p?.name || "", cost: p?.cost || 0 });
+                        }} className="col-span-6 bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-2 py-2 text-sm text-[#F5F5F5]">
+                          <option value="">Pilih produk</option>
+                          {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select>
+                        <input type="number" value={it.quantity} onChange={(e) => updateLine(idx, { quantity: e.target.value })} placeholder="Qty" className="col-span-2 bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-2 py-2 text-sm text-[#F5F5F5]" />
+                        <input type="number" value={it.cost} onChange={(e) => updateLine(idx, { cost: e.target.value })} placeholder="Harga modal" className="col-span-3 bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-2 py-2 text-sm text-[#F5F5F5]" />
+                        <button type="button" onClick={() => removeLine(idx)} className="col-span-1 text-[#C4A484] hover:text-[#8B0000]"><Trash2 size={16} /></button>
+                      </div>
                     </div>
                   ))}
                   {items.length === 0 && <p className="text-xs text-[#C4A484] italic">Belum ada item. Klik "Tambah baris".</p>}
@@ -185,7 +187,7 @@ export default function PurchaseOrders() {
 
       {detail && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setDetail(null)}>
-          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-full sm:max-w-2xl mx-4 w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-[rgba(244,200,66,0.15)] flex items-center justify-between">
               <div>
                 <h3 className="font-serif-luxury text-2xl text-[#F4C842]">{detail.po_no}</h3>
