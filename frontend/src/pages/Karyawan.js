@@ -51,19 +51,12 @@ export default function Karyawan() {
 
   const load = async () => {
     try {
+      const oParam = outletIdForApi ? `?outlet_id=${outletIdForApi}` : "";
       const [usersRes, outletsRes] = await Promise.all([
-        api.get("/users"),
+        api.get(`/users${oParam}`),
         api.get("/outlets"),
       ]);
-      let allUsers = usersRes.data;
-      // Filter by selected outlet (when not "ALL OUTLETS")
-      if (outletIdForApi) {
-        allUsers = allUsers.filter(u =>
-          (u.outlet_ids || []).includes(outletIdForApi) ||
-          u.primary_outlet_id === outletIdForApi
-        );
-      }
-      setUsers(allUsers);
+      setUsers(usersRes.data);
       setOutlets(outletsRes.data);
     } catch (e) { toast.error(e.response?.data?.detail || "Gagal memuat karyawan"); }
   };

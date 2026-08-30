@@ -84,7 +84,7 @@ export default function Schedules() {
   const handleDelete = async (id) => {
     if (!confirm("Hapus jadwal ini?")) return;
     try {
-      await api.delete(`/schedules/${id}`);
+      await api.delete(`/schedules/${id}?outlet_id=${outletIdForApi || ""}`);
       toast.success("Jadwal dihapus");
       load();
     } catch (e) {

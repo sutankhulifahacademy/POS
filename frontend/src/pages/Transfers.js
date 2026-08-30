@@ -3,23 +3,28 @@ import api from "../lib/api";
 import PageHeader from "../components/PageHeader";
 import { Plus, X, Trash2, ArrowRightLeft } from "lucide-react";
 import { toast } from "sonner";
+import { useOutlet } from "../context/OutletContext";
 
 export default function Transfers() {
+  const { outlets: globalOutlets, outletIdForApi } = useOutlet();
   const [transfers, setTransfers] = useState([]);
-  const [outlets, setOutlets] = useState([]);
   const [products, setProducts] = useState([]);
   const [showForm, setShowForm] = useState(false);
-  const [fromOutlet, setFromOutlet] = useState("");
+  const [fromOutlet, setFromOutlet] = useState(outletIdForApi || "");
   const [toOutlet, setToOutlet] = useState("");
   const [items, setItems] = useState([]);
   const [note, setNote] = useState("");
   const [detail, setDetail] = useState(null);
 
   const load = async () => {
-    const [t, o, p] = await Promise.all([api.get("/stock-transfers"), api.get("/outlets"), api.get("/products")]);
-    setTransfers(t.data); setOutlets(o.data); setProducts(p.data);
+    const oParam = outletIdForApi ? `?outlet_id=${outletIdForApi}` : "";
+    const [t, p] = await Promise.all([
+      api.get(`/stock-transfers${oParam}`),
+      api.get(`/products${oParam}`),
+    ]);
+    setTransfers(t.data); setProducts(p.data);
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [outletIdForApi]);
 
   const addLine = () => setItems([...items, { product_id: "", name: "", quantity: 1 }]);
   const updateLine = (idx, patch) => setItems(items.map((it, i) => i === idx ? { ...it, ...patch } : it));
@@ -31,8 +36,8 @@ export default function Transfers() {
     if (fromOutlet === toOutlet) return toast.error("Outlet sumber & tujuan tidak boleh sama");
     if (items.length === 0) return toast.error("Tambahkan minimal 1 item");
     for (const it of items) if (!it.product_id || it.quantity <= 0) return toast.error("Setiap item harus lengkap");
-    const from = outlets.find(o => o.id === fromOutlet);
-    const to = outlets.find(o => o.id === toOutlet);
+    const from = globalOutlets.find(o => o.id === fromOutlet);
+    const to = globalOutlets.find(o => o.id === toOutlet);
     try {
       await api.post("/stock-transfers", {
         from_outlet_id: fromOutlet, to_outlet_id: toOutlet,
@@ -96,14 +101,14 @@ export default function Transfers() {
                   <label className="text-xs uppercase tracking-widest text-[#C4A484] mb-1 block">Dari Outlet</label>
                   <select required value={fromOutlet} onChange={(e) => setFromOutlet(e.target.value)} className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" data-testid="transfer-from">
                     <option value="">Pilih outlet sumber</option>
-                    {outlets.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                    {globalOutlets.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="text-xs uppercase tracking-widest text-[#C4A484] mb-1 block">Ke Outlet</label>
                   <select required value={toOutlet} onChange={(e) => setToOutlet(e.target.value)} className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" data-testid="transfer-to">
                     <option value="">Pilih outlet tujuan</option>
-                    {outlets.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                    {globalOutlets.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
                   </select>
                 </div>
               </div>

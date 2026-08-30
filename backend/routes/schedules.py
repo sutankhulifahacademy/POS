@@ -94,7 +94,8 @@ async def update_schedule(schedule_id: str, body: dict, user=Depends(require_per
 
     sets = ", ".join(f"{k}=:{k}" for k in updates.keys())
     updates["id"] = schedule_id
-    await q_exec(f"UPDATE employee_schedules SET {sets}, updated_at=NOW() WHERE id=:id", **updates)
+    outlet_filter = await filter_outlets_for_user(user)
+    await q_exec(f"UPDATE employee_schedules SET {sets}, updated_at=NOW() WHERE id=:id {outlet_filter}", **updates)
     return clean(await q_one("SELECT * FROM employee_schedules WHERE id = :id", id=schedule_id))
 
 
@@ -105,5 +106,6 @@ async def delete_schedule(schedule_id: str, user=Depends(require_permission("sch
         raise HTTPException(404, "Schedule not found")
     if user["role"] != "owner" and str(existing["outlet_id"]) not in user.get("outlet_ids", []):
         raise HTTPException(403, "Tidak ada akses ke outlet ini")
-    await q_exec("DELETE FROM employee_schedules WHERE id = :id", id=schedule_id)
+    outlet_filter = await filter_outlets_for_user(user)
+    await q_exec(f"DELETE FROM employee_schedules WHERE id = :id {outlet_filter}", id=schedule_id)
     return {"ok": True}

@@ -68,8 +68,9 @@ async def update_payment_account(
         updates["outlet_id"] = _u(updates["outlet_id"])
     sets = ", ".join(f"{k}=:{k}" for k in updates.keys())
     updates["id"] = account_id
+    outlet_filter = await filter_outlets_for_user(user)
     r = await q_exec(
-        f"UPDATE payment_accounts SET {sets}, updated_at=NOW() WHERE id=:id",
+        f"UPDATE payment_accounts SET {sets}, updated_at=NOW() WHERE id=:id {outlet_filter}",
         **updates,
     )
     if r == 0:
@@ -82,7 +83,8 @@ async def delete_payment_account(
     account_id: str,
     user=Depends(require_permission("payment_accounts", "delete")),
 ):
-    r = await q_exec("DELETE FROM payment_accounts WHERE id=:id", id=account_id)
+    outlet_filter = await filter_outlets_for_user(user)
+    r = await q_exec(f"DELETE FROM payment_accounts WHERE id=:id {outlet_filter}", id=account_id)
     if r == 0:
         raise HTTPException(404, "Payment account not found")
     return {"ok": True}

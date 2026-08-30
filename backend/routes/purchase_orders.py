@@ -77,12 +77,14 @@ async def receive_po(po_id: str, user=Depends(require_permission("purchase_order
                         VALUES (:id, :pid, :pn, :d, 'purchase', :note, :oid, :u, NOW())""",
                      id=new_id(), pid=it["product_id"], pn=it.get("name") or it.get("product_name") or "", d=it["quantity"],
                      note=f"PO {po['po_no']}", oid=_u(outlet_id), u=user["id"])
-    await q_exec("UPDATE purchase_orders SET status='received', received_at=NOW() WHERE id=:id", id=po_id)
+    outlet_filter = await filter_outlets_for_user(user)
+    await q_exec(f"UPDATE purchase_orders SET status='received', received_at=NOW() WHERE id=:id {outlet_filter}", id=po_id)
     return {"ok": True, "po_id": po_id}
 
 @router.delete("/purchase-orders/{po_id}")
 async def delete_po(po_id: str, user=Depends(require_permission("purchase_orders", "delete"))):
-    r = await q_exec("DELETE FROM purchase_orders WHERE id=:id AND status='draft'", id=po_id)
+    outlet_filter = await filter_outlets_for_user(user)
+    r = await q_exec(f"DELETE FROM purchase_orders WHERE id=:id AND status='draft' {outlet_filter}", id=po_id)
     if r == 0: raise HTTPException(400, "Cannot delete: not draft or not found")
     return {"ok": True}
 
@@ -93,7 +95,8 @@ async def reject_po(po_id: str, user=Depends(require_permission("purchase_orders
         raise HTTPException(404, "PO not found")
     if po["status"] != "draft":
         raise HTTPException(400, f"PO status is {po['status']}, only draft can be rejected")
-    r = await q_exec("UPDATE purchase_orders SET status='cancelled' WHERE id=:id", id=po_id)
+    outlet_filter = await filter_outlets_for_user(user)
+    r = await q_exec(f"UPDATE purchase_orders SET status='cancelled' WHERE id=:id {outlet_filter}", id=po_id)
     if r == 0:
         raise HTTPException(404, "PO not found")
     return {"ok": True}

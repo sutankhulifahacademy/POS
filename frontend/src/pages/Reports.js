@@ -624,17 +624,14 @@ function DashboardTab({ globalOutletId }) {
  *  TAB 2: PENJUALAN (SALES)
  * ============================================================ */
 
-function SalesTab({ outlets, globalOutletId }) {
+function SalesTab({ globalOutletId }) {
   const [period, setPeriod] = useState("weekly");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [outletId, setOutletId] = useState(globalOutletId || "");
+  const outletId = globalOutletId || "";
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedSaleId, setSelectedSaleId] = useState(null);
-
-  // Sync with global outlet
-  useEffect(() => { setOutletId(globalOutletId || ""); }, [globalOutletId]);
 
   const fetchData = useCallback(() => {
     setLoading(true);
@@ -793,11 +790,6 @@ function SalesTab({ outlets, globalOutletId }) {
             setDateTo={setDateTo}
           />
         )}
-        <OutletSelect
-          outlets={outlets}
-          value={outletId}
-          onChange={setOutletId}
-        />
         <button
           onClick={fetchData}
           className="bg-[#F4C842] text-[#1A0810] px-4 py-2 rounded-md text-sm uppercase tracking-widest font-semibold hover:bg-[#FFDD5C] transition-colors"
@@ -963,15 +955,13 @@ function SalesTab({ outlets, globalOutletId }) {
  *  TAB 3: LABA RUGI (PROFIT/LOSS)
  * ============================================================ */
 
-function ProfitLossTab({ outlets, globalOutletId }) {
+function ProfitLossTab({ globalOutletId }) {
   const [period, setPeriod] = useState("weekly");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [outletId, setOutletId] = useState(globalOutletId || "");
+  const outletId = globalOutletId || "";
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-
-  useEffect(() => { setOutletId(globalOutletId || ""); }, [globalOutletId]);
 
   const fetchData = useCallback(() => {
     setLoading(true);
@@ -1097,11 +1087,6 @@ function ProfitLossTab({ outlets, globalOutletId }) {
             setDateTo={setDateTo}
           />
         )}
-        <OutletSelect
-          outlets={outlets}
-          value={outletId}
-          onChange={setOutletId}
-        />
         <button
           onClick={fetchData}
           className="bg-[#F4C842] text-[#1A0810] px-4 py-2 rounded-md text-sm uppercase tracking-widest font-semibold hover:bg-[#FFDD5C] transition-colors"
@@ -1388,14 +1373,12 @@ function ShiftsTab({ globalOutletId }) {
  *  TAB 5: STOK (STOCK MOVEMENTS)
  * ============================================================ */
 
-function StockTab({ outlets, globalOutletId }) {
+function StockTab({ globalOutletId }) {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [outletId, setOutletId] = useState(globalOutletId || "");
+  const outletId = globalOutletId || "";
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-
-  useEffect(() => { setOutletId(globalOutletId || ""); }, [globalOutletId]);
 
   const fetchData = useCallback(() => {
     setLoading(true);
@@ -1498,11 +1481,6 @@ function StockTab({ outlets, globalOutletId }) {
           setDateFrom={setDateFrom}
           dateTo={dateTo}
           setDateTo={setDateTo}
-        />
-        <OutletSelect
-          outlets={outlets}
-          value={outletId}
-          onChange={setOutletId}
         />
         <button
           onClick={fetchData}
@@ -1637,15 +1615,13 @@ function StockTab({ outlets, globalOutletId }) {
  *  TAB 6: REKONSILIASI (PAYMENT RECONCILIATION)
  * ============================================================ */
 
-function ReconciliationTab({ outlets, globalOutletId }) {
+function ReconciliationTab({ globalOutletId }) {
   const [period, setPeriod] = useState("weekly");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [outletId, setOutletId] = useState(globalOutletId || "");
+  const outletId = globalOutletId || "";
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-
-  useEffect(() => { setOutletId(globalOutletId || ""); }, [globalOutletId]);
 
   const fetchData = useCallback(() => {
     setLoading(true);
@@ -1779,11 +1755,6 @@ function ReconciliationTab({ outlets, globalOutletId }) {
             setDateTo={setDateTo}
           />
         )}
-        <OutletSelect
-          outlets={outlets}
-          value={outletId}
-          onChange={setOutletId}
-        />
         <button
           onClick={fetchData}
           className="bg-[#F4C842] text-[#1A0810] px-4 py-2 rounded-md text-sm uppercase tracking-widest font-semibold hover:bg-[#FFDD5C] transition-colors"
@@ -1916,17 +1887,7 @@ function ReconciliationTab({ outlets, globalOutletId }) {
 
 export default function Reports() {
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [outlets, setOutlets] = useState([]);
   const { outletIdForApi, outlets: globalOutlets } = useOutlet();
-
-  // Use global outlets if available, otherwise load
-  useEffect(() => {
-    if (globalOutlets && globalOutlets.length > 0) {
-      setOutlets(globalOutlets);
-    } else {
-      api.get("/outlets").then((r) => setOutlets(r.data)).catch(() => {});
-    }
-  }, [globalOutlets]);
 
   return (
     <div>
@@ -1957,14 +1918,14 @@ export default function Reports() {
           })}
         </div>
 
-        {/* Tab content */}
+        {/* Tab content — all tabs use global outlet */}
         {activeTab === "dashboard" && <DashboardTab globalOutletId={outletIdForApi} />}
-        {activeTab === "sales" && <SalesTab outlets={outlets} globalOutletId={outletIdForApi} />}
-        {activeTab === "profit-loss" && <ProfitLossTab outlets={outlets} globalOutletId={outletIdForApi} />}
+        {activeTab === "sales" && <SalesTab globalOutletId={outletIdForApi} />}
+        {activeTab === "profit-loss" && <ProfitLossTab globalOutletId={outletIdForApi} />}
         {activeTab === "shifts" && <ShiftsTab globalOutletId={outletIdForApi} />}
-        {activeTab === "stock" && <StockTab outlets={outlets} globalOutletId={outletIdForApi} />}
+        {activeTab === "stock" && <StockTab globalOutletId={outletIdForApi} />}
         {activeTab === "reconciliation" && (
-          <ReconciliationTab outlets={outlets} globalOutletId={outletIdForApi} />
+          <ReconciliationTab globalOutletId={outletIdForApi} />
         )}
       </div>
     </div>

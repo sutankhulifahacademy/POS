@@ -215,7 +215,8 @@ async def update_expense(
 
     sets = ", ".join(f"{k}=:{k}" for k in updates.keys())
     updates["id"] = expense_id
-    await q_exec(f"UPDATE expenses SET {sets}, updated_at=NOW() WHERE id=:id", **updates)
+    outlet_filter = await filter_outlets_for_user(user)
+    await q_exec(f"UPDATE expenses SET {sets}, updated_at=NOW() WHERE id=:id {outlet_filter}", **updates)
 
     await log_action(user, "update", "expense", entity_id=expense_id,
                      outlet_id=str(existing["outlet_id"]),
@@ -238,7 +239,8 @@ async def delete_expense(
     if user["role"] != "owner" and str(existing["outlet_id"]) not in user.get("outlet_ids", []):
         raise HTTPException(403, "Tidak ada akses ke outlet ini")
 
-    await q_exec("DELETE FROM expenses WHERE id = :id", id=expense_id)
+    outlet_filter = await filter_outlets_for_user(user)
+    await q_exec(f"DELETE FROM expenses WHERE id = :id {outlet_filter}", id=expense_id)
     await log_action(user, "delete", "expense", entity_id=expense_id,
                      outlet_id=str(existing["outlet_id"]),
                      old_value=clean(existing))

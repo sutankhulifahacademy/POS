@@ -128,15 +128,9 @@ export default function Expenses() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="text-xs text-[#C4A484]">Outlet</label>
-                <select
-                  value={form.outlet_id}
-                  onChange={(e) => setForm({ ...form, outlet_id: e.target.value })}
-                  className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.3)] rounded-md px-3 py-2 text-[#F5F5F5] text-sm mt-1"
-                  required
-                >
-                  <option value="">Pilih Outlet</option>
-                  {outlets.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-                </select>
+                <div className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.3)] rounded-md px-3 py-2 text-[#F5F5F5] text-sm mt-1">
+                  {outlets.find(o => o.id === outletIdForApi)?.name || "Semua Outlet"}
+                </div>
               </div>
               <div>
                 <label className="text-xs text-[#C4A484]">Kategori</label>

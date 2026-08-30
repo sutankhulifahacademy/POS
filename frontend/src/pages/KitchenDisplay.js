@@ -57,7 +57,7 @@ export default function KitchenDisplay() {
 
   const changeStatus = async (id, status) => {
     try {
-      await api.put(`/kds/orders/${id}/status`, { status });
+      await api.put(`/kds/orders/${id}/status?outlet_id=${outletIdForApi || ""}`, { status });
       toast.success(`Order ${status}`);
       load();
     } catch (e) {

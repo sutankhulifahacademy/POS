@@ -116,10 +116,11 @@ async def approve_leave_request(
         if str(existing.get("outlet_id") or "") not in user.get("outlet_ids", []):
             raise HTTPException(403, "Tidak ada akses ke outlet ini")
 
-    await q_exec("""
+    outlet_filter = await filter_outlets_for_user(user)
+    await q_exec(f"""
         UPDATE leave_requests SET status = 'approved', approved_by = :aid,
                approved_by_name = :aname, approved_at = NOW(), updated_at = NOW()
-        WHERE id = :id
+        WHERE id = :id {outlet_filter}
     """, id=request_id, aid=user["id"], aname=user.get("name", ""))
 
     await log_action(user, "approve", "leave_request", entity_id=request_id,
@@ -146,11 +147,12 @@ async def reject_leave_request(
         if str(existing.get("outlet_id") or "") not in user.get("outlet_ids", []):
             raise HTTPException(403, "Tidak ada akses ke outlet ini")
 
-    await q_exec("""
+    outlet_filter = await filter_outlets_for_user(user)
+    await q_exec(f"""
         UPDATE leave_requests SET status = 'rejected', approved_by = :aid,
                approved_by_name = :aname, approved_at = NOW(),
                rejection_reason = :reason, updated_at = NOW()
-        WHERE id = :id
+        WHERE id = :id {outlet_filter}
     """, id=request_id, aid=user["id"], aname=user.get("name", ""),
          reason=body.get("reason", ""))
 
@@ -174,5 +176,6 @@ async def delete_leave_request(
     if user["role"] != "owner" and str(existing["user_id"]) != str(user["id"]):
         raise HTTPException(403, "Tidak dapat menghapus pengajuan orang lain")
 
-    await q_exec("DELETE FROM leave_requests WHERE id = :id", id=request_id)
+    outlet_filter = await filter_outlets_for_user(user)
+    await q_exec(f"DELETE FROM leave_requests WHERE id = :id {outlet_filter}", id=request_id)
     return {"ok": True}

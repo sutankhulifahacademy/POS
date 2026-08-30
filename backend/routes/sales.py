@@ -310,8 +310,9 @@ async def get_sale(
     sale_id: str,
     user=Depends(get_current_user)
 ):
+    outlet_filter = await filter_outlets_for_user(user)
     row = await q_one(
-        """
+        f"""
         SELECT
             s.*,
             s.change_amount AS change,
@@ -320,7 +321,7 @@ async def get_sale(
             o.phone AS outlet_phone
         FROM sales s
         LEFT JOIN outlets o ON s.outlet_id = o.id
-        WHERE s.id=:id
+        WHERE s.id=:id {outlet_filter}
         """,
         id=sale_id
     )

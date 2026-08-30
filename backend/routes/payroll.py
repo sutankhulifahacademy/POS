@@ -128,7 +128,8 @@ async def process_payroll(period_id: str, user=Depends(require_permission("payro
         )
 
     # Mark as processed
-    await q_exec("UPDATE payroll_periods SET status = 'processed', processed_at = NOW() WHERE id = :id",
+    outlet_filter = await filter_outlets_for_user(user)
+    await q_exec(f"UPDATE payroll_periods SET status = 'processed', processed_at = NOW() WHERE id = :id {outlet_filter}",
                  id=period_id)
 
     return {
@@ -147,11 +148,13 @@ async def get_payroll_items(period_id: str, user=Depends(get_current_user)):
     if user["role"] != "owner" and str(period["outlet_id"]) not in user.get("outlet_ids", []):
         raise HTTPException(403, "Tidak ada akses ke outlet ini")
 
-    rows = await q_all("""
+    outlet_filter = await filter_outlets_for_user(user, "pp.outlet_id")
+    rows = await q_all(f"""
         SELECT pi.*, u.role, u.email, u.job_title
         FROM payroll_items pi
+        JOIN payroll_periods pp ON pi.payroll_period_id = pp.id
         LEFT JOIN users u ON u.id = pi.user_id
-        WHERE pi.payroll_period_id = :pid
+        WHERE pi.payroll_period_id = :pid {outlet_filter}
         ORDER BY pi.net_pay DESC
     """, pid=period_id)
     return clean_list(rows)

@@ -57,22 +57,24 @@ async def list_memberships(
 
 @router.get("/loyalty/customer/{customer_id}")
 async def get_customer_loyalty(customer_id: str, user=Depends(get_current_user)):
-    rows = await q_all("""
+    outlet_filter = await filter_outlets_for_user(user, "cm.outlet_id")
+    rows = await q_all(f"""
         SELECT cm.*, o.name AS outlet_name
         FROM customer_memberships cm
         LEFT JOIN outlets o ON o.id = cm.outlet_id
-        WHERE cm.customer_id = :cid
+        WHERE cm.customer_id = :cid {outlet_filter}
     """, cid=customer_id)
     return clean_list(rows)
 
 
 @router.get("/loyalty/points/{customer_id}")
 async def get_point_history(customer_id: str, user=Depends(get_current_user), limit: int = 50):
-    rows = await q_all("""
+    outlet_filter = await filter_outlets_for_user(user, "pt.outlet_id")
+    rows = await q_all(f"""
         SELECT pt.*, o.name AS outlet_name
         FROM point_transactions pt
         LEFT JOIN outlets o ON o.id = pt.outlet_id
-        WHERE pt.customer_id = :cid
+        WHERE pt.customer_id = :cid {outlet_filter}
         ORDER BY pt.created_at DESC LIMIT :l
     """, cid=customer_id, l=limit)
     return clean_list(rows)

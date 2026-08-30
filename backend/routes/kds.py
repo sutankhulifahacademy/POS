@@ -86,7 +86,8 @@ async def update_kds_status(
         elif k != "id":
             sets.append(f"{k} = :{k}")
 
-    await q_exec(f"UPDATE kitchen_orders SET {', '.join(sets)} WHERE id = :id", **updates)
+    outlet_filter = await filter_outlets_for_user(user)
+    await q_exec(f"UPDATE kitchen_orders SET {', '.join(sets)} WHERE id = :id {outlet_filter}", **updates)
 
     return clean(await q_one("SELECT * FROM kitchen_orders WHERE id = :id", id=order_id))
 
@@ -99,7 +100,8 @@ async def update_kds_priority(
 ):
     """Set priority for a kitchen order."""
     priority = int(body.get("priority", 0))
-    r = await q_exec("UPDATE kitchen_orders SET priority = :p WHERE id = :id",
+    outlet_filter = await filter_outlets_for_user(user)
+    r = await q_exec(f"UPDATE kitchen_orders SET priority = :p WHERE id = :id {outlet_filter}",
                      p=priority, id=order_id)
     if r == 0:
         raise HTTPException(404, "Order not found")

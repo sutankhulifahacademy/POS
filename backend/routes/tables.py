@@ -40,8 +40,9 @@ async def create_table(body: TableIn, user=Depends(require_permission("tables", 
 
 @router.put("/tables/{table_id}")
 async def update_table(table_id: str, body: TableIn, user=Depends(require_permission("tables", "update"))):
-    r = await q_exec("""UPDATE tables SET name=:n, capacity=:c, outlet_id=:oid, zone=:z, updated_at=NOW()
-                        WHERE id=:id""", id=table_id, n=body.name, c=body.capacity,
+    outlet_filter = await filter_outlets_for_user(user)
+    r = await q_exec(f"""UPDATE tables SET name=:n, capacity=:c, outlet_id=:oid, zone=:z, updated_at=NOW()
+                        WHERE id=:id {outlet_filter}""", id=table_id, n=body.name, c=body.capacity,
                      oid=_u(body.outlet_id), z=body.zone or "Utama")
     if r == 0:
         raise HTTPException(404, "Not found")
@@ -53,7 +54,8 @@ async def delete_table(table_id: str, user=Depends(require_permission("tables", 
     active = await q_one("SELECT id FROM orders WHERE table_id=:t AND status='open'", t=table_id)
     if active:
         raise HTTPException(400, "Meja masih memiliki order terbuka")
-    r = await q_exec("DELETE FROM tables WHERE id=:id", id=table_id)
+    outlet_filter = await filter_outlets_for_user(user)
+    r = await q_exec(f"DELETE FROM tables WHERE id=:id {outlet_filter}", id=table_id)
     if r == 0:
         raise HTTPException(404, "Not found")
     return {"ok": True}

@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import api, { formatIDR } from "../lib/api";
 import { toast, Toaster } from "sonner";
-import { Search, Plus, Minus, Trash2, ShoppingCart, Package as PackageIcon, ScanLine, Printer, Clock, LogOut, Utensils, LayoutDashboard } from "lucide-react";
+import { Search, Plus, Minus, Trash2, ShoppingCart, Package as PackageIcon, ScanLine, Printer, Clock, LogOut, Utensils, LayoutDashboard, Store } from "lucide-react";
 import BarcodeScanner from "../components/BarcodeScanner";
 import Receipt, { printReceipt } from "../components/Receipt";
 import QRISPayment from "../components/QRISPayment";
@@ -12,19 +12,13 @@ import Tables from "./Tables";
 
 export default function POS() {
   const { user, logout } = useAuth();
-  const { outlets: globalOutlets, outletIdForApi, setOutlet } = useOutlet();
+  const { outlets: globalOutlets, outletIdForApi, setSelectedOutlet } = useOutlet();
+  // Use global outlet directly — no local state
+  const selectedOutlet = outletIdForApi || "";
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [outlets, setOutlets] = useState([]);
-  const [selectedOutlet, setSelectedOutlet] = useState(outletIdForApi || "");
-
-  // Sync local outlet when global outlet changes (e.g., from Layout selector)
-  useEffect(() => {
-    if (outletIdForApi && outletIdForApi !== selectedOutlet) {
-      setSelectedOutlet(outletIdForApi);
-    }
-  }, [outletIdForApi]);
   const [outletStocks, setOutletStocks] = useState({});
   const [activeCategory, setActiveCategory] = useState("all");
   const [search, setSearch] = useState("");
@@ -66,7 +60,8 @@ export default function POS() {
   const bufferRef = useRef({ chars: "", lastTs: 0 });
 
   const load = async () => {
-    const oParam = selectedOutlet ? `?outlet_id=${selectedOutlet}` : "";
+    if (!selectedOutlet) return; // Wait for global outlet to be set
+    const oParam = `?outlet_id=${selectedOutlet}`;
     const [p, c, cu, s, o, pa, cb] = await Promise.all([
       api.get(`/products${oParam}`), api.get("/categories"), api.get("/customers"),
       api.get(`/shifts/active${oParam}`), api.get("/outlets"), api.get(`/payment-accounts${oParam}`),
@@ -75,15 +70,6 @@ export default function POS() {
     setProducts(p.data); setCategories(c.data); setCustomers(cu.data);
     setActiveShift(s.data); setOutlets(globalOutlets.length > 0 ? globalOutlets : o.data); setPaymentAccounts(pa.data || []);
     setCardBrands(cb.data || []);
-    // Default outlet: from global context or main
-    if (!selectedOutlet) {
-      const allOutlets = globalOutlets.length > 0 ? globalOutlets : o.data;
-      const main = allOutlets.find(x => x.is_main) || allOutlets[0];
-      if (main) {
-        setSelectedOutlet(main.id);
-        if (setOutlet) setOutlet(main.id);
-      }
-    }
   };
   useEffect(() => { load(); }, [selectedOutlet]);
 
@@ -357,9 +343,10 @@ export default function POS() {
               <span className="text-[#C4A484]">{user?.name}</span>
               <span className="text-[10px] uppercase tracking-widest text-[#F4C842]">{user?.role}</span>
             </div>
-            <select value={selectedOutlet} onChange={(e) => { setSelectedOutlet(e.target.value); if (setOutlet) setOutlet(e.target.value); }} className="bg-[#331419] gold-border rounded-md px-3 py-2 text-xs text-[#F5F5F5]" data-testid="pos-outlet-select">
-              {outlets.map(o => <option key={o.id} value={o.id}>{o.name}{o.is_main ? " (Utama)" : ""}</option>)}
-            </select>
+            <div className="flex items-center gap-2 bg-[#331419] gold-border rounded-md px-3 py-2 text-xs">
+              <Store size={14} className="text-[#F4C842]" />
+              <span className="text-[#F5F5F5]">{outlets.find(o => o.id === selectedOutlet)?.name || "Pilih Outlet"}</span>
+            </div>
             {activeShift ? (
               <div className="flex items-center gap-2 bg-[#331419] gold-border rounded-md px-3 py-2 text-xs">
                 <Clock size={14} strokeWidth={1.5} className="text-[#F4C842]" />

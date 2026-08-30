@@ -51,11 +51,12 @@ export default function Products() {
     const payload = {
       ...form,
       price: Number(form.price), cost: Number(form.cost), stock: Number(form.stock), low_stock_threshold: Number(form.low_stock_threshold),
+      outlet_id: outletIdForApi || undefined,
       variants: (form.variants || []).map(v => ({ name: v.name, sku: v.sku || "", price: Number(v.price), stock: Number(v.stock) })),
     };
     try {
-      if (editing) await api.put(`/products/${editing}`, payload);
-      else await api.post("/products", payload);
+      if (editing) await api.put(`/products/${editing}?outlet_id=${outletIdForApi || ""}`, payload);
+      else await api.post(`/products?outlet_id=${outletIdForApi || ""}`, payload);
       toast.success(editing ? "Produk diperbarui" : "Produk ditambahkan");
       setShowForm(false); load();
     } catch (e) { toast.error(e.response?.data?.detail || "Gagal menyimpan"); }
@@ -63,7 +64,7 @@ export default function Products() {
 
   const remove = async (id) => {
     if (!window.confirm("Hapus produk ini?")) return;
-    try { await api.delete(`/products/${id}`); toast.success("Produk dihapus"); load(); }
+    try { await api.delete(`/products/${id}?outlet_id=${outletIdForApi || ""}`); toast.success("Produk dihapus"); load(); }
     catch (e) { toast.error(e.response?.data?.detail || "Gagal menghapus"); }
   };
 

@@ -57,7 +57,7 @@ export default function PurchaseOrders() {
   const receive = async (id) => {
     if (!window.confirm("Terima barang & tambahkan stok?")) return;
     try {
-      await api.post(`/purchase-orders/${id}/receive`);
+      await api.post(`/purchase-orders/${id}/receive?outlet_id=${outletIdForApi || ""}`);
       toast.success("Barang diterima, stok bertambah");
       load();
     } catch (err) { toast.error(err.response?.data?.detail || "Gagal"); }
@@ -65,14 +65,14 @@ export default function PurchaseOrders() {
 
   const remove = async (id) => {
     if (!window.confirm("Hapus PO draft?")) return;
-    try { await api.delete(`/purchase-orders/${id}`); load(); }
+    try { await api.delete(`/purchase-orders/${id}?outlet_id=${outletIdForApi || ""}`); load(); }
     catch (err) { toast.error(err.response?.data?.detail || "Gagal"); }
   };
 
   const reject = async (id) => {
     if (!window.confirm("Tolak PO ini? Status akan berubah menjadi cancelled.")) return;
     try {
-      await api.post(`/purchase-orders/${id}/reject`);
+      await api.post(`/purchase-orders/${id}/reject?outlet_id=${outletIdForApi || ""}`);
       toast.success("PO ditolak");
       setDetail(null);
       load();
@@ -82,7 +82,7 @@ export default function PurchaseOrders() {
   const receiveFromDetail = async (id) => {
     if (!window.confirm("Terima barang & tambahkan stok?")) return;
     try {
-      await api.post(`/purchase-orders/${id}/receive`);
+      await api.post(`/purchase-orders/${id}/receive?outlet_id=${outletIdForApi || ""}`);
       toast.success("Barang diterima, stok bertambah");
       setDetail(null);
       load();

@@ -104,7 +104,8 @@ async def update_coupon(coupon_id: str, body: dict, user=Depends(require_permiss
 
     sets = ", ".join(f"{k}=:{k}" for k in updates.keys())
     updates["id"] = coupon_id
-    await q_exec(f"UPDATE coupons SET {sets} WHERE id=:id", **updates)
+    outlet_filter = await filter_outlets_for_user(user)
+    await q_exec(f"UPDATE coupons SET {sets} WHERE id=:id {outlet_filter}", **updates)
     return clean(await q_one("SELECT * FROM coupons WHERE id = :id", id=coupon_id))
 
 
@@ -115,7 +116,8 @@ async def delete_coupon(coupon_id: str, user=Depends(require_permission("coupons
         raise HTTPException(404, "Coupon not found")
     if user["role"] != "owner" and str(existing["outlet_id"]) not in user.get("outlet_ids", []):
         raise HTTPException(403, "Tidak ada akses ke outlet ini")
-    await q_exec("DELETE FROM coupons WHERE id = :id", id=coupon_id)
+    outlet_filter = await filter_outlets_for_user(user)
+    await q_exec(f"DELETE FROM coupons WHERE id = :id {outlet_filter}", id=coupon_id)
     return {"ok": True}
 
 

@@ -19,11 +19,11 @@ export function OutletProvider({ children }) {
       const { data } = await api.get("/outlets/my");
       setOutlets(data.outlets || []);
       setAllAccess(data.all_access || false);
-      // Default: owner starts with ALL, others start with their first outlet
-      if (data.all_access) {
-        setSelectedOutlet(null);
-      } else if (data.outlets.length > 0) {
-        setSelectedOutlet(data.outlets[0].id);
+      // Default: owner starts with first outlet (main), others start with their first outlet
+      // Owner can still switch to "ALL OUTLETS" via dropdown
+      if (data.outlets.length > 0) {
+        const main = data.outlets.find(o => o.is_main) || data.outlets[0];
+        setSelectedOutlet(main.id);
       }
     } catch (e) {
       console.error("Failed to load outlets:", e);

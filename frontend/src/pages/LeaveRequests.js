@@ -65,7 +65,7 @@ export default function LeaveRequests() {
 
   const handleApprove = async (id) => {
     try {
-      await api.put(`/leave-requests/${id}/approve`, {});
+      await api.put(`/leave-requests/${id}/approve?outlet_id=${outletIdForApi || ""}`, {});
       toast.success("Pengajuan disetujui");
       load();
     } catch (e) {
@@ -77,7 +77,7 @@ export default function LeaveRequests() {
     const reason = prompt("Alasan penolakan:");
     if (!reason) return;
     try {
-      await api.put(`/leave-requests/${id}/reject`, { reason });
+      await api.put(`/leave-requests/${id}/reject?outlet_id=${outletIdForApi || ""}`, { reason });
       toast.success("Pengajuan ditolak");
       load();
     } catch (e) {
@@ -88,7 +88,7 @@ export default function LeaveRequests() {
   const handleDelete = async (id) => {
     if (!confirm("Hapus pengajuan ini?")) return;
     try {
-      await api.delete(`/leave-requests/${id}`);
+      await api.delete(`/leave-requests/${id}?outlet_id=${outletIdForApi || ""}`);
       toast.success("Pengajuan dihapus");
       load();
     } catch (e) {

@@ -46,7 +46,7 @@ export default function Payroll() {
     setLoadingItems(true);
     setItems([]);
     try {
-      const { data } = await api.get(`/payroll/periods/${periodId}/items`);
+      const { data } = await api.get(`/payroll/periods/${periodId}/items?outlet_id=${outletIdForApi || ""}`);
       setItems(data || []);
     } catch (e) {
       toast.error("Gagal memuat detail payroll");
@@ -76,7 +76,7 @@ export default function Payroll() {
     if (!confirm("Proses payroll periode ini? Data akan dikunci.")) return;
     setProcessing(true);
     try {
-      await api.post(`/payroll/periods/${id}/process`, {});
+      await api.post(`/payroll/periods/${id}/process?outlet_id=${outletIdForApi || ""}`, {});
       toast.success("Payroll diproses");
       load();
       if (selectedPeriod?.id === id) {
