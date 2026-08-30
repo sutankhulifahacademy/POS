@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import api from "../lib/api";
 import { useAuth } from "../context/AuthContext";
+import { useOutlet } from "../context/OutletContext";
 import PageHeader from "../components/PageHeader";
 import { Plus, KeyRound, Trash2, X, UserCog, Shield, Upload, User, Store } from "lucide-react";
 import { toast } from "sonner";
@@ -38,6 +39,7 @@ async function fileToDataURI(file, maxDim = 800) {
 
 export default function Karyawan() {
   const { user: currentUser } = useAuth();
+  const { outletIdForApi } = useOutlet();
   const [users, setUsers] = useState([]);
   const [outlets, setOutlets] = useState([]);
   const [showForm, setShowForm] = useState(false);
@@ -53,11 +55,19 @@ export default function Karyawan() {
         api.get("/users"),
         api.get("/outlets"),
       ]);
-      setUsers(usersRes.data);
+      let allUsers = usersRes.data;
+      // Filter by selected outlet (when not "ALL OUTLETS")
+      if (outletIdForApi) {
+        allUsers = allUsers.filter(u =>
+          (u.outlet_ids || []).includes(outletIdForApi) ||
+          u.primary_outlet_id === outletIdForApi
+        );
+      }
+      setUsers(allUsers);
       setOutlets(outletsRes.data);
     } catch (e) { toast.error(e.response?.data?.detail || "Gagal memuat karyawan"); }
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [outletIdForApi]);
 
   const openNew = () => { setForm({ ...empty, outlet_ids: [], primary_outlet_id: "" }); setEditing(null); setShowForm(true); };
   const openEdit = async (u) => {

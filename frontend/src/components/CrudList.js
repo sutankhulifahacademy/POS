@@ -4,7 +4,7 @@ import PageHeader from "../components/PageHeader";
 import { Plus, Edit3, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
-export default function CrudList({ title, subtitle, endpoint, fields, testPrefix }) {
+export default function CrudList({ title, subtitle, endpoint, fields, testPrefix, outletId }) {
   const [items, setItems] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -12,19 +12,22 @@ export default function CrudList({ title, subtitle, endpoint, fields, testPrefix
   const [form, setForm] = useState(emptyForm);
 
   const load = async () => {
-    const { data } = await api.get(`/${endpoint}`);
+    const oParam = outletId ? `?outlet_id=${outletId}` : "";
+    const { data } = await api.get(`/${endpoint}${oParam}`);
     setItems(data);
   };
-  useEffect(() => { load(); }, [endpoint]);
+  useEffect(() => { load(); }, [endpoint, outletId]);
 
-  const openNew = () => { setForm(emptyForm); setEditing(null); setShowForm(true); };
+  const openNew = () => { setForm({ ...emptyForm, outlet_id: outletId || "" }); setEditing(null); setShowForm(true); };
   const openEdit = (item) => { setForm({ ...emptyForm, ...item }); setEditing(item.id); setShowForm(true); };
 
   const save = async (e) => {
     e.preventDefault();
     try {
-      if (editing) await api.put(`/${endpoint}/${editing}`, form);
-      else await api.post(`/${endpoint}`, form);
+      const payload = { ...form };
+      if (outletId && !payload.outlet_id) payload.outlet_id = outletId;
+      if (editing) await api.put(`/${endpoint}/${editing}`, payload);
+      else await api.post(`/${endpoint}`, payload);
       toast.success(editing ? "Diperbarui" : "Ditambahkan");
       setShowForm(false); load();
     } catch (err) { toast.error(err.response?.data?.detail || "Gagal"); }

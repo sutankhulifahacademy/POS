@@ -6,10 +6,32 @@ router = APIRouter()
 
 
 @router.get("/payment-accounts")
-async def list_payment_accounts(user=Depends(get_current_user)):
-    rows = await q_all(
-        "SELECT * FROM payment_accounts ORDER BY is_active DESC, bank_name ASC, created_at DESC"
-    )
+async def list_payment_accounts(
+    user=Depends(get_current_user),
+    outlet_id: Optional[str] = None,
+):
+    # Authorization: non-owner can only access assigned outlets
+    if outlet_id and user["role"] != "owner" and outlet_id not in user.get("outlet_ids", []):
+        raise HTTPException(403, "Tidak ada akses ke outlet ini")
+    if outlet_id:
+        rows = await q_all(
+            "SELECT * FROM payment_accounts WHERE outlet_id = :oid ORDER BY is_active DESC, bank_name ASC, created_at DESC",
+            oid=outlet_id,
+        )
+    elif user["role"] != "owner":
+        # Non-owner: filter to assigned outlets
+        user_outlets = user.get("outlet_ids", [])
+        if user_outlets:
+            ids_sql = ",".join(f"'{oid}'" for oid in user_outlets)
+            rows = await q_all(
+                f"SELECT * FROM payment_accounts WHERE outlet_id IN ({ids_sql}) ORDER BY is_active DESC, bank_name ASC, created_at DESC"
+            )
+        else:
+            rows = []
+    else:
+        rows = await q_all(
+            "SELECT * FROM payment_accounts ORDER BY is_active DESC, bank_name ASC, created_at DESC"
+        )
     return clean_list(rows)
 
 

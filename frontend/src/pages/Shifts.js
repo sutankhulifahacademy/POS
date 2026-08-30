@@ -18,7 +18,7 @@ export default function Shifts() {
 
   const load = async () => {
     const oParam = outletIdForApi ? `?outlet_id=${outletIdForApi}` : "";
-    const [a, l] = await Promise.all([api.get("/shifts/active"), api.get(`/shifts${oParam}`)]);
+    const [a, l] = await Promise.all([api.get(`/shifts/active${oParam}`), api.get(`/shifts${oParam}`)]);
     setActive(a.data); setShifts(l.data);
   };
   useEffect(() => { load(); }, [outletIdForApi]);
@@ -26,7 +26,7 @@ export default function Shifts() {
   const doOpen = async (e) => {
     e.preventDefault();
     try {
-      await api.post("/shifts/open", { opening_cash: Number(openCash), note });
+      await api.post("/shifts/open", { opening_cash: Number(openCash), note, outlet_id: outletIdForApi || undefined });
       toast.success("Shift dibuka");
       setShowOpen(false); setOpenCash(0); setNote(""); load();
     } catch (err) { toast.error(err.response?.data?.detail || "Gagal"); }
@@ -35,7 +35,7 @@ export default function Shifts() {
   const doClose = async (e) => {
     e.preventDefault();
     try {
-      const { data } = await api.post("/shifts/close", { actual_cash: Number(closeCash), note });
+      const { data } = await api.post("/shifts/close", { actual_cash: Number(closeCash), note, outlet_id: outletIdForApi || undefined });
       setClosedResult(data);
       setShowClose(false); setCloseCash(0); setNote(""); load();
     } catch (err) { toast.error(err.response?.data?.detail || "Gagal"); }

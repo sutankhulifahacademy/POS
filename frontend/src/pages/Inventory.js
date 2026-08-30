@@ -30,7 +30,7 @@ export default function Inventory() {
     e.preventDefault();
     if (!selected) return toast.error("Pilih produk");
     try {
-      await api.post("/inventory/adjust", { product_id: selected, delta: Number(delta), reason, note });
+      await api.post("/inventory/adjust", { product_id: selected, delta: Number(delta), reason, note, outlet_id: outletIdForApi || undefined });
       toast.success("Stok berhasil disesuaikan");
       setSelected(null); setDelta(0); setNote("");
       load();

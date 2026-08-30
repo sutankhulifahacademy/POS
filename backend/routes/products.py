@@ -10,6 +10,9 @@ async def list_products(
     user=Depends(get_current_user),
     outlet_id: Optional[str] = None,
 ):
+    # Authorization: non-owner can only access assigned outlets
+    if outlet_id and user["role"] != "owner" and outlet_id not in user.get("outlet_ids", []):
+        raise HTTPException(403, "Tidak ada akses ke outlet ini")
     if outlet_id:
         # Return products with outlet-specific stock
         rows = await q_all("""
@@ -21,7 +24,22 @@ async def list_products(
             ORDER BY p.created_at DESC
         """, oid=outlet_id)
     else:
-        rows = await q_all("SELECT * FROM products WHERE is_active = TRUE ORDER BY created_at DESC")
+        # Non-owner: show products with stock from their assigned outlets
+        if user["role"] != "owner":
+            user_outlets = user.get("outlet_ids", [])
+            if user_outlets:
+                rows = await q_all(f"""
+                    SELECT p.*, os.quantity AS outlet_stock, o.name AS outlet_name
+                    FROM products p
+                    LEFT JOIN outlet_stocks os ON os.product_id = p.id AND os.outlet_id IN ({",".join(f"'{oid}'" for oid in user_outlets)})
+                    LEFT JOIN outlets o ON o.id = os.outlet_id
+                    WHERE p.is_active = TRUE
+                    ORDER BY p.created_at DESC
+                """)
+            else:
+                rows = await q_all("SELECT * FROM products WHERE is_active = TRUE ORDER BY created_at DESC")
+        else:
+            rows = await q_all("SELECT * FROM products WHERE is_active = TRUE ORDER BY created_at DESC")
     return clean_list(rows)
 
 @router.get("/products/by-barcode/{code}")

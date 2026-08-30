@@ -22,7 +22,7 @@ export default function Expenses() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
-    outlet_id: "",
+    outlet_id: outletIdForApi || "",
     category: "utilities",
     description: "",
     amount: "",
@@ -31,6 +31,11 @@ export default function Expenses() {
     vendor: "",
     receipt_no: "",
   });
+
+  // Sync form.outlet_id when global outlet changes
+  useEffect(() => {
+    setForm(f => ({ ...f, outlet_id: outletIdForApi || f.outlet_id }));
+  }, [outletIdForApi]);
 
   const load = useCallback(async () => {
     setLoading(true);

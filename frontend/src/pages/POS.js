@@ -18,6 +18,13 @@ export default function POS() {
   const [customers, setCustomers] = useState([]);
   const [outlets, setOutlets] = useState([]);
   const [selectedOutlet, setSelectedOutlet] = useState(outletIdForApi || "");
+
+  // Sync local outlet when global outlet changes (e.g., from Layout selector)
+  useEffect(() => {
+    if (outletIdForApi && outletIdForApi !== selectedOutlet) {
+      setSelectedOutlet(outletIdForApi);
+    }
+  }, [outletIdForApi]);
   const [outletStocks, setOutletStocks] = useState({});
   const [activeCategory, setActiveCategory] = useState("all");
   const [search, setSearch] = useState("");
@@ -62,7 +69,7 @@ export default function POS() {
     const oParam = selectedOutlet ? `?outlet_id=${selectedOutlet}` : "";
     const [p, c, cu, s, o, pa, cb] = await Promise.all([
       api.get(`/products${oParam}`), api.get("/categories"), api.get("/customers"),
-      api.get("/shifts/active"), api.get("/outlets"), api.get("/payment-accounts"),
+      api.get(`/shifts/active${oParam}`), api.get("/outlets"), api.get(`/payment-accounts${oParam}`),
       api.get("/card-brands"),
     ]);
     setProducts(p.data); setCategories(c.data); setCustomers(cu.data);
@@ -140,7 +147,7 @@ export default function POS() {
     e.preventDefault();
     setShiftSaving(true);
     try {
-      const { data } = await api.post("/shifts/open", { opening_cash: Number(shiftCash), note: shiftNote });
+      const { data } = await api.post("/shifts/open", { opening_cash: Number(shiftCash), note: shiftNote, outlet_id: selectedOutlet || undefined });
       setActiveShift(data);
       toast.success("Shift dibuka");
       setShowShiftModal(false); setShiftCash(0); setShiftNote("");

@@ -96,7 +96,7 @@ export default function Attendance() {
   const load = async () => {
     const oParam = outletIdForApi ? `&outlet_id=${outletIdForApi}` : "";
     const [a, h] = await Promise.all([
-      api.get("/attendance/active"),
+      api.get(`/attendance/active${outletIdForApi ? `?outlet_id=${outletIdForApi}` : ""}`),
       api.get(`/attendance?limit=50${oParam}`),
     ]);
     setActive(a.data);
@@ -106,7 +106,7 @@ export default function Attendance() {
 
   const doClockIn = async (photo, note) => {
     try {
-      await api.post("/attendance/clock-in", { photo, note });
+      await api.post("/attendance/clock-in", { photo, note, outlet_id: outletIdForApi || undefined });
       toast.success("Absen masuk berhasil");
       setCameraMode(null); load();
     } catch (e) { toast.error(e.response?.data?.detail || "Gagal"); }
@@ -114,7 +114,7 @@ export default function Attendance() {
 
   const doClockOut = async (photo, note) => {
     try {
-      await api.post("/attendance/clock-out", { photo, note });
+      await api.post("/attendance/clock-out", { photo, note, outlet_id: outletIdForApi || undefined });
       toast.success("Absen keluar berhasil");
       setCameraMode(null); load();
     } catch (e) { toast.error(e.response?.data?.detail || "Gagal"); }

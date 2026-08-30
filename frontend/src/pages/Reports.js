@@ -531,19 +531,21 @@ function ReceiptPopup({ saleId, onClose }) {
  *  TAB 1: DASHBOARD
  * ============================================================ */
 
-function DashboardTab() {
+function DashboardTab({ globalOutletId }) {
   const [period, setPeriod] = useState("weekly");
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
+    const params = { period };
+    if (globalOutletId) params.outlet_id = globalOutletId;
     api
-      .get("/reports/dashboard", { params: { period } })
+      .get("/reports/dashboard", { params })
       .then((r) => setData(r.data))
       .catch(() => toast.error("Gagal memuat dashboard"))
       .finally(() => setLoading(false));
-  }, [period]);
+  }, [period, globalOutletId]);
 
   if (loading) return <Loading />;
   if (!data) return null;

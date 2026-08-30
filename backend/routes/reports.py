@@ -56,11 +56,27 @@ def _period_range(period: str, date_from: Optional[str], date_to: Optional[str])
     return start_local, end_local
 
 
-def _outlet_filter(outlet_id: Optional[str]):
-    """Return (clause, params_dict_key) for optional outlet filtering."""
+def _outlet_filter(outlet_id: Optional[str], user: Optional[dict] = None):
+    """
+    Return (clause, params) for outlet filtering with authorization.
+
+    - If outlet_id provided: validate against user's outlets (non-owner), return parameterized clause.
+    - If no outlet_id + non-owner: auto-scope to user's assigned outlets.
+    - If no outlet_id + owner: no clause (all outlets).
+    """
     if outlet_id:
-        return " AND outlet_id = :outlet_id "
-    return " "
+        # Authorization: non-owner can only access assigned outlets
+        if user and user.get("role") != "owner" and outlet_id not in user.get("outlet_ids", []):
+            raise HTTPException(403, "Anda tidak memiliki akses ke outlet ini")
+        return " AND outlet_id = :outlet_id ", {"outlet_id": outlet_id}
+    elif user and user.get("role") != "owner":
+        user_outlets = user.get("outlet_ids", [])
+        if user_outlets:
+            ids_sql = ",".join(f"'{oid}'" for oid in user_outlets)
+            return f" AND outlet_id IN ({ids_sql}) ", {}
+        else:
+            return " AND 1=0 ", {}
+    return " ", {}
 
 
 # ============ REPORTS ============
@@ -451,11 +467,10 @@ async def report_sales(
 ):
     """Comprehensive sales analytics for managers."""
     start_local, end_local = _period_range(period, date_from, date_to)
-    o_filter = _outlet_filter(outlet_id)
+    o_filter, o_params = _outlet_filter(outlet_id, user)
 
     params = {"start_at": start_local, "end_at": end_local}
-    if outlet_id:
-        params["outlet_id"] = outlet_id
+    params.update(o_params)
 
     # ---- SUMMARY ----
     summary = await q_one(f"""
@@ -788,11 +803,10 @@ async def report_profit_loss(
 ):
     """Profit & loss ledger."""
     start_local, end_local = _period_range(period, date_from, date_to)
-    o_filter = _outlet_filter(outlet_id)
+    o_filter, o_params = _outlet_filter(outlet_id, user)
 
     params = {"start_at": start_local, "end_at": end_local}
-    if outlet_id:
-        params["outlet_id"] = outlet_id
+    params.update(o_params)
 
     # ---- HEADLINE FIGURES ----
     head = await q_one(f"""
@@ -1011,21 +1025,11 @@ async def report_shifts(
             hour=23, minute=59, second=59, microsecond=999999
         ) + timedelta(microseconds=1)
 
-    # Build outlet filter
-    outlet_clause = ""
-    if outlet_id:
-        outlet_clause = " AND outlet_id = :outlet_id "
-    elif user["role"] != "owner":
-        user_outlets = user.get("outlet_ids", [])
-        if user_outlets:
-            ids_sql = ",".join(f"'{oid}'" for oid in user_outlets)
-            outlet_clause = f" AND outlet_id IN ({ids_sql}) "
-        else:
-            outlet_clause = " AND 1=0 "
+    # Build outlet filter with authorization
+    outlet_clause, o_params = _outlet_filter(outlet_id, user)
 
     params = {"start_at": start_local, "end_at": end_local}
-    if outlet_id:
-        params["outlet_id"] = outlet_id
+    params.update(o_params)
 
     rows = await q_all(f"""
         SELECT
@@ -1102,10 +1106,9 @@ async def report_stock(
             hour=23, minute=59, second=59, microsecond=999999
         ) + timedelta(microseconds=1)
 
-    o_filter = _outlet_filter(outlet_id)
+    o_filter, o_params = _outlet_filter(outlet_id, user)
     params = {"start_at": start_local, "end_at": end_local}
-    if outlet_id:
-        params["outlet_id"] = outlet_id
+    params.update(o_params)
 
     # ---- MOVEMENTS (paginated, limit 500) ----
     movements = await q_all(f"""
@@ -1238,11 +1241,10 @@ async def report_payment_reconciliation(
 ):
     """Payment reconciliation report."""
     start_local, end_local = _period_range(period, date_from, date_to)
-    o_filter = _outlet_filter(outlet_id)
+    o_filter, o_params = _outlet_filter(outlet_id, user)
 
     params = {"start_at": start_local, "end_at": end_local}
-    if outlet_id:
-        params["outlet_id"] = outlet_id
+    params.update(o_params)
 
     # ---- BY METHOD ----
     method_rows = await q_all(f"""
@@ -1406,8 +1408,10 @@ async def sales_monitor(
     user=Depends(get_current_user)
 ):
     """Recent sales for real-time monitoring. Returns latest transactions with outlet info."""
-    # Build outlet filter
+    # Build outlet filter with authorization
     if outlet_id:
+        if user["role"] != "owner" and outlet_id not in user.get("outlet_ids", []):
+            raise HTTPException(403, "Anda tidak memiliki akses ke outlet ini")
         o_clause = " AND s.outlet_id = :outlet_id "
         params = {"outlet_id": outlet_id}
     elif user["role"] != "owner":

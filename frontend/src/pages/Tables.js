@@ -3,10 +3,12 @@ import api, { formatIDR } from "../lib/api";
 import PageHeader from "../components/PageHeader";
 import { Plus, Users as UsersIcon, X, ShoppingBag, Trash2, Search, MapPin, Package } from "lucide-react";
 import { toast } from "sonner";
+import { useOutlet } from "../context/OutletContext";
 
 const emptyTable = { name: "", capacity: 2, zone: "Utama" };
 
 export default function Tables({ embedded = false }) {
+  const { outletIdForApi } = useOutlet();
   const [tables, setTables] = useState([]);
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -41,24 +43,25 @@ export default function Tables({ embedded = false }) {
   const [paketComposer, setPaketComposer] = useState(null);
 
   const load = async () => {
+    const oParam = outletIdForApi ? `?outlet_id=${outletIdForApi}` : "";
     const [t, p, cat, c, pa, cb] = await Promise.all([
-      api.get("/tables"),
-      api.get("/products"),
+      api.get(`/tables${oParam}`),
+      api.get(`/products${oParam}`),
       api.get("/categories"),
       api.get("/customers"),
-      api.get("/payment-accounts"),
+      api.get(`/payment-accounts${oParam}`),
       api.get("/card-brands"),
     ]);
     setTables(t.data); setProducts(p.data); setCategories(cat.data || []); setCustomers(c.data);
     setPaymentAccounts(pa.data || []);
     setCardBrands(cb.data || []);
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [outletIdForApi]);
 
   const saveTable = async (e) => {
     e.preventDefault();
     try {
-      await api.post("/tables", { ...form, capacity: Number(form.capacity) });
+      await api.post("/tables", { ...form, capacity: Number(form.capacity), outlet_id: outletIdForApi || undefined });
       toast.success("Meja ditambahkan");
       setShowForm(false); setForm(emptyTable); load();
     } catch (err) { toast.error(err.response?.data?.detail || "Gagal"); }
@@ -73,7 +76,7 @@ export default function Tables({ embedded = false }) {
   const beginOrder = async (table) => {
     if (table.active_order_id) {
       try {
-        const { data } = await api.get(`/orders?status=open`);
+        const { data } = await api.get(`/orders?status=open${outletIdForApi ? `&outlet_id=${outletIdForApi}` : ""}`);
         const order = data.find(o => o.id === table.active_order_id);
         if (order) {
           setActiveOrder(order);
@@ -204,14 +207,15 @@ export default function Tables({ embedded = false }) {
           const { data: newOrder } = await api.post("/orders", {
             table_id: openTable.id,
             guest_count: Number(guests),
-            items: payloadItems
+            items: payloadItems,
+            outlet_id: outletIdForApi || undefined
           });
           setActiveOrder(newOrder);
           toast.success("Order dibuka");
         } catch (err) {
           if (err.response?.status === 400 && err.response?.data?.detail?.includes("order terbuka")) {
             // Meja sudah punya order → cari & update items
-            const { data: openOrders } = await api.get("/orders?status=open");
+            const { data: openOrders } = await api.get(`/orders?status=open${outletIdForApi ? `&outlet_id=${outletIdForApi}` : ""}`);
             const existing = openOrders.find(o => o.table_id === openTable.id);
             if (existing) {
               await api.put(`/orders/${existing.id}/items`, { items: payloadItems });
@@ -307,7 +311,7 @@ export default function Tables({ embedded = false }) {
         oid = activeOrder.id;
       } else {
         // Cek apakah meja sudah punya order terbuka
-        const { data: openOrders } = await api.get("/orders?status=open");
+        const { data: openOrders } = await api.get(`/orders?status=open${outletIdForApi ? `&outlet_id=${outletIdForApi}` : ""}`);
         const existing = openOrders.find(o => o.table_id === openTable.id);
         if (existing) {
           // Order sudah ada → update items saja
@@ -316,7 +320,7 @@ export default function Tables({ embedded = false }) {
           setActiveOrder(existing);
         } else {
           // Buka order baru
-          const { data } = await api.post("/orders", { table_id: openTable.id, guest_count: Number(guests), items: checkoutItems });
+          const { data } = await api.post("/orders", { table_id: openTable.id, guest_count: Number(guests), items: checkoutItems, outlet_id: outletIdForApi || undefined });
           oid = data.id;
           setActiveOrder(data);
         }

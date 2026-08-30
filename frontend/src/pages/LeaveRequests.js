@@ -53,7 +53,7 @@ export default function LeaveRequests() {
       return;
     }
     try {
-      await api.post("/leave-requests", form);
+      await api.post("/leave-requests", { ...form, outlet_id: outletIdForApi || undefined });
       toast.success("Pengajuan cuti dikirim");
       setShowForm(false);
       setForm({ leave_type: "izin", start_date: "", end_date: "", reason: "" });
