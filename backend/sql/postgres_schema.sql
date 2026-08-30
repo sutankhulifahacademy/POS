@@ -93,8 +93,6 @@ CREATE TABLE IF NOT EXISTS products (
     description TEXT,
     is_active BOOLEAN DEFAULT TRUE,
     variants JSONB DEFAULT '[]'::jsonb,
-    product_type VARCHAR(20) DEFAULT 'regular',
-    bundle_items JSONB DEFAULT '[]'::jsonb,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ
 );

@@ -21,14 +21,13 @@ async def create_product(body: ProductCreate, user=Depends(require_role("admin",
     if exists: raise HTTPException(400, "SKU already exists")
     pid = new_id()
     variants_json = json.dumps(body.variants or [])
-    bundle_json = json.dumps(body.bundle_items or [])
     await q_exec("""INSERT INTO products (id, name, sku, barcode, category_id, price, cost, stock, low_stock_threshold,
-                                           unit, image_url, description, is_active, variants, product_type, bundle_items, created_at)
-                    VALUES (:id, :n, :s, :b, :ci, :p, :c, :st, :lt, :u, :img, :d, :a, CAST(:v AS jsonb), :pt, CAST(:bi AS jsonb), NOW())""",
+                                           unit, image_url, description, is_active, variants, created_at)
+                    VALUES (:id, :n, :s, :b, :ci, :p, :c, :st, :lt, :u, :img, :d, :a, CAST(:v AS jsonb), NOW())""",
                  id=pid, n=body.name, s=body.sku, b=body.barcode or "", ci=_u(body.category_id),
                  p=body.price, c=body.cost, st=body.stock, lt=body.low_stock_threshold,
                  u=body.unit, img=body.image_url or "", d=body.description or "",
-                 a=body.is_active, v=variants_json, pt=body.product_type or "regular", bi=bundle_json)
+                 a=body.is_active, v=variants_json)
     if body.stock > 0:
         await q_exec("""INSERT INTO stock_movements (id, product_id, product_name, delta, reason, note, user_id, created_at)
                         VALUES (:id, :pid, :pn, :d, 'initial', 'Initial stock', :u, NOW())""",
@@ -103,14 +102,6 @@ async def update_product(
     if "variants" in data:
         updates.append("variants=CAST(:variants AS jsonb)")
         params["variants"] = json.dumps(data["variants"])
-
-    if "product_type" in data:
-        updates.append("product_type=:product_type")
-        params["product_type"] = data["product_type"]
-
-    if "bundle_items" in data:
-        updates.append("bundle_items=CAST(:bundle_items AS jsonb)")
-        params["bundle_items"] = json.dumps(data["bundle_items"])
 
     if not updates:
         raise HTTPException(400, "Tidak ada data yang valid untuk diubah")

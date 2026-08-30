@@ -1,51 +1,67 @@
-Rombak paket system: category-based with dynamic composer in POS/Dine-In
+Connect paket_items to reports, clean up schema, update docs
 
-The paket/bundle system has been completely reworked. Instead of
-pre-defining bundle_items on each product, paket is now simply a
-product with category "Paket". The composition is chosen dynamically
-at the point of sale.
+## Reports — Profit/Loss now uses paket_items for COGS
 
-## How it works now:
+All COGS calculations in report endpoints now handle paket items:
+- /reports/profit-loss: headline, by-product, by-category, by-day
+- /reports/sales: by-product breakdown
 
-1. **Product setup (Products page):**
-   - Create a product with category "Paket" (e.g. "Paket Suka-Suka")
-   - Set the paket selling price (e.g. Rp 75.000)
-   - No pre-defined bundle items needed
+For regular items: COGS = products.cost × quantity
+For paket items: COGS = SUM(component.cost × component.quantity)
+  for each item in paket_items
 
-2. **POS (Kasir):**
-   - Paket products show a "Paket" badge
-   - Clicking a paket opens a composer modal showing ALL dimsum/products
-   - Cashier picks which items and quantities go into this paket
-   - Search box to filter products
-   - Total item count shown
-   - "Tambah ke Keranjang" adds paket to cart with paket_items
+The SQL uses a CASE expression with jsonb_typeof check:
+  WHEN jsonb_typeof(elem->'paket_items') = 'array'
+       AND jsonb_array_length(elem->'paket_items') > 0
+  THEN (SELECT SUM(pc.cost * pi.quantity)
+        FROM jsonb_array_elements(elem->'paket_items') pi
+        JOIN products pc ON pi.product_id = pc.id)
+  ELSE p.cost * elem.quantity
 
-3. **Dine-In (Tables):**
-   - Same paket composer modal in the order panel
-   - Composition chosen at order time
-   - paket_items saved with the order
+## Backend — SaleItem model now accepts paket_items
 
-4. **Cart display:**
-   - Paket items in cart show their composition as a sub-list:
-     Paket Suka-Suka           Rp 75.000
-       ├ Dimsum Udang ×2
-       ├ Dimsum Mix ×1
-       └ ...
+Added paket_items field to SaleItem model so Pydantic doesn't strip it:
+  class SaleItem(BaseModel):
+      ...
+      paket_items: Optional[list[dict[str, Any]]] = None
 
-5. **Revenue tracking:**
-   - paket_items are saved in sales.items JSONB
-   - Each sale item includes paket_items: [{product_id, name, price, quantity}]
-   - Reports can track which individual products were sold as part of pakets
+Without this, paket_items sent from POS/Dine-In were silently dropped
+during validation and never stored in sales.items JSONB.
 
-## Files changed:
-- Products.js: removed product_type selector and bundle_items UI;
-  paket is now just a category. Table shows category name with "Paket"
-  badge for paket products.
-- POS.js: replaced static paketPick modal with dynamic paketComposer
-  modal. Cashier selects items at sale time.
-- Tables.js: same dynamic paket composer in dine-in order panel.
-- Backend: no changes needed — paket_items flow through existing
-  JSONB items storage in sales table.
+## Database — Removed unused columns
+
+Dropped product_type and bundle_items from products table:
+  ALTER TABLE products DROP COLUMN product_type;
+  ALTER TABLE products DROP COLUMN bundle_items;
+
+These were added in the previous paket approach (v1.0) but are no
+longer needed. Paket detection is now purely category-based.
+
+Updated postgres_schema.sql to reflect the removal.
+
+## Backend — Cleaned up models and routes
+
+- models/products.py: removed product_type, bundle_items from
+  ProductCreate and ProductUpdate
+- routes/products.py: removed product_type, bundle_items from
+  INSERT and UPDATE SQL
+
+## Documentation — MENU_DOCUMENTATION_v2.0.md
+
+New documentation version covering:
+- Category-based paket detection
+- Dynamic composition at point of sale
+- COGS calculation from paket_items components
+- Profit/loss formula for paket vs regular items
+- Example calculation
+- List of existing paket products
+
+## Product data
+
+Existing paket products already have correct category_id pointing to
+the "Paket" category. Stock was set to 100 for all paket products
+(was 0). The product_type and bundle_items columns were removed so
+the data is now clean.
 
 Generated with [Devin](https://devin.ai)
 

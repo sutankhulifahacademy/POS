@@ -501,8 +501,16 @@ async def report_sales(
             ) AS revenue,
             COALESCE(
                 SUM(
-                    COALESCE(p.cost, 0)
-                    * COALESCE((elem->>'quantity')::numeric, 0)
+                    CASE
+                        WHEN jsonb_typeof(elem->'paket_items') = 'array' AND jsonb_array_length(elem->'paket_items') > 0 THEN
+                            COALESCE((
+                                SELECT SUM(COALESCE(pc.cost, 0) * COALESCE((pi->>'quantity')::numeric, 0))
+                                FROM jsonb_array_elements(elem->'paket_items') pi
+                                LEFT JOIN products pc ON (pi->>'product_id') = pc.id::text
+                            ), 0)
+                        ELSE
+                            COALESCE(p.cost, 0) * COALESCE((elem->>'quantity')::numeric, 0)
+                    END
                 ), 0
             ) AS cost
         FROM sales s
@@ -721,8 +729,16 @@ async def report_profit_loss(
             COALESCE(SUM(s.tax), 0) AS total_tax,
             COALESCE(
                 SUM(
-                    COALESCE(p.cost, 0)
-                    * COALESCE((elem->>'quantity')::numeric, 0)
+                    CASE
+                        WHEN jsonb_typeof(elem->'paket_items') = 'array' AND jsonb_array_length(elem->'paket_items') > 0 THEN
+                            COALESCE((
+                                SELECT SUM(COALESCE(pc.cost, 0) * COALESCE((pi->>'quantity')::numeric, 0))
+                                FROM jsonb_array_elements(elem->'paket_items') pi
+                                LEFT JOIN products pc ON (pi->>'product_id') = pc.id::text
+                            ), 0)
+                        ELSE
+                            COALESCE(p.cost, 0) * COALESCE((elem->>'quantity')::numeric, 0)
+                    END
                 ), 0
             ) AS cogs
         FROM sales s
@@ -756,8 +772,16 @@ async def report_profit_loss(
             ) AS revenue,
             COALESCE(
                 SUM(
-                    COALESCE(p.cost, 0)
-                    * COALESCE((elem->>'quantity')::numeric, 0)
+                    CASE
+                        WHEN jsonb_typeof(elem->'paket_items') = 'array' AND jsonb_array_length(elem->'paket_items') > 0 THEN
+                            COALESCE((
+                                SELECT SUM(COALESCE(pc.cost, 0) * COALESCE((pi->>'quantity')::numeric, 0))
+                                FROM jsonb_array_elements(elem->'paket_items') pi
+                                LEFT JOIN products pc ON (pi->>'product_id') = pc.id::text
+                            ), 0)
+                        ELSE
+                            COALESCE(p.cost, 0) * COALESCE((elem->>'quantity')::numeric, 0)
+                    END
                 ), 0
             ) AS cost
         FROM sales s
@@ -797,8 +821,16 @@ async def report_profit_loss(
             ) AS revenue,
             COALESCE(
                 SUM(
-                    COALESCE(p.cost, 0)
-                    * COALESCE((elem->>'quantity')::numeric, 0)
+                    CASE
+                        WHEN jsonb_typeof(elem->'paket_items') = 'array' AND jsonb_array_length(elem->'paket_items') > 0 THEN
+                            COALESCE((
+                                SELECT SUM(COALESCE(pc.cost, 0) * COALESCE((pi->>'quantity')::numeric, 0))
+                                FROM jsonb_array_elements(elem->'paket_items') pi
+                                LEFT JOIN products pc ON (pi->>'product_id') = pc.id::text
+                            ), 0)
+                        ELSE
+                            COALESCE(p.cost, 0) * COALESCE((elem->>'quantity')::numeric, 0)
+                    END
                 ), 0
             ) AS cost
         FROM sales s
@@ -830,8 +862,16 @@ async def report_profit_loss(
             COALESCE(SUM(s.total), 0) AS revenue,
             COALESCE(
                 SUM(
-                    COALESCE(p.cost, 0)
-                    * COALESCE((elem->>'quantity')::numeric, 0)
+                    CASE
+                        WHEN jsonb_typeof(elem->'paket_items') = 'array' AND jsonb_array_length(elem->'paket_items') > 0 THEN
+                            COALESCE((
+                                SELECT SUM(COALESCE(pc.cost, 0) * COALESCE((pi->>'quantity')::numeric, 0))
+                                FROM jsonb_array_elements(elem->'paket_items') pi
+                                LEFT JOIN products pc ON (pi->>'product_id') = pc.id::text
+                            ), 0)
+                        ELSE
+                            COALESCE(p.cost, 0) * COALESCE((elem->>'quantity')::numeric, 0)
+                    END
                 ), 0
             ) AS cogs
         FROM sales s

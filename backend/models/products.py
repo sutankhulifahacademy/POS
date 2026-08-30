@@ -23,8 +23,6 @@ class ProductCreate(BaseModel):
     description: Optional[str] = ""
     is_active: bool = True
     variants: list[dict[str, Any]] = []
-    product_type: str = "regular"
-    bundle_items: list[dict[str, Any]] = []
 
 
 class ProductUpdate(BaseModel):
@@ -41,5 +39,3 @@ class ProductUpdate(BaseModel):
     description: Optional[str] = None
     is_active: Optional[bool] = None
     variants: Optional[list[dict[str, Any]]] = None
-    product_type: Optional[str] = None
-    bundle_items: Optional[list[dict[str, Any]]] = None

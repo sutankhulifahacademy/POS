@@ -8,6 +8,7 @@ class SaleItem(BaseModel):
     name: str
     price: float
     quantity: int
+    paket_items: Optional[list[dict[str, Any]]] = None
 
 
 class SaleCreate(BaseModel):
