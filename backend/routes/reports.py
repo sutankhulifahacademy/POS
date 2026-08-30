@@ -84,7 +84,7 @@ def _outlet_filter(outlet_id: Optional[str], user: Optional[dict] = None):
 async def report_dashboard(
     period: Literal["daily", "weekly", "monthly", "yearly"] = "weekly",
     outlet_id: Optional[str] = None,
-    user=Depends(get_current_user)
+    user=Depends(require_role("owner", "admin", "manager", "supervisor"))
 ):
     """
     Dashboard reporting dengan periode:
@@ -463,7 +463,7 @@ async def report_sales(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     outlet_id: Optional[str] = None,
-    user=Depends(get_current_user)
+    user=Depends(require_role("owner", "admin", "manager", "supervisor"))
 ):
     """Comprehensive sales analytics for managers."""
     start_local, end_local = _period_range(period, date_from, date_to)
@@ -799,7 +799,7 @@ async def report_profit_loss(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     outlet_id: Optional[str] = None,
-    user=Depends(get_current_user)
+    user=Depends(require_role("owner", "admin", "manager", "supervisor"))
 ):
     """Profit & loss ledger."""
     start_local, end_local = _period_range(period, date_from, date_to)
@@ -1005,7 +1005,7 @@ async def report_shifts(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     outlet_id: Optional[str] = None,
-    user=Depends(get_current_user)
+    user=Depends(require_role("owner", "admin", "manager", "supervisor"))
 ):
     """Shift reconciliation report (default last 30 days)."""
     now_local = datetime.now(JAKARTA)
@@ -1086,7 +1086,7 @@ async def report_stock(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     outlet_id: Optional[str] = None,
-    user=Depends(get_current_user)
+    user=Depends(require_role("owner", "admin", "manager", "supervisor"))
 ):
     """Stock movement report (default last 30 days)."""
     now_local = datetime.now(JAKARTA)
@@ -1237,7 +1237,7 @@ async def report_payment_reconciliation(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     outlet_id: Optional[str] = None,
-    user=Depends(get_current_user)
+    user=Depends(require_role("owner", "admin", "manager", "supervisor"))
 ):
     """Payment reconciliation report."""
     start_local, end_local = _period_range(period, date_from, date_to)
@@ -1405,7 +1405,7 @@ async def report_payment_reconciliation(
 async def sales_monitor(
     limit: int = 50,
     outlet_id: Optional[str] = None,
-    user=Depends(get_current_user)
+    user=Depends(require_role("owner", "admin", "manager", "supervisor"))
 ):
     """Recent sales for real-time monitoring. Returns latest transactions with outlet info."""
     # Build outlet filter with authorization
@@ -1463,7 +1463,7 @@ async def sales_monitor(
 @router.get("/reports/branch-comparison")
 async def branch_comparison(
     period: Literal["daily", "weekly", "monthly", "yearly"] = "weekly",
-    user=Depends(get_current_user)
+    user=Depends(require_role("owner", "admin", "manager", "supervisor"))
 ):
     """Compare performance across all outlets."""
     now_local = datetime.now(JAKARTA)

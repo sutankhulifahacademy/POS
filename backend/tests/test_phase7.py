@@ -123,7 +123,7 @@ r = requests.get(f'{BASE}/reports/sales-monitor?limit=10', headers=H(mgr_tok))
 test("Manager sales-monitor", r.status_code == 200)
 
 r = requests.get(f'{BASE}/reports/sales-monitor?limit=10', headers=H(ksr_tok))
-test("Kasir sales-monitor", r.status_code == 200)
+test("Kasir sales-monitor blocked", r.status_code == 403)
 
 # ============================================================
 # 5. BRANCH COMPARISON

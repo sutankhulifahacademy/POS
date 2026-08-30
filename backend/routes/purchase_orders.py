@@ -1,4 +1,5 @@
 import json
+import uuid
 from typing import Optional
 from routes.deps import *
 from routes.inventory import _get_main_outlet_id, _adjust_outlet_stock
@@ -43,7 +44,7 @@ async def list_pos(user=Depends(get_current_user), outlet_id: Optional[str] = No
 @router.post("/purchase-orders")
 async def create_po(body: POIn, user=Depends(require_permission("purchase_orders", "create"))):
     total = sum(i.quantity * i.cost for i in body.items)
-    po_no = f"PO-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+    po_no = f"PO-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:4].upper()}"
     pid = new_id()
     items_json = json.dumps([i.model_dump() for i in body.items])
     # Determine outlet_id
