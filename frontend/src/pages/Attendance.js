@@ -4,6 +4,7 @@ import PageHeader from "../components/PageHeader";
 import { Camera, LogIn, LogOut, Clock, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../context/AuthContext";
+import { useOutlet } from "../context/OutletContext";
 
 function useWebcam(active) {
   const videoRef = useRef(null);
@@ -86,17 +87,22 @@ function formatDuration(mins) {
 
 export default function Attendance() {
   const { user } = useAuth();
+  const { outletIdForApi } = useOutlet();
   const [active, setActive] = useState(null);
   const [history, setHistory] = useState([]);
   const [cameraMode, setCameraMode] = useState(null); // "in" | "out" | null
   const [detail, setDetail] = useState(null);
 
   const load = async () => {
-    const [a, h] = await Promise.all([api.get("/attendance/active"), api.get("/attendance?limit=50")]);
+    const oParam = outletIdForApi ? `&outlet_id=${outletIdForApi}` : "";
+    const [a, h] = await Promise.all([
+      api.get("/attendance/active"),
+      api.get(`/attendance?limit=50${oParam}`),
+    ]);
     setActive(a.data);
     setHistory(h.data);
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [outletIdForApi]);
 
   const doClockIn = async (photo, note) => {
     try {

@@ -544,7 +544,7 @@ async def report_sales(
         LEFT JOIN categories c ON p.category_id = c.id
         WHERE s.created_at >= :start_at
           AND s.created_at < :end_at
-          {o_filter.replace('outlet_id', 's.outlet_id')}
+          {o_filter.replace('outlet_id = :outlet_id', 's.outlet_id = :outlet_id')}
         GROUP BY c.name
         ORDER BY revenue DESC
     """, **params)
@@ -591,7 +591,7 @@ async def report_sales(
         LEFT JOIN products p ON (elem->>'product_id') = p.id::text
         WHERE s.created_at >= :start_at
           AND s.created_at < :end_at
-          {o_filter.replace('outlet_id', 's.outlet_id')}
+          {o_filter.replace('outlet_id = :outlet_id', 's.outlet_id = :outlet_id')}
         GROUP BY (elem->>'product_id'), elem->>'name'
         ORDER BY revenue DESC
         LIMIT 50
@@ -620,7 +620,7 @@ async def report_sales(
         LEFT JOIN outlets o ON s.outlet_id = o.id
         WHERE s.created_at >= :start_at
           AND s.created_at < :end_at
-          {o_filter.replace('outlet_id', 's.outlet_id')}
+          {o_filter.replace('outlet_id = :outlet_id', 's.outlet_id = :outlet_id')}
         GROUP BY s.outlet_id, o.name
         ORDER BY total DESC
     """, **params)
@@ -819,7 +819,7 @@ async def report_profit_loss(
         LEFT JOIN products p ON (elem->>'product_id') = p.id::text
         WHERE s.created_at >= :start_at
           AND s.created_at < :end_at
-          {o_filter.replace('outlet_id', 's.outlet_id')}
+          {o_filter.replace('outlet_id = :outlet_id', 's.outlet_id = :outlet_id')}
     """, **params)
 
     revenue = float(head["revenue"] or 0)
@@ -862,7 +862,7 @@ async def report_profit_loss(
         LEFT JOIN products p ON (elem->>'product_id') = p.id::text
         WHERE s.created_at >= :start_at
           AND s.created_at < :end_at
-          {o_filter.replace('outlet_id', 's.outlet_id')}
+          {o_filter.replace('outlet_id = :outlet_id', 's.outlet_id = :outlet_id')}
         GROUP BY elem->>'name'
         ORDER BY revenue DESC
         LIMIT 100
@@ -912,7 +912,7 @@ async def report_profit_loss(
         LEFT JOIN categories c ON p.category_id = c.id
         WHERE s.created_at >= :start_at
           AND s.created_at < :end_at
-          {o_filter.replace('outlet_id', 's.outlet_id')}
+          {o_filter.replace('outlet_id = :outlet_id', 's.outlet_id = :outlet_id')}
         GROUP BY c.name
         ORDER BY revenue DESC
     """, **params)
@@ -952,7 +952,7 @@ async def report_profit_loss(
         LEFT JOIN products p ON (elem->>'product_id') = p.id::text
         WHERE s.created_at >= :start_at
           AND s.created_at < :end_at
-          {o_filter.replace('outlet_id', 's.outlet_id')}
+          {o_filter.replace('outlet_id = :outlet_id', 's.outlet_id = :outlet_id')}
         GROUP BY date
         ORDER BY date
     """, **params)

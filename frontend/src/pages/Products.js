@@ -3,10 +3,12 @@ import api, { formatIDR } from "../lib/api";
 import PageHeader from "../components/PageHeader";
 import { Plus, Edit3, Trash2, X, Search, Package, Upload } from "lucide-react";
 import { toast } from "sonner";
+import { useOutlet } from "../context/OutletContext";
 
 const empty = { name: "", sku: "", barcode: "", category_id: "", price: 0, cost: 0, stock: 0, low_stock_threshold: 5, unit: "pcs", image_url: "", description: "", is_active: true, variants: [] };
 
 export default function Products() {
+  const { outletIdForApi } = useOutlet();
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
   const [showForm, setShowForm] = useState(false);
@@ -33,10 +35,11 @@ export default function Products() {
   };
 
   const load = async () => {
-    const [p, c] = await Promise.all([api.get("/products"), api.get("/categories")]);
+    const oParam = outletIdForApi ? `?outlet_id=${outletIdForApi}` : "";
+    const [p, c] = await Promise.all([api.get(`/products${oParam}`), api.get("/categories")]);
     setItems(p.data); setCategories(c.data);
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [outletIdForApi]);
 
   const paketCategoryId = categories.find(c => c.name === "Paket")?.id;
 

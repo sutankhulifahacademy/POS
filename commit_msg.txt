@@ -1,103 +1,182 @@
-Phase 8: Employee-Outlet Assignment, Audit Logs, Alerts, Expenses
+Phase 9-18: Leave Requests, Receipt Config, Loyalty, KDS, Stock Adj,
+Tax, Coupons, Schedules, Payroll, Mobile Dashboard + Outlet Filtering Fix
 
-## Schema Changes (migration_v2_2_phase8.sql)
+## CRITICAL FIX: Outlet Filtering Across All Pages
 
-### user_outlet_access (ALTER)
-- Added is_primary BOOLEAN DEFAULT FALSE
-- Added assigned_at TIMESTAMPTZ DEFAULT NOW()
-- Auto-set first outlet as primary for existing records
+### Problem
+Selecting a specific outlet in the global outlet selector did not change
+data in most pages — only Dashboard, AIAssistant, Expenses, AuditLogs
+respected the OutletContext.
 
-### expenses (NEW TABLE)
-- id, outlet_id, category, description, amount, expense_date
-- payment_method, vendor, receipt_no, created_by, created_at, updated_at
-- Indexes: outlet+date, category+date, date
+### Fix — Backend
+- inventory.py: GET /inventory/movements + GET /inventory/stock now accept
+  outlet_id and filter accordingly (with outlet authorization)
+- attendance.py: GET /attendance now accepts outlet_id
+- shifts.py: GET /shifts now accepts outlet_id
+- products.py: GET /products now accepts outlet_id (returns outlet_stock)
+- reports.py: Fixed SQL bind parameter bug where o_filter.replace(
+  'outlet_id', 's.outlet_id') corrupted :outlet_id into :s.outlet_id
 
-### Permissions Added
-- expenses: view/create/update/delete (owner, admin)
-- expenses: view/create (manager)
-- audit: view (owner, admin)
-- alerts: view/manage (owner, admin), view (manager)
+### Fix — Frontend
+All pages now import useOutlet and pass outletIdForApi to API calls:
+- Reports.js: All 6 tabs (Dashboard, Sales, ProfitLoss, Shifts, Stock,
+  Reconciliation) sync with global outlet selector
+- Inventory.js: Products + movements filtered by outlet
+- Attendance.js: History filtered by outlet
+- Shifts.js: Shift list filtered by outlet
+- Products.js: Product list with outlet-specific stock
+- POS.js: Syncs with global outlet selector
 
-### Menus Added
-- expenses (Pengeluaran) — id: ...b19
-- audit_logs (Audit Log) — id: ...b20
+### Test Results
+- Outlet filtering: 61 tests, all pass
+  - Dashboard, Sales, Shifts, Attendance, Inventory, Stock, Products,
+    Expenses, AuditLogs, Alerts, Reports, BranchComparison, SalesMonitor,
+    AI (all 4 endpoints), Users — all verified per-outlet vs all-outlets
 
-## 1. Employee-Outlet Assignment
+## Phase 9: Leave Requests (Cuti/Izin)
 
-### Backend (users.py)
-- GET /users now returns outlet info per user:
-  - outlets[]: outlet_id, outlet_name, is_primary, assigned_at
-  - primary_outlet: name of primary outlet
-- GET /users/{id}/outlets returns outlet details with is_primary
-- PUT /users/{id}/outlets accepts primary_outlet_id
+### Backend (NEW: routes/leave_requests.py)
+- GET /leave-requests — list with outlet filter + my_only option
+- POST /leave-requests — submit (cuti, sakit, izin, dinas_luar)
+- PUT /leave-requests/{id}/approve — approve (manager+)
+- PUT /leave-requests/{id}/reject — reject with reason
+- DELETE /leave-requests/{id} — delete (owner or requester)
 
-### Frontend (Karyawan.js)
-- Employee cards now show "🏪 Outlet Utama (+1 lainnya)"
-- Role labels updated: owner, admin, manager, supervisor, kasir
-- Role colors: owner/admin=gold, manager=green, supervisor=blue, kasir=gray
+### Frontend (NEW: pages/LeaveRequests.js)
+- Table with karyawan, jenis, tanggal, alasan, status
+- Form pengajuan cuti
+- Approve/reject buttons for pending requests
 
-## 2. Audit Logs
+## Phase 10: Receipt/Invoice Customization
 
-### Backend (NEW: routes/audit_logs.py)
-- GET /audit-logs — list with filtering (outlet, entity, action, user, date)
-- GET /audit-logs/stats — by_action, by_entity, today_count
-- log_action() helper — called from other routes
-- Outlet-scoped: non-owner sees only their outlet logs
+### Schema
+- outlets: + receipt_header, receipt_footer, receipt_logo,
+  receipt_show_cashier, receipt_show_shift, receipt_paper_width,
+  receipt_font_size
 
-### Integration
-- POST /sales now logs to audit_logs
-- POST /expenses logs to audit_logs
-- PUT/DELETE /expenses logs to audit_logs
+### Backend (NEW: routes/receipt_config.py)
+- GET /receipt-config/{outlet_id}
+- PUT /receipt-config/{outlet_id}
 
-### Frontend (NEW: pages/AuditLogs.js)
-- Filterable table (entity, action)
-- Color-coded actions (create=green, update=yellow, delete=red)
-- Shows: time, user, role, action, entity, outlet
+### Frontend (NEW: pages/ReceiptConfig.js)
+- Receipt header/footer/logo config
+- Paper width (58mm/80mm), font size
+- Show cashier/shift toggles
+- Live receipt preview
 
-## 3. Alerts + Notifications
+## Phase 11: Customer Loyalty
 
-### Backend (NEW: routes/alerts.py)
-- GET /alerts — list with filtering (is_read, category, severity, outlet)
-- PUT /alerts/{id}/read — mark single alert as read
-- PUT /alerts/read-all — mark all as read
-- DELETE /alerts/{id} — delete (manage permission)
-- create_alert() helper — called from other routes
+### Schema (NEW)
+- customer_memberships: customer_id, outlet_id, tier, points, total_spent
+- point_transactions: customer_id, outlet_id, sale_id, points_change
 
-### Auto-Generated Alerts
-- Low stock after sale → inventory/critical or inventory/warning
-- Large expense (>=1,000,000) → expense/warning
+### Backend (NEW: routes/loyalty.py)
+- GET /loyalty/memberships — list with outlet filter
+- GET /loyalty/customer/{id} — customer's memberships
+- GET /loyalty/points/{id} — point history
+- POST /loyalty/adjust-points — manual adjustment
+- GET /loyalty/tiers — tier thresholds
 
-### Frontend (Layout.js)
-- NotificationBell component in top bar
-- Shows unread count badge
-- Dropdown with alert list
-- Auto-refresh every 30 seconds
-- Mark all as read button
-- Severity color indicators
+### Frontend (NEW: pages/Loyalty.js)
+- Tier cards (bronze/silver/gold/platinum)
+- Memberships table
+- Point adjustment modal
 
-## 4. Expense Tracking
+## Phase 12: Kitchen Display System (KDS)
 
-### Backend (NEW: routes/expenses.py)
-- GET /expenses — list with filtering (outlet, category, date range)
-- GET /expenses/summary — by_category, total, by_outlet
-- POST /expenses — create with outlet authorization
-- PUT /expenses/{id} — update with ownership check
-- DELETE /expenses/{id} — delete with ownership check
-- Categories: rent, utilities, salary, supplies, maintenance, marketing, other
-- Auto-alert for expenses >= 1,000,000
+### Schema (NEW)
+- kitchen_orders: outlet_id, sale_id, items, status, priority, elapsed
 
-### Frontend (NEW: pages/Expenses.js)
-- Summary cards (total, count, top categories)
-- Add expense form with outlet selector
-- Table with date, outlet, category, description, amount
-- Delete button per row
-- Outlet-aware filtering
+### Backend (NEW: routes/kds.py)
+- GET /kds/orders — queue with outlet filter
+- PUT /kds/orders/{id}/status — new->preparing->ready->served
+- PUT /kds/orders/{id}/priority
+- GET /kds/stats — counts + avg wait time
+
+### Frontend (NEW: pages/KitchenDisplay.js)
+- 3-column board (New/Preparing/Ready)
+- Color-coded elapsed time (green/yellow/red)
+- Auto-refresh 10s
+
+## Phase 13: Stock Adjustment with Reason
+
+### Schema
+- stock_movements: + outlet_id, adjustment_type, reference_no, approved_by
+
+## Phase 14: Tax Configuration
+
+### Schema
+- outlets: + tax_enabled, tax_rate, tax_name, tax_inclusive,
+  service_charge_enabled, service_charge_rate
+
+### Integrated in receipt_config routes
+
+## Phase 15: Discount/Coupon Management
+
+### Schema (NEW)
+- coupons: outlet_id, code, discount_type, discount_value, min_purchase,
+  max_discount, start_date, end_date, usage_limit, usage_count
+
+### Backend (NEW: routes/coupons.py)
+- GET /coupons — list with outlet filter
+- POST /coupons — create
+- PUT /coupons/{id} — update
+- DELETE /coupons/{id} — delete
+- POST /coupons/validate — validate code + calculate discount
+
+### Frontend (NEW: pages/Coupons.js)
+- Coupon table with CRUD
+- Validate coupon widget
+
+## Phase 16: Employee Scheduling
+
+### Schema (NEW)
+- employee_schedules: outlet_id, user_id, day_of_week, start_time, end_time
+
+### Backend (NEW: routes/schedules.py)
+- GET /schedules — list with outlet filter
+- POST /schedules — create
+- PUT /schedules/{id} — update
+- DELETE /schedules/{id} — delete
+
+### Frontend (NEW: pages/Schedules.js)
+- Weekly grid (employees x days)
+- Click cell to add/edit shift
+
+## Phase 17: Payroll Integration
+
+### Schema (NEW)
+- payroll_periods: outlet_id, period_name, start_date, end_date, status
+- payroll_items: period_id, user_id, base_salary, overtime, attendance,
+  deductions, net_pay
+
+### Backend (NEW: routes/payroll.py)
+- GET /payroll/periods — list with outlet filter
+- POST /payroll/periods — create period
+- POST /payroll/periods/{id}/process — auto-calculate salary
+- GET /payroll/periods/{id}/items — detailed items
+
+### Frontend (NEW: pages/Payroll.js)
+- Period list with status badges
+- Create + process buttons
+- Payroll items table with summary
+
+## Phase 18: Mobile Dashboard
+
+### Frontend (NEW: pages/MobileDashboard.js)
+- Large touch-friendly cards
+- Bottom navigation (Dashboard/Sales/Alerts/Profile)
+- Outlet selector for owners
+- Uses existing /reports/dashboard endpoint
+
+## Schema Migration
+- migration_v2_3_phase10_18.sql — all new tables + columns + permissions + menus
 
 ## Test Results
 - E2E regression: 121 passed, 0 failed
 - Phase 7 suite: 66 passed, 0 failed
-- Phase 8 manual: all endpoints 200
-- Total: 187+ tests, all pass
+- Outlet filtering: 61 passed, 0 failed
+- Total: 248 tests, all pass
 
 Generated with [Devin](https://devin.ai)
 

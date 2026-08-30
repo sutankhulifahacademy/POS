@@ -47,6 +47,13 @@ from routes.ai import router as ai_router
 from routes.audit_logs import router as audit_logs_router
 from routes.alerts import router as alerts_router
 from routes.expenses import router as expenses_router
+from routes.leave_requests import router as leave_requests_router
+from routes.receipt_config import router as receipt_config_router
+from routes.loyalty import router as loyalty_router
+from routes.kds import router as kds_router
+from routes.coupons import router as coupons_router
+from routes.schedules import router as schedules_router
+from routes.payroll import router as payroll_router
 
 # ============ APP ============
 app = FastAPI(title="Sutan Khulifah POS API (PostgreSQL)")
@@ -83,6 +90,13 @@ app.include_router(ai_router, prefix="/api")
 app.include_router(audit_logs_router, prefix="/api")
 app.include_router(alerts_router, prefix="/api")
 app.include_router(expenses_router, prefix="/api")
+app.include_router(leave_requests_router, prefix="/api")
+app.include_router(receipt_config_router, prefix="/api")
+app.include_router(loyalty_router, prefix="/api")
+app.include_router(kds_router, prefix="/api")
+app.include_router(coupons_router, prefix="/api")
+app.include_router(schedules_router, prefix="/api")
+app.include_router(payroll_router, prefix="/api")
 
 # ============ CORS ============
 app.add_middleware(

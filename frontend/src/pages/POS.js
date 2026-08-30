@@ -7,15 +7,17 @@ import BarcodeScanner from "../components/BarcodeScanner";
 import Receipt, { printReceipt } from "../components/Receipt";
 import QRISPayment from "../components/QRISPayment";
 import { useAuth } from "../context/AuthContext";
+import { useOutlet } from "../context/OutletContext";
 import Tables from "./Tables";
 
 export default function POS() {
   const { user, logout } = useAuth();
+  const { outlets: globalOutlets, outletIdForApi, setOutlet } = useOutlet();
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [outlets, setOutlets] = useState([]);
-  const [selectedOutlet, setSelectedOutlet] = useState("");
+  const [selectedOutlet, setSelectedOutlet] = useState(outletIdForApi || "");
   const [outletStocks, setOutletStocks] = useState({});
   const [activeCategory, setActiveCategory] = useState("all");
   const [search, setSearch] = useState("");
@@ -57,21 +59,26 @@ export default function POS() {
   const bufferRef = useRef({ chars: "", lastTs: 0 });
 
   const load = async () => {
+    const oParam = selectedOutlet ? `?outlet_id=${selectedOutlet}` : "";
     const [p, c, cu, s, o, pa, cb] = await Promise.all([
-      api.get("/products"), api.get("/categories"), api.get("/customers"),
+      api.get(`/products${oParam}`), api.get("/categories"), api.get("/customers"),
       api.get("/shifts/active"), api.get("/outlets"), api.get("/payment-accounts"),
       api.get("/card-brands"),
     ]);
     setProducts(p.data); setCategories(c.data); setCustomers(cu.data);
-    setActiveShift(s.data); setOutlets(o.data); setPaymentAccounts(pa.data || []);
+    setActiveShift(s.data); setOutlets(globalOutlets.length > 0 ? globalOutlets : o.data); setPaymentAccounts(pa.data || []);
     setCardBrands(cb.data || []);
-    // Default outlet: main
+    // Default outlet: from global context or main
     if (!selectedOutlet) {
-      const main = o.data.find(x => x.is_main) || o.data[0];
-      if (main) setSelectedOutlet(main.id);
+      const allOutlets = globalOutlets.length > 0 ? globalOutlets : o.data;
+      const main = allOutlets.find(x => x.is_main) || allOutlets[0];
+      if (main) {
+        setSelectedOutlet(main.id);
+        if (setOutlet) setOutlet(main.id);
+      }
     }
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [selectedOutlet]);
 
   useEffect(() => {
     if (!selectedOutlet) return;
@@ -343,7 +350,7 @@ export default function POS() {
               <span className="text-[#C4A484]">{user?.name}</span>
               <span className="text-[10px] uppercase tracking-widest text-[#F4C842]">{user?.role}</span>
             </div>
-            <select value={selectedOutlet} onChange={(e) => setSelectedOutlet(e.target.value)} className="bg-[#331419] gold-border rounded-md px-3 py-2 text-xs text-[#F5F5F5]" data-testid="pos-outlet-select">
+            <select value={selectedOutlet} onChange={(e) => { setSelectedOutlet(e.target.value); if (setOutlet) setOutlet(e.target.value); }} className="bg-[#331419] gold-border rounded-md px-3 py-2 text-xs text-[#F5F5F5]" data-testid="pos-outlet-select">
               {outlets.map(o => <option key={o.id} value={o.id}>{o.name}{o.is_main ? " (Utama)" : ""}</option>)}
             </select>
             {activeShift ? (

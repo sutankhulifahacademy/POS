@@ -12,11 +12,40 @@ async def active_attendance(user=Depends(get_current_user)):
 
 
 @router.get("/attendance")
-async def list_attendance(user=Depends(get_current_user), limit: int = 100, cashier_id: Optional[str] = None):
+async def list_attendance(
+    user=Depends(get_current_user),
+    limit: int = 100,
+    cashier_id: Optional[str] = None,
+    outlet_id: Optional[str] = None,
+):
+    where = ["1=1"]
+    params = {"l": limit}
+
     if cashier_id:
-        rows = await q_all("SELECT * FROM attendance WHERE cashier_id=:c ORDER BY clock_in_at DESC LIMIT :l", c=cashier_id, l=limit)
-    else:
-        rows = await q_all("SELECT * FROM attendance ORDER BY clock_in_at DESC LIMIT :l", l=limit)
+        where.append("cashier_id = :c")
+        params["c"] = cashier_id
+
+    if outlet_id:
+        if user["role"] != "owner" and outlet_id not in user.get("outlet_ids", []):
+            raise HTTPException(403, "Tidak ada akses ke outlet ini")
+        where.append("outlet_id = :oid")
+        params["oid"] = outlet_id
+    elif user["role"] != "owner":
+        user_outlets = user.get("outlet_ids", [])
+        if user_outlets:
+            ids_sql = ",".join(f"'{oid}'" for oid in user_outlets)
+            where.append(f"outlet_id IN ({ids_sql})")
+        else:
+            where.append("1=0")
+
+    where_clause = " AND ".join(where)
+    rows = await q_all(f"""
+        SELECT a.*, o.name AS outlet_name
+        FROM attendance a
+        LEFT JOIN outlets o ON o.id = a.outlet_id
+        WHERE {where_clause}
+        ORDER BY a.clock_in_at DESC LIMIT :l
+    """, **params)
     return clean_list(rows)
 
 

@@ -25,6 +25,14 @@ import Roles from "./pages/Roles";
 import AIAssistant from "./pages/AIAssistant";
 import Expenses from "./pages/Expenses";
 import AuditLogs from "./pages/AuditLogs";
+import LeaveRequests from "./pages/LeaveRequests";
+import ReceiptConfig from "./pages/ReceiptConfig";
+import Loyalty from "./pages/Loyalty";
+import KitchenDisplay from "./pages/KitchenDisplay";
+import Coupons from "./pages/Coupons";
+import Schedules from "./pages/Schedules";
+import Payroll from "./pages/Payroll";
+import MobileDashboard from "./pages/MobileDashboard";
 
 function Protected({ children, path }) {
   const { user, loading } = useAuth();
@@ -80,6 +88,14 @@ function App() {
             <Route path="/ai-assistant" element={<Protected path="/ai-assistant"><AIAssistant /></Protected>} />
             <Route path="/expenses" element={<Protected path="/expenses"><Expenses /></Protected>} />
             <Route path="/audit-logs" element={<Protected path="/audit-logs"><AuditLogs /></Protected>} />
+            <Route path="/leave-requests" element={<Protected path="/leave-requests"><LeaveRequests /></Protected>} />
+            <Route path="/receipt-config" element={<Protected path="/receipt-config"><ReceiptConfig /></Protected>} />
+            <Route path="/loyalty" element={<Protected path="/loyalty"><Loyalty /></Protected>} />
+            <Route path="/kds" element={<Protected path="/kds"><KitchenDisplay /></Protected>} />
+            <Route path="/coupons" element={<Protected path="/coupons"><Coupons /></Protected>} />
+            <Route path="/schedules" element={<Protected path="/schedules"><Schedules /></Protected>} />
+            <Route path="/payroll" element={<Protected path="/payroll"><Payroll /></Protected>} />
+            <Route path="/mobile-dashboard" element={<Protected path="/mobile-dashboard"><MobileDashboard /></Protected>} />
           </Route>
           <Route path="/pos" element={<Protected><POS /></Protected>} />
           <Route path="/" element={<HomeRedirect />} />

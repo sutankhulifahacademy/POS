@@ -28,6 +28,7 @@ import { toast } from "sonner";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { useOutlet } from "../context/OutletContext";
 
 /* ============================================================
  *  CONSTANTS
@@ -621,14 +622,17 @@ function DashboardTab() {
  *  TAB 2: PENJUALAN (SALES)
  * ============================================================ */
 
-function SalesTab({ outlets }) {
+function SalesTab({ outlets, globalOutletId }) {
   const [period, setPeriod] = useState("weekly");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [outletId, setOutletId] = useState("");
+  const [outletId, setOutletId] = useState(globalOutletId || "");
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedSaleId, setSelectedSaleId] = useState(null);
+
+  // Sync with global outlet
+  useEffect(() => { setOutletId(globalOutletId || ""); }, [globalOutletId]);
 
   const fetchData = useCallback(() => {
     setLoading(true);
@@ -957,13 +961,15 @@ function SalesTab({ outlets }) {
  *  TAB 3: LABA RUGI (PROFIT/LOSS)
  * ============================================================ */
 
-function ProfitLossTab({ outlets }) {
+function ProfitLossTab({ outlets, globalOutletId }) {
   const [period, setPeriod] = useState("weekly");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [outletId, setOutletId] = useState("");
+  const [outletId, setOutletId] = useState(globalOutletId || "");
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => { setOutletId(globalOutletId || ""); }, [globalOutletId]);
 
   const fetchData = useCallback(() => {
     setLoading(true);
@@ -1189,7 +1195,7 @@ function ProfitLossTab({ outlets }) {
  *  TAB 4: SHIFT
  * ============================================================ */
 
-function ShiftsTab() {
+function ShiftsTab({ globalOutletId }) {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [data, setData] = useState(null);
@@ -1200,12 +1206,13 @@ function ShiftsTab() {
     const params = {};
     if (dateFrom) params.date_from = dateFrom;
     if (dateTo) params.date_to = dateTo;
+    if (globalOutletId) params.outlet_id = globalOutletId;
     api
       .get("/reports/shifts", { params })
       .then((r) => setData(r.data))
       .catch(() => toast.error("Gagal memuat laporan shift"))
       .finally(() => setLoading(false));
-  }, [dateFrom, dateTo]);
+  }, [dateFrom, dateTo, globalOutletId]);
 
   useEffect(() => {
     fetchData();
@@ -1379,12 +1386,14 @@ function ShiftsTab() {
  *  TAB 5: STOK (STOCK MOVEMENTS)
  * ============================================================ */
 
-function StockTab({ outlets }) {
+function StockTab({ outlets, globalOutletId }) {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [outletId, setOutletId] = useState("");
+  const [outletId, setOutletId] = useState(globalOutletId || "");
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => { setOutletId(globalOutletId || ""); }, [globalOutletId]);
 
   const fetchData = useCallback(() => {
     setLoading(true);
@@ -1626,13 +1635,15 @@ function StockTab({ outlets }) {
  *  TAB 6: REKONSILIASI (PAYMENT RECONCILIATION)
  * ============================================================ */
 
-function ReconciliationTab({ outlets }) {
+function ReconciliationTab({ outlets, globalOutletId }) {
   const [period, setPeriod] = useState("weekly");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [outletId, setOutletId] = useState("");
+  const [outletId, setOutletId] = useState(globalOutletId || "");
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => { setOutletId(globalOutletId || ""); }, [globalOutletId]);
 
   const fetchData = useCallback(() => {
     setLoading(true);
@@ -1904,16 +1915,16 @@ function ReconciliationTab({ outlets }) {
 export default function Reports() {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [outlets, setOutlets] = useState([]);
+  const { outletIdForApi, outlets: globalOutlets } = useOutlet();
 
-  // Load outlets once for filter dropdowns
+  // Use global outlets if available, otherwise load
   useEffect(() => {
-    api
-      .get("/outlets")
-      .then((r) => setOutlets(r.data))
-      .catch(() => {
-        /* outlets optional — fail silently */
-      });
-  }, []);
+    if (globalOutlets && globalOutlets.length > 0) {
+      setOutlets(globalOutlets);
+    } else {
+      api.get("/outlets").then((r) => setOutlets(r.data)).catch(() => {});
+    }
+  }, [globalOutlets]);
 
   return (
     <div>
@@ -1945,13 +1956,13 @@ export default function Reports() {
         </div>
 
         {/* Tab content */}
-        {activeTab === "dashboard" && <DashboardTab />}
-        {activeTab === "sales" && <SalesTab outlets={outlets} />}
-        {activeTab === "profit-loss" && <ProfitLossTab outlets={outlets} />}
-        {activeTab === "shifts" && <ShiftsTab />}
-        {activeTab === "stock" && <StockTab outlets={outlets} />}
+        {activeTab === "dashboard" && <DashboardTab globalOutletId={outletIdForApi} />}
+        {activeTab === "sales" && <SalesTab outlets={outlets} globalOutletId={outletIdForApi} />}
+        {activeTab === "profit-loss" && <ProfitLossTab outlets={outlets} globalOutletId={outletIdForApi} />}
+        {activeTab === "shifts" && <ShiftsTab globalOutletId={outletIdForApi} />}
+        {activeTab === "stock" && <StockTab outlets={outlets} globalOutletId={outletIdForApi} />}
         {activeTab === "reconciliation" && (
-          <ReconciliationTab outlets={outlets} />
+          <ReconciliationTab outlets={outlets} globalOutletId={outletIdForApi} />
         )}
       </div>
     </div>

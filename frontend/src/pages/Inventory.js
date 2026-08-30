@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import api from "../lib/api";
 import PageHeader from "../components/PageHeader";
 import { Plus, Minus, History } from "lucide-react";
 import { toast } from "sonner";
+import { useOutlet } from "../context/OutletContext";
 
 export default function Inventory() {
+  const { outletIdForApi } = useOutlet();
   const [products, setProducts] = useState([]);
   const [movements, setMovements] = useState([]);
   const [selected, setSelected] = useState(null);
@@ -13,12 +15,16 @@ export default function Inventory() {
   const [note, setNote] = useState("");
   const [tab, setTab] = useState("adjust");
 
-  const load = async () => {
-    const [p, m] = await Promise.all([api.get("/products"), api.get("/inventory/movements")]);
+  const load = useCallback(async () => {
+    const oParam = outletIdForApi ? `?outlet_id=${outletIdForApi}` : "";
+    const [p, m] = await Promise.all([
+      api.get(`/products${oParam}`),
+      api.get(`/inventory/movements${oParam}`),
+    ]);
     setProducts(p.data);
     setMovements(m.data);
-  };
-  useEffect(() => { load(); }, []);
+  }, [outletIdForApi]);
+  useEffect(() => { load(); }, [load]);
 
   const submit = async (e) => {
     e.preventDefault();

@@ -1,3 +1,4 @@
+from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends
 from routes.deps import *
 
@@ -10,8 +11,36 @@ async def active_shift(user=Depends(get_current_user)):
 
 
 @router.get("/shifts")
-async def list_shifts(user=Depends(get_current_user), limit: int = 100):
-    rows = await q_all("SELECT * FROM shifts ORDER BY opened_at DESC LIMIT :l", l=limit)
+async def list_shifts(
+    user=Depends(get_current_user),
+    limit: int = 100,
+    outlet_id: Optional[str] = None,
+):
+    # Build outlet filter
+    if outlet_id:
+        if user["role"] != "owner" and outlet_id not in user.get("outlet_ids", []):
+            raise HTTPException(403, "Tidak ada akses ke outlet ini")
+        o_clause = " AND s.outlet_id = :outlet_id "
+        params = {"l": limit, "outlet_id": outlet_id}
+    elif user["role"] != "owner":
+        user_outlets = user.get("outlet_ids", [])
+        if user_outlets:
+            ids_sql = ",".join(f"'{oid}'" for oid in user_outlets)
+            o_clause = f" AND s.outlet_id IN ({ids_sql}) "
+            params = {"l": limit}
+        else:
+            return []
+    else:
+        o_clause = ""
+        params = {"l": limit}
+
+    rows = await q_all(f"""
+        SELECT s.*, o.name AS outlet_name
+        FROM shifts s
+        LEFT JOIN outlets o ON o.id = s.outlet_id
+        WHERE 1=1 {o_clause}
+        ORDER BY s.opened_at DESC LIMIT :l
+    """, **params)
     return clean_list(rows)
 
 

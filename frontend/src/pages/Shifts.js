@@ -3,8 +3,10 @@ import api, { formatIDR } from "../lib/api";
 import PageHeader from "../components/PageHeader";
 import { PlayCircle, StopCircle, Clock, X } from "lucide-react";
 import { toast } from "sonner";
+import { useOutlet } from "../context/OutletContext";
 
 export default function Shifts() {
+  const { outletIdForApi } = useOutlet();
   const [active, setActive] = useState(null);
   const [shifts, setShifts] = useState([]);
   const [showOpen, setShowOpen] = useState(false);
@@ -15,10 +17,11 @@ export default function Shifts() {
   const [closedResult, setClosedResult] = useState(null);
 
   const load = async () => {
-    const [a, l] = await Promise.all([api.get("/shifts/active"), api.get("/shifts")]);
+    const oParam = outletIdForApi ? `?outlet_id=${outletIdForApi}` : "";
+    const [a, l] = await Promise.all([api.get("/shifts/active"), api.get(`/shifts${oParam}`)]);
     setActive(a.data); setShifts(l.data);
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [outletIdForApi]);
 
   const doOpen = async (e) => {
     e.preventDefault();

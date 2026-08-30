@@ -1,12 +1,27 @@
 import json
+from typing import Optional
 from routes.deps import *
 
 router = APIRouter()
 
 # ============ PRODUCTS ============
 @router.get("/products")
-async def list_products(user=Depends(get_current_user)):
-    rows = await q_all("SELECT * FROM products ORDER BY created_at DESC")
+async def list_products(
+    user=Depends(get_current_user),
+    outlet_id: Optional[str] = None,
+):
+    if outlet_id:
+        # Return products with outlet-specific stock
+        rows = await q_all("""
+            SELECT p.*, os.quantity AS outlet_stock, o.name AS outlet_name
+            FROM products p
+            LEFT JOIN outlet_stocks os ON os.product_id = p.id AND os.outlet_id = :oid
+            LEFT JOIN outlets o ON o.id = os.outlet_id
+            WHERE p.is_active = TRUE
+            ORDER BY p.created_at DESC
+        """, oid=outlet_id)
+    else:
+        rows = await q_all("SELECT * FROM products WHERE is_active = TRUE ORDER BY created_at DESC")
     return clean_list(rows)
 
 @router.get("/products/by-barcode/{code}")
