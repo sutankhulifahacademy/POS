@@ -356,10 +356,14 @@ def main():
     test("GET /stock-transfers", r.status_code == 200, f"Status {r.status_code}")
 
     if len(outlets) >= 2 and test_product:
+        # Find a product with stock at the source outlet
+        r_prods = requests.get(f"{BASE}/products?outlet_id={outlets[0]['id']}", headers=h, timeout=10)
+        outlet_prods = r_prods.json() if r_prods.status_code == 200 else []
+        stocked_prod = next((p for p in outlet_prods if (p.get("outlet_stock") or p.get("stock") or 0) >= 2), test_product)
         r = requests.post(f"{BASE}/stock-transfers", headers=h, json={
             "from_outlet_id": outlets[0]["id"], "to_outlet_id": outlets[1]["id"],
             "from_outlet_name": outlets[0]["name"], "to_outlet_name": outlets[1]["name"],
-            "items": [{"product_id": test_product["id"], "name": test_product["name"], "quantity": 2}],
+            "items": [{"product_id": stocked_prod["id"], "name": stocked_prod["name"], "quantity": 2}],
             "note": "E2E transfer"
         }, timeout=10)
         test("POST /stock-transfers", r.status_code == 200, f"Status {r.status_code}: {r.text[:200]}")

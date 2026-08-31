@@ -52,6 +52,7 @@ const TABS = [
   { id: "shifts", label: "Shift", icon: Clock },
   { id: "stock", label: "Stok", icon: Boxes },
   { id: "reconciliation", label: "Rekonsiliasi", icon: Wallet },
+  { id: "transfers", label: "Transfer", icon: ArrowLeftRight },
 ];
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -1927,7 +1928,137 @@ export default function Reports() {
         {activeTab === "reconciliation" && (
           <ReconciliationTab globalOutletId={outletIdForApi} />
         )}
+        {activeTab === "transfers" && <TransferReportTab globalOutletId={outletIdForApi} />}
       </div>
+    </div>
+  );
+}
+
+/* ============================================================
+ *  TAB 7: TRANSFER REPORT
+ * ============================================================ */
+function TransferReportTab({ globalOutletId }) {
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (globalOutletId) params.append("outlet_id", globalOutletId);
+      if (statusFilter) params.append("status", statusFilter);
+      if (dateFrom) params.append("date_from", dateFrom);
+      if (dateTo) params.append("date_to", dateTo);
+      const { data: rows } = await api.get(`/reports/transfers?${params}`);
+      setData(rows || []);
+    } catch (e) {
+      setData([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, [globalOutletId, statusFilter, dateFrom, dateTo]);
+
+  const transfers = useMemo(() => {
+    const map = new Map();
+    for (const row of data) {
+      if (!map.has(row.transfer_no)) {
+        map.set(row.transfer_no, { ...row, items: [] });
+      }
+      if (row.product_name) {
+        map.get(row.transfer_no).items.push(row);
+      }
+    }
+    return Array.from(map.values());
+  }, [data]);
+
+  const STATUS_COLORS = {
+    pending: "text-[#F4C842] bg-[#F4C842]/10",
+    checked: "text-blue-400 bg-blue-400/10",
+    approved: "text-green-400 bg-green-400/10",
+    rejected: "text-red-400 bg-red-400/10",
+    completed: "text-green-400 bg-green-400/10",
+    partially_processed: "text-[#F4C842] bg-[#F4C842]/10",
+  };
+
+  return (
+    <div className="p-4 md:p-6 lg:p-8 space-y-4">
+      <div className="flex flex-wrap gap-3 items-end">
+        <div>
+          <label className="text-xs text-[#C4A484] uppercase tracking-wider block mb-1">Status</label>
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]">
+            <option value="">Semua</option>
+            <option value="pending">Pending</option>
+            <option value="partially_processed">Partially Processed</option>
+            <option value="completed">Completed</option>
+          </select>
+        </div>
+        <div>
+          <label className="text-xs text-[#C4A484] uppercase tracking-wider block mb-1">Dari Tanggal</label>
+          <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]" />
+        </div>
+        <div>
+          <label className="text-xs text-[#C4A484] uppercase tracking-wider block mb-1">Sampai Tanggal</label>
+          <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]" />
+        </div>
+        <button onClick={load} className="bg-[#F4C842] text-[#1A0810] px-4 py-2 rounded-md text-sm font-semibold uppercase tracking-wider hover:bg-[#FFDD5C]">Refresh</button>
+      </div>
+
+      {loading && <p className="text-[#C4A484] text-center py-8">Memuat...</p>}
+
+      {!loading && transfers.length === 0 && (
+        <div className="bg-[#331419] gold-border rounded-lg p-12 text-center">
+          <ArrowLeftRight size={40} strokeWidth={1.2} className="mx-auto mb-3 text-[#C4A484] opacity-40" />
+          <p className="text-[#C4A484]">Belum ada data transfer</p>
+        </div>
+      )}
+
+      {!loading && transfers.map((t) => (
+        <div key={t.transfer_no} className="bg-[#331419] gold-border rounded-lg overflow-hidden">
+          <div className="p-4 border-b border-[rgba(244,200,66,0.15)]">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <span className="text-[#F4C842] font-semibold">{t.transfer_no}</span>
+                <span className="text-[#C4A484] text-sm ml-3">{t.from_outlet_name} → {t.to_outlet_name}</span>
+              </div>
+              <span className={`text-xs uppercase tracking-wider px-2 py-1 rounded ${STATUS_COLORS[t.status] || ""}`}>{t.status}</span>
+            </div>
+            <p className="text-xs text-[#C4A484] mt-1">{new Date(t.created_at).toLocaleString("id-ID")} · oleh {t.created_by_name}</p>
+          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-[#C4A484] text-xs uppercase border-b border-[rgba(244,200,66,0.08)]">
+                <th className="px-4 py-2 text-left">Item</th>
+                <th className="px-4 py-2 text-right">Dikirim</th>
+                <th className="px-4 py-2 text-right">Diterima</th>
+                <th className="px-4 py-2 text-right">Selisih</th>
+                <th className="px-4 py-2 text-center">Status</th>
+                <th className="px-4 py-2 text-left">Approved/Rejected By</th>
+                <th className="px-4 py-2 text-right">Stock In</th>
+                <th className="px-4 py-2 text-left">Note</th>
+              </tr>
+            </thead>
+            <tbody>
+              {t.items.map((item, idx) => (
+                <tr key={idx} className="border-b border-[rgba(244,200,66,0.05)]">
+                  <td className="px-4 py-2 text-[#F5F5F5]">{item.product_name}</td>
+                  <td className="px-4 py-2 text-right text-[#F5F5F5]">{item.qty_sent}</td>
+                  <td className="px-4 py-2 text-right text-[#F5F5F5]">{item.qty_received ?? "-"}</td>
+                  <td className={`px-4 py-2 text-right ${item.difference != null && item.difference !== 0 ? "text-red-400" : "text-green-400"}`}>{item.difference ?? "-"}</td>
+                  <td className="px-4 py-2 text-center"><span className={`text-xs uppercase px-2 py-0.5 rounded ${STATUS_COLORS[item.item_status] || ""}`}>{item.item_status}</span></td>
+                  <td className="px-4 py-2 text-xs text-[#C4A484]">{item.approved_by_name || "-"}</td>
+                  <td className={`px-4 py-2 text-right font-semibold ${item.item_status === "approved" ? "text-green-400" : "text-[#C4A484]"}`}>{item.item_status === "approved" ? `+${item.qty_received}` : "+0"}</td>
+                  <td className="px-4 py-2 text-xs text-[#C4A484] max-w-[200px] truncate">{item.item_note || "-"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ))}
     </div>
   );
 }
