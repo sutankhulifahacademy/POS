@@ -114,3 +114,20 @@ body {
   }
   @page { size: 80mm auto; margin: 0; }
 }
+
+/* Surat Jalan print */
+@media print {
+  .no-print { display: none !important; }
+  #surat-jalan-print, #surat-jalan-print * { visibility: visible; }
+  #surat-jalan-print {
+    display: block !important;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    background: white !important;
+    color: black !important;
+    padding: 20px !important;
+  }
+  @page { size: A4; margin: 15mm; }
+}

@@ -2057,6 +2057,13 @@ function TransferReportTab({ globalOutletId }) {
               ))}
             </tbody>
           </table>
+          {(t.delivery_no || t.request_no || t.shipped_by_name) && (
+            <div className="px-4 py-2 text-xs text-[#C4A484] border-t border-[rgba(244,200,66,0.05)] flex gap-4 flex-wrap">
+              {t.request_no && <span>Request: <span className="text-blue-400">{t.request_no}</span></span>}
+              {t.delivery_no && <span>Surat Jalan: <span className="text-[#F4C842]">{t.delivery_no}</span> {t.print_count > 0 && `(printed ${t.print_count}x)`}</span>}
+              {t.shipped_by_name && <span>Dikirim oleh: {t.shipped_by_name} · {t.shipped_at ? new Date(t.shipped_at).toLocaleString("id-ID") : ""}</span>}
+            </div>
+          )}
         </div>
       ))}
     </div>

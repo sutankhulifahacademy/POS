@@ -18,6 +18,7 @@ import PurchaseOrders from "./pages/PurchaseOrders";
 import Shifts from "./pages/Shifts";
 import Users from "./pages/Karyawan";
 import Transfers from "./pages/Transfers";
+import StockRequests from "./pages/StockRequests";
 import Tables from "./pages/Tables";
 import Attendance from "./pages/Attendance";
 import PaymentAccounts from "./pages/PaymentAccounts";
@@ -76,6 +77,7 @@ function App() {
             <Route path="/products" element={<Protected path="/products"><Products /></Protected>} />
             <Route path="/inventory" element={<Protected path="/inventory"><Inventory /></Protected>} />
             <Route path="/transfers" element={<Protected path="/transfers"><Transfers /></Protected>} />
+            <Route path="/stock-requests" element={<Protected path="/stock-requests"><StockRequests /></Protected>} />
             <Route path="/purchase-orders" element={<Protected path="/purchase-orders"><PurchaseOrders /></Protected>} />
             <Route path="/customers" element={<Protected path="/customers"><Customers /></Protected>} />
             <Route path="/suppliers" element={<Protected path="/suppliers"><Suppliers /></Protected>} />

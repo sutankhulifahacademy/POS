@@ -33,6 +33,8 @@ from routes.reports import router as reports_router
 from routes.purchase_orders import router as purchase_orders_router
 from routes.shifts import router as shifts_router
 from routes.stock_transfers import router as stock_transfers_router
+from routes.stock_requests import router as stock_requests_router
+from routes.delivery_notes import router as delivery_notes_router
 from routes.tables import router as tables_router
 from routes.orders import router as orders_router
 from routes.payments import router as payments_router
@@ -76,6 +78,8 @@ app.include_router(reports_router, prefix="/api")
 app.include_router(purchase_orders_router, prefix="/api")
 app.include_router(shifts_router, prefix="/api")
 app.include_router(stock_transfers_router, prefix="/api")
+app.include_router(stock_requests_router, prefix="/api")
+app.include_router(delivery_notes_router, prefix="/api")
 app.include_router(tables_router, prefix="/api")
 app.include_router(orders_router, prefix="/api")
 app.include_router(payments_router, prefix="/api")

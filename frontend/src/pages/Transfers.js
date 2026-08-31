@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import api from "../lib/api";
 import PageHeader from "../components/PageHeader";
-import { Plus, X, Trash2, ArrowRightLeft, CheckCircle, XCircle, Clock, Package, ClipboardCheck } from "lucide-react";
+import { Plus, X, Trash2, ArrowRightLeft, CheckCircle, XCircle, Clock, Package, ClipboardCheck, FileText, Truck } from "lucide-react";
 import { toast } from "sonner";
 import { useOutlet } from "../context/OutletContext";
 import { useAuth } from "../context/AuthContext";
+import SuratJalan from "../components/SuratJalan";
 
 const STATUS_COLORS = {
   pending: "text-[#F4C842] bg-[#F4C842]/10",
@@ -37,8 +38,10 @@ export default function Transfers() {
   const [items, setItems] = useState([]);
   const [note, setNote] = useState("");
   const [detail, setDetail] = useState(null);
+  const [suratJalanTransferId, setSuratJalanTransferId] = useState(null);
 
   const canApprove = user && (user.role === "owner" || user.role === "manager");
+  const canShip = user && (user.role === "owner" || user.role === "manager" || user.role === "admin" || user.role === "supervisor");
 
   const load = async () => {
     const oParam = outletIdForApi ? `?outlet_id=${outletIdForApi}` : "";
@@ -112,6 +115,14 @@ export default function Transfers() {
     } catch (err) { toast.error(err.response?.data?.detail || "Gagal"); }
   };
 
+  const shipTransfer = async (t) => {
+    try {
+      await api.post(`/stock-transfers/${t.id}/ship`);
+      toast.success(`Transfer ${t.transfer_no} ditandai dikirim`);
+      load();
+    } catch (err) { toast.error(err.response?.data?.detail || "Gagal"); }
+  };
+
   return (
     <div>
       <PageHeader title="Transfer Antar Outlet" subtitle="Pindahkan stok antar outlet dengan approval per item" actions={
@@ -145,10 +156,11 @@ export default function Transfers() {
                   <th className="px-6 py-4">Status</th>
                   <th className="px-6 py-4">Item</th>
                   <th className="px-6 py-4">Waktu</th>
+                  <th className="px-6 py-4">Aksi</th>
                 </tr>
               </thead>
               <tbody>
-                {transfers.length === 0 && <tr><td colSpan={7} className="px-6 py-12 text-center text-[#C4A484]"><ArrowRightLeft size={40} strokeWidth={1.2} className="mx-auto mb-3 opacity-40" />Belum ada transfer</td></tr>}
+                {transfers.length === 0 && <tr><td colSpan={8} className="px-6 py-12 text-center text-[#C4A484]"><ArrowRightLeft size={40} strokeWidth={1.2} className="mx-auto mb-3 opacity-40" />Belum ada transfer</td></tr>}
                 {transfers.map((t) => (
                   <tr key={t.id} onClick={() => openDetail(t)} className="border-b border-[rgba(244,200,66,0.08)] last:border-0 hover:bg-[#4A1A22] transition-colors cursor-pointer" data-testid={`transfer-row-${t.id}`}>
                     <td className="px-6 py-3 text-sm text-[#F4C842]">{t.transfer_no}</td>
@@ -158,6 +170,20 @@ export default function Transfers() {
                     <td className="px-6 py-3"><span className={`text-xs uppercase tracking-wider px-2 py-1 rounded ${STATUS_COLORS[t.status] || ""}`}>{STATUS_LABELS[t.status] || t.status}</span></td>
                     <td className="px-6 py-3 text-sm text-[#C4A484]">{t.item_count || (t.items?.length || 0)} item</td>
                     <td className="px-6 py-3 text-xs text-[#C4A484]">{new Date(t.created_at).toLocaleString("id-ID")}</td>
+                    <td className="px-6 py-3" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex gap-1">
+                        {t.delivery_no && (
+                          <button onClick={() => setSuratJalanTransferId(t.id)} title="Surat Jalan" className="text-[#F4C842] hover:text-[#FFDD5C] p-1" data-testid={`sj-btn-${t.id}`}>
+                            <FileText size={16} />
+                          </button>
+                        )}
+                        {canShip && t.status === "pending" && (
+                          <button onClick={() => shipTransfer(t)} title="Kirim" className="text-blue-400 hover:text-blue-300 p-1" data-testid={`ship-btn-${t.id}`}>
+                            <Truck size={16} />
+                          </button>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -270,19 +296,27 @@ export default function Transfers() {
         <TransferDetail
           detail={detail}
           canApprove={canApprove}
+          canShip={canShip}
           onClose={() => setDetail(null)}
           onCheck={checkItem}
           onApprove={approveItem}
           onReject={rejectItem}
+          onShip={shipTransfer}
+          onOpenSJ={(tid) => setSuratJalanTransferId(tid)}
           onRefresh={() => openDetail(detail)}
         />
+      )}
+
+      {/* === SURAT JALAN MODAL === */}
+      {suratJalanTransferId && (
+        <SuratJalan transferId={suratJalanTransferId} onClose={() => { setSuratJalanTransferId(null); load(); }} />
       )}
     </div>
   );
 }
 
 // ============ TRANSFER DETAIL with Item-Level Approval ============
-function TransferDetail({ detail, canApprove, onClose, onCheck, onApprove, onReject, onRefresh }) {
+function TransferDetail({ detail, canApprove, canShip, onClose, onCheck, onApprove, onReject, onShip, onOpenSJ, onRefresh }) {
   const items = detail.items || [];
   const allProcessed = items.length > 0 && items.every(i => i.status === "approved" || i.status === "rejected");
 
@@ -293,23 +327,40 @@ function TransferDetail({ detail, canApprove, onClose, onCheck, onApprove, onRej
         <div className="p-6 border-b border-[rgba(244,200,66,0.15)]">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-serif-luxury text-2xl text-[#F4C842]">Transfer Stok Masuk</h3>
-            <button onClick={onClose} className="text-[#C4A484] hover:text-[#F5F5F5]"><X size={20} /></button>
+            <div className="flex gap-2">
+              <button onClick={() => onOpenSJ(detail.id)} className="text-[#F4C842] hover:text-[#FFDD5C] flex items-center gap-1 text-xs uppercase tracking-wider border border-[rgba(244,200,66,0.3)] px-3 py-1.5 rounded" data-testid="detail-sj-btn">
+                <FileText size={14} /> Surat Jalan
+              </button>
+              <button onClick={onClose} className="text-[#C4A484] hover:text-[#F5F5F5]"><X size={20} /></button>
+            </div>
           </div>
           <div className="text-center">
             <p className="text-[#F4C842] font-semibold text-lg">{detail.transfer_no}</p>
+            {detail.delivery_no && <p className="text-xs text-[#C4A484] mt-1">SJ: {detail.delivery_no}</p>}
+            {detail.request_no && <p className="text-xs text-blue-400 mt-1">From Request: {detail.request_no}</p>}
             <div className="flex items-center justify-center gap-3 text-sm text-[#C4A484] my-2">
               <span className="text-[#F5F5F5]">{detail.from_outlet_name}</span>
               <ArrowRightLeft size={16} className="text-[#F4C842]" />
               <span className="text-[#F5F5F5]">{detail.to_outlet_name}</span>
             </div>
             <p className="text-xs text-[#C4A484]">{new Date(detail.created_at).toLocaleString("id-ID")} · oleh {detail.created_by_name}</p>
-            <div className="mt-2">
+            <div className="mt-2 flex items-center justify-center gap-2">
               <span className={`text-xs uppercase tracking-wider px-3 py-1 rounded ${STATUS_COLORS[detail.status] || ""}`}>
                 {STATUS_LABELS[detail.status] || detail.status}
               </span>
+              {detail.shipped_at && <span className="text-xs text-blue-400">Dikirim: {new Date(detail.shipped_at).toLocaleString("id-ID")}</span>}
             </div>
           </div>
           {detail.note && <p className="text-xs text-[#C4A484] italic mt-3 text-center">"{detail.note}"</p>}
+
+          {/* Ship button */}
+          {canShip && detail.status === "pending" && (
+            <div className="mt-4 text-center">
+              <button onClick={() => onShip(detail)} className="bg-blue-500/20 border border-blue-400/30 text-blue-400 px-5 py-2 rounded-md text-sm uppercase tracking-wider hover:bg-blue-500/30 inline-flex items-center gap-2">
+                <Truck size={16} /> Tandai Dikirim
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Items */}

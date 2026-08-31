@@ -3,6 +3,7 @@ from typing import Optional
 from routes.deps import *
 from routes.inventory import _adjust_outlet_stock
 from routes.audit_logs import log_action
+from routes.alerts import create_alert
 
 router = APIRouter()
 
@@ -41,8 +42,12 @@ async def list_transfers(
                (SELECT COUNT(*) FROM transfer_items ti WHERE ti.transfer_id = t.id) AS item_count,
                (SELECT COUNT(*) FROM transfer_items ti WHERE ti.transfer_id = t.id AND ti.status = 'pending') AS pending_count,
                (SELECT COUNT(*) FROM transfer_items ti WHERE ti.transfer_id = t.id AND ti.status = 'approved') AS approved_count,
-               (SELECT COUNT(*) FROM transfer_items ti WHERE ti.transfer_id = t.id AND ti.status = 'rejected') AS rejected_count
+               (SELECT COUNT(*) FROM transfer_items ti WHERE ti.transfer_id = t.id AND ti.status = 'rejected') AS rejected_count,
+               dn.delivery_no, dn.status AS delivery_status, dn.print_count,
+               sr.request_no
         FROM stock_transfers t
+        LEFT JOIN delivery_notes dn ON dn.transfer_id = t.id
+        LEFT JOIN stock_requests sr ON sr.id = t.request_id
         {where}
         ORDER BY t.created_at DESC LIMIT :l
     """, **params)
@@ -174,6 +179,24 @@ async def create_transfer(body: TransferIn, user=Depends(require_permission("tra
                      new_value={"transfer_no": tno, "from": body.from_outlet_name,
                                 "to": body.to_outlet_name, "items": [i.model_dump() for i in body.items],
                                 "note": body.note or ""})
+
+    # Auto-generate delivery note (Surat Jalan)
+    dno = f"SJ-{datetime.now(timezone.utc).strftime('%Y%m%d')}-{str(new_id())[:4].upper()}"
+    dnid = new_id()
+    await q_exec("""INSERT INTO delivery_notes (id, delivery_no, transfer_id, status, generated_by, generated_by_name, generated_at, created_at)
+                    VALUES (:id, :dno, :tid, 'generated', :gb, :gbn, NOW(), NOW())""",
+                 id=dnid, dno=dno, tid=tid, gb=user["id"], gbn=user.get("name", ""))
+    await q_exec("UPDATE stock_transfers SET delivery_note_id = :dnid WHERE id = :tid", dnid=dnid, tid=tid)
+    await log_action(user, "DELIVERY_NOTE_GENERATED", "delivery_note", entity_id=dnid,
+                     outlet_id=body.from_outlet_id,
+                     new_value={"delivery_no": dno, "transfer_no": tno})
+
+    # Notify destination outlet
+    await create_alert("stock_transfer", "info",
+                       f"Transfer Stok Masuk: {tno}",
+                       f"Surat Jalan {dno} — {body.from_outlet_name} → {body.to_outlet_name}",
+                       outlet_id=body.to_outlet_id,
+                       data={"transfer_id": str(tid), "transfer_no": tno, "delivery_no": dno})
 
     return clean(await q_one("SELECT * FROM stock_transfers WHERE id=:id", id=tid))
 
@@ -380,14 +403,61 @@ async def transfer_report(
         SELECT t.id, t.transfer_no, t.from_outlet_name, t.to_outlet_name,
                t.from_outlet_id, t.to_outlet_id, t.status, t.note AS transfer_note,
                t.created_by_name, t.created_at, t.completed_at,
+               t.shipped_by_name, t.shipped_at,
                ti.product_name, ti.qty_sent, ti.qty_received,
                (ti.qty_received - ti.qty_sent) AS difference,
                ti.status AS item_status, ti.note AS item_note,
                ti.checked_by_name, ti.checked_at,
-               ti.approved_by_name, ti.approved_at
+               ti.approved_by_name, ti.approved_at,
+               dn.delivery_no, dn.status AS delivery_status, dn.print_count,
+               sr.request_no
         FROM stock_transfers t
         LEFT JOIN transfer_items ti ON ti.transfer_id = t.id
+        LEFT JOIN delivery_notes dn ON dn.transfer_id = t.id
+        LEFT JOIN stock_requests sr ON sr.id = t.request_id
         {where}
         ORDER BY t.created_at DESC, ti.created_at
     """, **params)
     return clean_list(rows)
+
+
+# ============ SHIP TRANSFER ============
+@router.post("/stock-transfers/{transfer_id}/ship")
+async def ship_transfer(transfer_id: str, user=Depends(require_role("owner", "manager", "admin", "supervisor"))):
+    """Mark transfer as shipped. Updates delivery note status too."""
+    transfer = await q_one("SELECT * FROM stock_transfers WHERE id = :id", id=transfer_id)
+    if not transfer:
+        raise HTTPException(404, "Transfer tidak ditemukan")
+
+    # Outlet authorization: source outlet staff can ship
+    if user["role"] != "owner" and str(transfer["from_outlet_id"]) not in user.get("outlet_ids", []):
+        raise HTTPException(403, "Tidak ada akses — hanya outlet asal yang dapat mengirim")
+
+    if transfer["status"] == "shipped":
+        raise HTTPException(400, "Transfer sudah dikirim")
+    if transfer["status"] in ("completed",):
+        raise HTTPException(400, "Transfer sudah selesai")
+
+    await q_exec("""UPDATE stock_transfers SET status = 'shipped', shipped_by = :sb, shipped_by_name = :sbn,
+                    shipped_at = NOW(), updated_at = NOW() WHERE id = :id""",
+                 sb=user["id"], sbn=user.get("name", ""), id=transfer_id)
+
+    # Update delivery note if exists
+    dn = await q_one("SELECT id FROM delivery_notes WHERE transfer_id = :tid", tid=transfer_id)
+    if dn:
+        await q_exec("""UPDATE delivery_notes SET status = 'shipped', shipped_by = :sb, shipped_by_name = :sbn, shipped_at = NOW()
+                        WHERE id = :id""",
+                     sb=user["id"], sbn=user.get("name", ""), id=dn["id"])
+
+    await log_action(user, "TRANSFER_SENT", "stock_transfer", entity_id=transfer_id,
+                     outlet_id=transfer["from_outlet_id"],
+                     new_value={"transfer_no": transfer["transfer_no"]})
+
+    # Notify destination outlet
+    await create_alert("stock_transfer", "info",
+                       f"Barang Dikirim: {transfer['transfer_no']}",
+                       f"Transfer sedang dalam perjalanan ke {transfer['to_outlet_name']}",
+                       outlet_id=transfer["to_outlet_id"],
+                       data={"transfer_id": str(transfer_id), "transfer_no": transfer["transfer_no"]})
+
+    return {"ok": True}
