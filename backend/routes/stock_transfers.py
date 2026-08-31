@@ -367,11 +367,13 @@ async def transfer_report(
         params["st"] = status
 
     if date_from:
+        # WIB = UTC+7, so 2026-08-31 00:00 WIB = 2026-08-30 17:00 UTC
         filters.append("t.created_at >= :df")
-        params["df"] = date_from
+        params["df"] = datetime.strptime(date_from + " 00:00:00", "%Y-%m-%d %H:%M:%S") - timedelta(hours=7)
     if date_to:
+        # 2026-08-31 23:59:59 WIB = 2026-08-31 16:59:59 UTC
         filters.append("t.created_at <= :dt")
-        params["dt"] = date_to + " 23:59:59"
+        params["dt"] = datetime.strptime(date_to + " 23:59:59", "%Y-%m-%d %H:%M:%S") - timedelta(hours=7)
 
     where = " WHERE " + " AND ".join(filters) if filters else ""
     rows = await q_all(f"""
