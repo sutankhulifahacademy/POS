@@ -1,0 +1,16 @@
+feat: product additional pricing (Eceran, Reseller, Partai, Online) + SQL schema consolidation
+
+- Add product_type, retail_price, reseller_price, wholesale_price, online_price to products
+- Add sales_channel (offline/online) and price_type (ecceran/reseller/partai/online) to sales
+- Backend price resolver: ONLINE channel always uses online_price, OFFLINE uses price_type
+- Existing product.price is IMMUTABLE - additional pricing is additive, not replacement
+- Sales items store price snapshot (resolved by backend, not frontend)
+- Frontend: Product form with Additional Pricing section + variant-level pricing
+- Frontend: POS channel + price type selector with live price resolution
+- Frontend: Reports with By Channel and By Price Type breakdowns
+- Consolidate all CREATE TABLE into postgres_schema.sql, remove 6 migration files
+- Acceptance tests: 7/7 passed, Regression: 110 + 66 passed, 0 failed
+
+Generated with [Devin](https://devin.ai)
+
+Co-Authored-By: Devin <158243242+devin-ai-integration[bot]@users.noreply.github.com>

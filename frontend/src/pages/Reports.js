@@ -697,6 +697,22 @@ function SalesTab({ globalOutletId }) {
           })),
         },
         {
+          name: "By Channel",
+          rows: (data.by_channel || []).map((r) => ({
+            Channel: r.channel,
+            Jumlah: r.count,
+            Total: r.total,
+          })),
+        },
+        {
+          name: "By Price Type",
+          rows: (data.by_price_type || []).map((r) => ({
+            "Price Type": r.price_type,
+            Jumlah: r.count,
+            Total: r.total,
+          })),
+        },
+        {
           name: "By Category",
           rows: data.by_category.map((r) => ({
             Kategori: r.category_name,

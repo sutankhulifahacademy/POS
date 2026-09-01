@@ -5,7 +5,7 @@ import { Plus, Edit3, Trash2, X, Search, Package, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { useOutlet } from "../context/OutletContext";
 
-const empty = { name: "", sku: "", barcode: "", category_id: "", price: 0, cost: 0, stock: 0, low_stock_threshold: 5, unit: "pcs", image_url: "", description: "", is_active: true, variants: [] };
+const empty = { name: "", sku: "", barcode: "", category_id: "", price: 0, cost: 0, stock: 0, low_stock_threshold: 5, unit: "pcs", image_url: "", description: "", is_active: true, variants: [], product_type: "standard", retail_price: "", reseller_price: "", wholesale_price: "", online_price: "" };
 
 export default function Products() {
   const { outletIdForApi } = useOutlet();
@@ -44,7 +44,15 @@ export default function Products() {
   const paketCategoryId = categories.find(c => c.name === "Paket")?.id;
 
   const openNew = () => { setForm(empty); setEditing(null); setShowForm(true); };
-  const openEdit = (p) => { setForm({ ...empty, ...p, variants: p.variants || [] }); setEditing(p.id); setShowForm(true); };
+  const openEdit = (p) => {
+    const variants = (p.variants || []).map(v => ({
+      name: v.name || "", sku: v.sku || "", price: v.price || 0, stock: v.stock || 0,
+      retail_price: v.retail_price ?? "", reseller_price: v.reseller_price ?? "",
+      wholesale_price: v.wholesale_price ?? "", online_price: v.online_price ?? "",
+    }));
+    setForm({ ...empty, ...p, variants, product_type: p.product_type || "standard", retail_price: p.retail_price ?? "", reseller_price: p.reseller_price ?? "", wholesale_price: p.wholesale_price ?? "", online_price: p.online_price ?? "" });
+    setEditing(p.id); setShowForm(true);
+  };
 
   const save = async (e) => {
     e.preventDefault();
@@ -52,7 +60,18 @@ export default function Products() {
       ...form,
       price: Number(form.price), cost: Number(form.cost), stock: Number(form.stock), low_stock_threshold: Number(form.low_stock_threshold),
       outlet_id: outletIdForApi || undefined,
-      variants: (form.variants || []).map(v => ({ name: v.name, sku: v.sku || "", price: Number(v.price), stock: Number(v.stock) })),
+      product_type: form.product_type || "standard",
+      retail_price: form.retail_price === "" ? null : Number(form.retail_price),
+      reseller_price: form.reseller_price === "" ? null : Number(form.reseller_price),
+      wholesale_price: form.wholesale_price === "" ? null : Number(form.wholesale_price),
+      online_price: form.online_price === "" ? null : Number(form.online_price),
+      variants: (form.variants || []).map(v => ({
+        name: v.name, sku: v.sku || "", price: Number(v.price), stock: Number(v.stock),
+        retail_price: v.retail_price === "" || v.retail_price == null ? null : Number(v.retail_price),
+        reseller_price: v.reseller_price === "" || v.reseller_price == null ? null : Number(v.reseller_price),
+        wholesale_price: v.wholesale_price === "" || v.wholesale_price == null ? null : Number(v.wholesale_price),
+        online_price: v.online_price === "" || v.online_price == null ? null : Number(v.online_price),
+      })),
     };
     try {
       if (editing) await api.put(`/products/${editing}?outlet_id=${outletIdForApi || ""}`, payload);
@@ -68,7 +87,7 @@ export default function Products() {
     catch (e) { toast.error(e.response?.data?.detail || "Gagal menghapus"); }
   };
 
-  const addVariant = () => setForm({ ...form, variants: [...(form.variants || []), { name: "", sku: "", price: form.price || 0, stock: 0 }] });
+  const addVariant = () => setForm({ ...form, variants: [...(form.variants || []), { name: "", sku: "", price: form.price || 0, stock: 0, retail_price: "", reseller_price: "", wholesale_price: "", online_price: "" }] });
   const updateVariant = (idx, patch) => setForm({ ...form, variants: form.variants.map((v, i) => i === idx ? { ...v, ...patch } : v) });
   const removeVariant = (idx) => setForm({ ...form, variants: form.variants.filter((_, i) => i !== idx) });
 
@@ -183,6 +202,14 @@ export default function Products() {
                   <input type="number" value={form.cost} onChange={(e) => setForm({ ...form, cost: e.target.value })} className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" />
                 </div>
                 <div>
+                  <label className="text-xs uppercase tracking-widest text-[#C4A484] mb-1 block">Tipe Produk</label>
+                  <select value={form.product_type} onChange={(e) => setForm({ ...form, product_type: e.target.value })} className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]">
+                    <option value="standard">Standard</option>
+                    <option value="frozen">Frozen</option>
+                    <option value="bundle">Bundle/Paket</option>
+                  </select>
+                </div>
+                <div>
                   <label className="text-xs uppercase tracking-widest text-[#C4A484] mb-1 block">Stok Awal</label>
                   <input type="number" value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-[#F5F5F5]" data-testid="form-stock" />
                 </div>
@@ -210,6 +237,32 @@ export default function Products() {
                 </div>
               </div>
 
+              {/* Additional Pricing */}
+              <div className="border-t border-[rgba(244,200,66,0.15)] pt-4">
+                <div className="mb-3">
+                  <h3 className="font-serif-luxury text-lg text-[#F5F5F5]">Additional Pricing</h3>
+                  <p className="text-xs text-[#C4A484]">Harga tambahan untuk Eceran, Reseller, Partai, dan Online. Kosongkan jika tidak digunakan (sistem fallback ke Harga Jual).</p>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div>
+                    <label className="text-xs uppercase tracking-widest text-[#C4A484] mb-1 block">Harga Eceran</label>
+                    <input type="number" value={form.retail_price ?? ""} onChange={(e) => setForm({ ...form, retail_price: e.target.value })} placeholder={form.price || 0} className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]" data-testid="form-retail-price" />
+                  </div>
+                  <div>
+                    <label className="text-xs uppercase tracking-widest text-[#C4A484] mb-1 block">Harga Reseller</label>
+                    <input type="number" value={form.reseller_price ?? ""} onChange={(e) => setForm({ ...form, reseller_price: e.target.value })} placeholder={form.price || 0} className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]" data-testid="form-reseller-price" />
+                  </div>
+                  <div>
+                    <label className="text-xs uppercase tracking-widest text-[#C4A484] mb-1 block">Harga Partai</label>
+                    <input type="number" value={form.wholesale_price ?? ""} onChange={(e) => setForm({ ...form, wholesale_price: e.target.value })} placeholder={form.price || 0} className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]" data-testid="form-wholesale-price" />
+                  </div>
+                  <div>
+                    <label className="text-xs uppercase tracking-widest text-[#F4C842] mb-1 block">Harga Online *</label>
+                    <input type="number" value={form.online_price ?? ""} onChange={(e) => setForm({ ...form, online_price: e.target.value })} placeholder={form.price || 0} className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.3)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]" data-testid="form-online-price" />
+                  </div>
+                </div>
+              </div>
+
               {/* Variants */}
               <div className="border-t border-[rgba(244,200,66,0.15)] pt-4">
                 <div className="flex items-center justify-between mb-3">
@@ -219,15 +272,33 @@ export default function Products() {
                   </div>
                   <button type="button" onClick={addVariant} data-testid="add-variant-btn" className="flex items-center gap-1 text-xs text-[#F4C842] hover:text-[#FFDD5C]"><Plus size={16} /> Tambah Varian</button>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {(form.variants || []).map((v, i) => (
-                    <div key={i} className="overflow-x-auto" data-testid={`variant-row-${i}`}>
-                      <div className="grid grid-cols-12 gap-2 items-center min-w-[700px]">
-                        <input placeholder="Nama (e.g. Large / Red)" value={v.name} onChange={(e) => updateVariant(i, { name: e.target.value })} className="col-span-4 bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-2 py-2 text-sm text-[#F5F5F5]" />
-                        <input placeholder="SKU" value={v.sku} onChange={(e) => updateVariant(i, { sku: e.target.value })} className="col-span-3 bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-2 py-2 text-sm text-[#F5F5F5]" />
-                        <input type="number" placeholder="Harga" value={v.price} onChange={(e) => updateVariant(i, { price: e.target.value })} className="col-span-2 bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-2 py-2 text-sm text-[#F5F5F5]" />
-                        <input type="number" placeholder="Stok" value={v.stock} onChange={(e) => updateVariant(i, { stock: e.target.value })} className="col-span-2 bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-2 py-2 text-sm text-[#F5F5F5]" />
+                    <div key={i} className="bg-[#2A1015] border border-[rgba(244,200,66,0.15)] rounded-md p-3" data-testid={`variant-row-${i}`}>
+                      <div className="grid grid-cols-12 gap-2 items-center mb-2">
+                        <input placeholder="Nama (e.g. 10 pcs / 20 pcs)" value={v.name} onChange={(e) => updateVariant(i, { name: e.target.value })} className="col-span-4 bg-[#331419] border border-[rgba(244,200,66,0.2)] rounded-md px-2 py-2 text-sm text-[#F5F5F5]" />
+                        <input placeholder="SKU" value={v.sku} onChange={(e) => updateVariant(i, { sku: e.target.value })} className="col-span-3 bg-[#331419] border border-[rgba(244,200,66,0.2)] rounded-md px-2 py-2 text-sm text-[#F5F5F5]" />
+                        <input type="number" placeholder="Harga Existing" value={v.price} onChange={(e) => updateVariant(i, { price: e.target.value })} className="col-span-2 bg-[#331419] border border-[rgba(244,200,66,0.2)] rounded-md px-2 py-2 text-sm text-[#F5F5F5]" />
+                        <input type="number" placeholder="Stok" value={v.stock} onChange={(e) => updateVariant(i, { stock: e.target.value })} className="col-span-2 bg-[#331419] border border-[rgba(244,200,66,0.2)] rounded-md px-2 py-2 text-sm text-[#F5F5F5]" />
                         <button type="button" onClick={() => removeVariant(i)} className="col-span-1 text-[#C4A484] hover:text-[#8B0000]"><Trash2 size={16} /></button>
+                      </div>
+                      <div className="grid grid-cols-4 gap-2">
+                        <div>
+                          <label className="text-[9px] uppercase tracking-widest text-[#C4A484]">Eceran</label>
+                          <input type="number" placeholder="Eceran" value={v.retail_price ?? ""} onChange={(e) => updateVariant(i, { retail_price: e.target.value })} className="w-full bg-[#331419] border border-[rgba(244,200,66,0.15)] rounded-md px-2 py-1.5 text-xs text-[#F5F5F5]" />
+                        </div>
+                        <div>
+                          <label className="text-[9px] uppercase tracking-widest text-[#C4A484]">Reseller</label>
+                          <input type="number" placeholder="Reseller" value={v.reseller_price ?? ""} onChange={(e) => updateVariant(i, { reseller_price: e.target.value })} className="w-full bg-[#331419] border border-[rgba(244,200,66,0.15)] rounded-md px-2 py-1.5 text-xs text-[#F5F5F5]" />
+                        </div>
+                        <div>
+                          <label className="text-[9px] uppercase tracking-widest text-[#C4A484]">Partai</label>
+                          <input type="number" placeholder="Partai" value={v.wholesale_price ?? ""} onChange={(e) => updateVariant(i, { wholesale_price: e.target.value })} className="w-full bg-[#331419] border border-[rgba(244,200,66,0.15)] rounded-md px-2 py-1.5 text-xs text-[#F5F5F5]" />
+                        </div>
+                        <div>
+                          <label className="text-[9px] uppercase tracking-widest text-[#F4C842]">Online</label>
+                          <input type="number" placeholder="Online" value={v.online_price ?? ""} onChange={(e) => updateVariant(i, { online_price: e.target.value })} className="w-full bg-[#331419] border border-[rgba(244,200,66,0.2)] rounded-md px-2 py-1.5 text-xs text-[#F5F5F5]" />
+                        </div>
                       </div>
                     </div>
                   ))}

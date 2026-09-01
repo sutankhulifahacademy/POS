@@ -10,6 +10,7 @@ from routes.sales import (
     _insert_sale,
 )
 from services.order_service import _calc_total
+from services.pricing_service import resolve_product_price
 
 router = APIRouter()
 
@@ -76,6 +77,64 @@ async def checkout_order(
 
     if not items:
         raise HTTPException(400, "Order kosong")
+
+    # =========================================================
+    # BACKEND PRICE RESOLUTION
+    # =========================================================
+    sales_channel = getattr(body, "sales_channel", "offline") or "offline"
+    price_type = getattr(body, "price_type", "ecceran") or "ecceran"
+
+    resolved_items = []
+    for it in items:
+        pid = str(it.get("product_id") or "")
+        if not pid:
+            resolved_items.append(it)
+            continue
+
+        product = await q_one(
+            """
+            SELECT id, name, price, variants,
+                   retail_price, reseller_price, wholesale_price, online_price
+            FROM products WHERE id=:id
+            """,
+            id=pid
+        )
+
+        if not product:
+            resolved_items.append(it)
+            continue
+
+        variants = product.get("variants")
+        if variants is None:
+            variants = []
+        elif isinstance(variants, str):
+            try:
+                variants = json.loads(variants)
+            except Exception:
+                variants = []
+
+        product_for_pricing = {
+            "price": float(product["price"] or 0),
+            "retail_price": product.get("retail_price"),
+            "reseller_price": product.get("reseller_price"),
+            "wholesale_price": product.get("wholesale_price"),
+            "online_price": product.get("online_price"),
+            "variants": variants,
+        }
+
+        resolved_price = await resolve_product_price(
+            product_for_pricing,
+            variant_name=it.get("variant_name") or "",
+            sales_channel=sales_channel,
+            price_type=price_type,
+        )
+
+        it["price"] = resolved_price
+        it["price_type"] = price_type
+        it["sales_channel"] = sales_channel
+        resolved_items.append(it)
+
+    items = resolved_items
 
     subtotal = _calc_total(items)
     total = subtotal - body.discount + body.tax
@@ -288,6 +347,8 @@ async def checkout_order(
             table_id,
             table_name,
             note,
+            sales_channel,
+            price_type,
             created_at
         )
                 VALUES (
@@ -332,6 +393,8 @@ async def checkout_order(
             :tid,
             :tn,
             :note,
+            :sc,
+            :pt,
             NOW()
         )
         """,
@@ -458,7 +521,10 @@ async def checkout_order(
 
         tn=None,
 
-        note=_u(body.note)
+        note=_u(body.note),
+
+        sc=getattr(body, "sales_channel", "offline") or "offline",
+        pt=getattr(body, "price_type", "ecceran") or "ecceran",
     )
 
     # Kurangi stok

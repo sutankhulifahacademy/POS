@@ -7,6 +7,11 @@ class ProductVariant(BaseModel):
     sku: Optional[str] = ""
     price: float
     stock: int = 0
+    # Additional variant pricing (nullable, fallback to price)
+    retail_price: Optional[float] = None
+    reseller_price: Optional[float] = None
+    wholesale_price: Optional[float] = None
+    online_price: Optional[float] = None
 
 
 class ProductCreate(BaseModel):
@@ -23,6 +28,12 @@ class ProductCreate(BaseModel):
     description: Optional[str] = ""
     is_active: bool = True
     variants: list[dict[str, Any]] = []
+    # Product type + additional pricing
+    product_type: Optional[str] = "standard"
+    retail_price: Optional[float] = None
+    reseller_price: Optional[float] = None
+    wholesale_price: Optional[float] = None
+    online_price: Optional[float] = None
 
 
 class ProductUpdate(BaseModel):
@@ -39,3 +50,9 @@ class ProductUpdate(BaseModel):
     description: Optional[str] = None
     is_active: Optional[bool] = None
     variants: Optional[list[dict[str, Any]]] = None
+    # Product type + additional pricing
+    product_type: Optional[str] = None
+    retail_price: Optional[float] = None
+    reseller_price: Optional[float] = None
+    wholesale_price: Optional[float] = None
+    online_price: Optional[float] = None

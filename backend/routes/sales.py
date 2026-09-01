@@ -35,8 +35,13 @@ async def create_sale(
     # VALIDASI ITEMS + STOCK
     # =========================================================
 
+    sales_channel = getattr(body, "sales_channel", "offline") or "offline"
+    price_type = getattr(body, "price_type", "ecceran") or "ecceran"
+
     items, subtotal = await _validate_and_get_sale_items(
-        body.items
+        body.items,
+        sales_channel=sales_channel,
+        price_type=price_type,
     )
 
     # =========================================================
@@ -166,7 +171,9 @@ async def create_sale(
             source="pos",
             table_id=None,
             table_name=None,
-            transfer_reference_no=transfer_reference_no
+            transfer_reference_no=transfer_reference_no,
+            sales_channel=sales_channel,
+            price_type=price_type,
         )
 
         # -----------------------------------------------------

@@ -55,12 +55,18 @@ async def create_product(body: ProductCreate, user=Depends(require_permission("p
     pid = new_id()
     variants_json = json.dumps(body.variants or [])
     await q_exec("""INSERT INTO products (id, name, sku, barcode, category_id, price, cost, stock, low_stock_threshold,
-                                           unit, image_url, description, is_active, variants, created_at)
-                    VALUES (:id, :n, :s, :b, :ci, :p, :c, :st, :lt, :u, :img, :d, :a, CAST(:v AS jsonb), NOW())""",
+                                           unit, image_url, description, is_active, variants,
+                                           product_type, retail_price, reseller_price, wholesale_price, online_price,
+                                           created_at)
+                    VALUES (:id, :n, :s, :b, :ci, :p, :c, :st, :lt, :u, :img, :d, :a, CAST(:v AS jsonb),
+                            :pt, :rp, :rsp, :wp, :op, NOW())""",
                  id=pid, n=body.name, s=body.sku, b=body.barcode or "", ci=_u(body.category_id),
                  p=body.price, c=body.cost, st=body.stock, lt=body.low_stock_threshold,
                  u=body.unit, img=body.image_url or "", d=body.description or "",
-                 a=body.is_active, v=variants_json)
+                 a=body.is_active, v=variants_json,
+                 pt=body.product_type or "standard",
+                 rp=body.retail_price, rsp=body.reseller_price,
+                 wp=body.wholesale_price, op=body.online_price)
     if body.stock > 0:
         await q_exec("""INSERT INTO stock_movements (id, product_id, product_name, delta, reason, note, user_id, created_at)
                         VALUES (:id, :pid, :pn, :d, 'initial', 'Initial stock', :u, NOW())""",
@@ -121,6 +127,11 @@ async def update_product(
         "image_url": "image_url",
         "description": "description",
         "is_active": "is_active",
+        "product_type": "product_type",
+        "retail_price": "retail_price",
+        "reseller_price": "reseller_price",
+        "wholesale_price": "wholesale_price",
+        "online_price": "online_price",
     }
 
     for field, column in field_mapping.items():

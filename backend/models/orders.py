@@ -66,6 +66,10 @@ class OrderCheckout(BaseModel):
     transfer_sender_name: Optional[str] = ""
     transfer_verified: bool = False
 
+    # Sales channel + price type for additional pricing
+    sales_channel: Optional[str] = "offline"
+    price_type: Optional[str] = "ecceran"
+
 
 class OrderResponse(BaseModel):
     id: str

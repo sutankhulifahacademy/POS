@@ -14,6 +14,7 @@ from database import (
 )
 from utils import new_id, clean, clean_list, _u
 from services.inventory_service import _get_main_outlet_id
+from services.pricing_service import resolve_product_price
 
 
 def _validate_sale_total(subtotal: float, discount: float, tax: float) -> float:
@@ -251,9 +252,13 @@ def _build_payment_values(body, transfer_reference_no=None):
     }
 
 
-async def _validate_and_get_sale_items(items):
+async def _validate_and_get_sale_items(items, sales_channel="offline", price_type="ecceran"):
     """
     Validasi item transaksi dan stok.
+
+    Price resolution dilakukan di BACKEND menggunakan pricing_service.
+    Frontend price hanya digunakan sebagai fallback jika product tidak
+    memiliki additional pricing.
 
     Return:
         list item yang sudah dinormalisasi
@@ -301,7 +306,13 @@ async def _validate_and_get_sale_items(items):
             SELECT
                 id,
                 name,
-                stock
+                stock,
+                price,
+                variants,
+                retail_price,
+                reseller_price,
+                wholesale_price,
+                online_price
             FROM products
             WHERE id=:id
             """,
@@ -320,8 +331,35 @@ async def _validate_and_get_sale_items(items):
                 f"Insufficient stock for {product['name']}"
             )
 
-        price = float(
-            data.get("price") or 0
+        # =====================================================
+        # BACKEND PRICE RESOLUTION
+        # =====================================================
+        # Parse variants JSONB for price resolution
+        variants = product.get("variants")
+        if variants is None:
+            variants = []
+        elif isinstance(variants, str):
+            try:
+                variants = json.loads(variants)
+            except Exception:
+                variants = []
+
+        product_for_pricing = {
+            "price": float(product["price"] or 0),
+            "retail_price": product.get("retail_price"),
+            "reseller_price": product.get("reseller_price"),
+            "wholesale_price": product.get("wholesale_price"),
+            "online_price": product.get("online_price"),
+            "variants": variants,
+        }
+
+        variant_name = data.get("variant_name") or ""
+
+        resolved_price = await resolve_product_price(
+            product_for_pricing,
+            variant_name=variant_name,
+            sales_channel=sales_channel,
+            price_type=price_type,
         )
 
         # Gunakan nama dari product jika frontend kosong.
@@ -332,14 +370,13 @@ async def _validate_and_get_sale_items(items):
 
         data["product_id"] = product_id
         data["name"] = name
-        data["price"] = price
+        data["price"] = resolved_price
         data["quantity"] = quantity
-        data["variant_name"] = (
-            data.get("variant_name")
-            or ""
-        )
+        data["variant_name"] = variant_name
+        data["price_type"] = price_type
+        data["sales_channel"] = sales_channel
 
-        subtotal += price * quantity
+        subtotal += resolved_price * quantity
 
         normalized_items.append(data)
 
@@ -573,7 +610,9 @@ async def _insert_sale(
     source="pos",
     table_id=None,
     table_name=None,
-    transfer_reference_no=None
+    transfer_reference_no=None,
+    sales_channel="offline",
+    price_type="ecceran",
 ):
     """
     Insert transaksi sales menggunakan session transaction.
@@ -628,6 +667,8 @@ async def _insert_sale(
             table_id,
             table_name,
             note,
+            sales_channel,
+            price_type,
             created_at
         )
         VALUES (
@@ -669,6 +710,8 @@ async def _insert_sale(
             :tid,
             :tn,
             :note,
+            :sc,
+            :pt,
             NOW()
         )
         """,
@@ -713,5 +756,7 @@ async def _insert_sale(
         source=source,
         tid=_u(table_id),
         tn=_u(table_name),
-        note=_u(getattr(body, "note", None))
+        note=_u(getattr(body, "note", None)),
+        sc=sales_channel,
+        pt=price_type,
     )

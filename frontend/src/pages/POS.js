@@ -56,6 +56,8 @@ export default function POS() {
   const [showQRIS, setShowQRIS] = useState(false);
   const [activeTab, setActiveTab] = useState("pos"); // "pos" | "dinein"
   const [cartOpen, setCartOpen] = useState(false);
+  const [salesChannel, setSalesChannel] = useState("offline"); // "offline" | "online"
+  const [priceType, setPriceType] = useState("ecceran"); // "ecceran" | "reseller" | "partai"
   const nav = useNavigate();
   const bufferRef = useRef({ chars: "", lastTs: 0 });
 
@@ -85,6 +87,31 @@ export default function POS() {
 
   const getStock = (p) => selectedOutlet && outletStocks[p.id] !== undefined ? outletStocks[p.id] : p.stock;
 
+  // Frontend price resolution for DISPLAY only — backend does final resolution
+  const resolveDisplayPrice = (product, variant = null) => {
+    const obj = variant || product;
+    const existingPrice = parseFloat(obj.price) || 0;
+    if (salesChannel === "online") {
+      const op = obj.online_price;
+      if (op != null && parseFloat(op) >= 0) return parseFloat(op);
+      return existingPrice;
+    }
+    if (priceType === "reseller") {
+      const rp = obj.reseller_price;
+      if (rp != null && parseFloat(rp) >= 0) return parseFloat(rp);
+      return existingPrice;
+    }
+    if (priceType === "partai") {
+      const wp = obj.wholesale_price;
+      if (wp != null && parseFloat(wp) >= 0) return parseFloat(wp);
+      return existingPrice;
+    }
+    // eceran
+    const rtp = obj.retail_price;
+    if (rtp != null && parseFloat(rtp) >= 0) return parseFloat(rtp);
+    return existingPrice;
+  };
+
   const filtered = useMemo(() => products.filter((p) => {
     if (!p.is_active) return false;
     if (activeCategory !== "all" && p.category_id !== activeCategory) return false;
@@ -94,7 +121,7 @@ export default function POS() {
 
   const addToCart = (product, variant = null, paketItems = null) => {
     const stock = variant ? variant.stock : getStock(product);
-    const price = variant ? variant.price : product.price;
+    const price = resolveDisplayPrice(product, variant);
     const displayName = variant ? `${product.name} - ${variant.name}` : product.name;
     const key = variant ? `${product.id}::${variant.name}` : product.id;
     if (stock <= 0) { toast.error(`${displayName}: stok habis`); return; }
@@ -180,6 +207,20 @@ export default function POS() {
   };
 
   const removeItem = (key) => setCart((prev) => prev.filter((i) => i.key !== key));
+
+  // Re-resolve cart prices when channel/price_type changes
+  useEffect(() => {
+    if (cart.length === 0) return;
+    setCart((prev) => prev.map((item) => {
+      const product = products.find((p) => p.id === item.product_id);
+      if (!product) return item;
+      const variant = item.variant_name ? (product.variants || []).find((v) => v.name === item.variant_name) : null;
+      const newPrice = resolveDisplayPrice(product, variant);
+      return { ...item, price: newPrice };
+    }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [salesChannel, priceType]);
+
   const subtotal = cart.reduce((s, i) => s + i.price * i.quantity, 0);
   const total = Math.max(0, subtotal - Number(discount || 0));
   const change = Math.max(0, Number(amountPaid || 0) - total);
@@ -212,6 +253,9 @@ export default function POS() {
 
       customer_id: customerId || "",
       payment_method: paymentMethod,
+
+      sales_channel: salesChannel,
+      price_type: salesChannel === "online" ? "online" : priceType,
 
       amount_paid:
         paymentMethod === "cash"
@@ -406,7 +450,7 @@ export default function POS() {
                   </div>
                   <p className="text-sm text-[#F5F5F5] truncate">{p.name}</p>
                   <p className="text-xs text-[#C4A484] mt-1">Stok outlet: {s} {p.unit}</p>
-                  <p className="text-[#F4C842] font-semibold mt-2">{formatIDR(p.price)}</p>
+                  <p className="text-[#F4C842] font-semibold mt-2">{formatIDR(resolveDisplayPrice(p))}</p>
                 </button>
               );
             })}
@@ -456,6 +500,30 @@ export default function POS() {
           ))}
         </div>
         <div className="border-t border-[rgba(244,200,66,0.15)] p-6 space-y-3 max-h-[55vh] overflow-y-auto">
+          {/* Sales Channel + Price Type */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[10px] uppercase tracking-widest text-[#C4A484]">Channel</label>
+              <select value={salesChannel} onChange={(e) => { setSalesChannel(e.target.value); if (e.target.value === "online") setPriceType("online"); else if (priceType === "online") setPriceType("ecceran"); }} className="mt-1 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5] min-h-[44px]" data-testid="pos-sales-channel">
+                <option value="offline">Offline</option>
+                <option value="online">Online</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] uppercase tracking-widest text-[#C4A484]">Price Type</label>
+              <select value={priceType} onChange={(e) => setPriceType(e.target.value)} disabled={salesChannel === "online"} className="mt-1 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5] min-h-[44px] disabled:opacity-50" data-testid="pos-price-type">
+                <option value="ecceran">Eceran</option>
+                <option value="reseller">Reseller</option>
+                <option value="partai">Partai</option>
+                {salesChannel === "online" && <option value="online">Online</option>}
+              </select>
+            </div>
+          </div>
+          {salesChannel === "online" && (
+            <div className="bg-[rgba(244,200,66,0.1)] border border-[rgba(244,200,66,0.3)] rounded-md px-3 py-2 text-xs text-[#F4C842]">
+              Mode Online: semua produk menggunakan Harga Online
+            </div>
+          )}
           <select value={customerId} onChange={(e) => setCustomerId(e.target.value)} className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]" data-testid="pos-customer-select">
             <option value="">Pelanggan (opsional)</option>
             {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -728,7 +796,7 @@ export default function POS() {
               {variantPick.variants.map((v, i) => (
                 <button key={i} onClick={() => { addToCart(variantPick, v); setVariantPick(null); }} disabled={v.stock <= 0} data-testid={`variant-${i}`} className="w-full flex items-center justify-between bg-[#331419] gold-border hover:border-[#F4C842] rounded-md p-3 disabled:opacity-40">
                   <div className="text-left"><p className="text-sm text-[#F5F5F5]">{v.name}</p><p className="text-xs text-[#C4A484]">Stok: {v.stock}</p></div>
-                  <span className="text-[#F4C842] font-semibold">{formatIDR(v.price)}</span>
+                  <span className="text-[#F4C842] font-semibold">{formatIDR(resolveDisplayPrice(variantPick, v))}</span>
                 </button>
               ))}
             </div>

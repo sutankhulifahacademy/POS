@@ -26,6 +26,10 @@ class SaleCreate(BaseModel):
 
     amount_paid: float
 
+    # Sales channel + price type for additional pricing
+    sales_channel: Optional[str] = "offline"   # offline, online
+    price_type: Optional[str] = "ecceran"      # ecceran, reseller, partai, online
+
     # =========================
     # CARD
     # =========================

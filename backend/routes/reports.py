@@ -540,6 +540,52 @@ async def report_sales(
         for row in src_rows
     ]
 
+    # ---- BY SALES CHANNEL ----
+    ch_rows = await q_all(f"""
+        SELECT
+            COALESCE(sales_channel, 'offline') AS sales_channel,
+            COUNT(*) AS count,
+            COALESCE(SUM(total), 0) AS total
+        FROM sales
+        WHERE created_at >= :start_at
+          AND created_at < :end_at
+          {o_filter}
+        GROUP BY sales_channel
+        ORDER BY total DESC
+    """, **params)
+
+    by_channel = [
+        {
+            "channel": row["sales_channel"],
+            "count": int(row["count"] or 0),
+            "total": float(row["total"] or 0),
+        }
+        for row in ch_rows
+    ]
+
+    # ---- BY PRICE TYPE ----
+    pt_rows = await q_all(f"""
+        SELECT
+            COALESCE(price_type, 'ecceran') AS price_type,
+            COUNT(*) AS count,
+            COALESCE(SUM(total), 0) AS total
+        FROM sales
+        WHERE created_at >= :start_at
+          AND created_at < :end_at
+          {o_filter}
+        GROUP BY price_type
+        ORDER BY total DESC
+    """, **params)
+
+    by_price_type = [
+        {
+            "price_type": row["price_type"],
+            "count": int(row["count"] or 0),
+            "total": float(row["total"] or 0),
+        }
+        for row in pt_rows
+    ]
+
     # ---- BY CATEGORY ----
     cat_rows = await q_all(f"""
         SELECT
@@ -783,6 +829,8 @@ async def report_sales(
         },
         "by_payment_method": by_payment_method,
         "by_source": by_source,
+        "by_channel": by_channel,
+        "by_price_type": by_price_type,
         "by_category": by_category,
         "by_product": by_product,
         "by_outlet": by_outlet,
