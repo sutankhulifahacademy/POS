@@ -34,6 +34,9 @@ import Coupons from "./pages/Coupons";
 import Schedules from "./pages/Schedules";
 import Payroll from "./pages/Payroll";
 import MobileDashboard from "./pages/MobileDashboard";
+import OnlinePlatforms from "./pages/OnlinePlatforms";
+import OnlineOrders from "./pages/OnlineOrders";
+import OnlineProfit from "./pages/OnlineProfit";
 
 function Protected({ children, path }) {
   const { user, loading } = useAuth();
@@ -97,6 +100,9 @@ function App() {
             <Route path="/coupons" element={<Protected path="/coupons"><Coupons /></Protected>} />
             <Route path="/schedules" element={<Protected path="/schedules"><Schedules /></Protected>} />
             <Route path="/payroll" element={<Protected path="/payroll"><Payroll /></Protected>} />
+            <Route path="/online-platforms" element={<Protected path="/online-platforms"><OnlinePlatforms /></Protected>} />
+            <Route path="/online-orders" element={<Protected path="/online-orders"><OnlineOrders /></Protected>} />
+            <Route path="/online-profit" element={<Protected path="/online-profit"><OnlineProfit /></Protected>} />
             <Route path="/mobile-dashboard" element={<Protected path="/mobile-dashboard"><MobileDashboard /></Protected>} />
           </Route>
           <Route path="/pos" element={<Protected><POS /></Protected>} />

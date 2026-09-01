@@ -791,6 +791,118 @@ CREATE INDEX IF NOT EXISTS idx_tables_outlet ON tables(outlet_id, status);
 CREATE INDEX IF NOT EXISTS idx_stock_movements_outlet ON stock_movements(outlet_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_payment_accounts_outlet ON payment_accounts(outlet_id);
 
+-- =============================================
+-- ONLINE PLATFORMS (GrabFood, GoFood, ShopeeFood)
+-- =============================================
+CREATE TABLE IF NOT EXISTS online_platforms (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    code VARCHAR(30) UNIQUE NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    icon VARCHAR(50) DEFAULT 'Smartphone',
+    color VARCHAR(20) DEFAULT '#00B14F',
+    sort_order INTEGER DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- =============================================
+-- PLATFORM FEE CONFIGS (effective dates + outlet scope)
+-- =============================================
+CREATE TABLE IF NOT EXISTS platform_fee_configs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    platform_id UUID NOT NULL REFERENCES online_platforms(id) ON DELETE CASCADE,
+    outlet_id UUID,
+    commission_pct NUMERIC(5,2) DEFAULT 0,
+    fixed_fee NUMERIC(12,2) DEFAULT 0,
+    tax_on_fee_pct NUMERIC(5,2) DEFAULT 0,
+    promo_merchant_pct NUMERIC(5,2) DEFAULT 0,
+    promo_platform_pct NUMERIC(5,2) DEFAULT 0,
+    advertising_fee NUMERIC(12,2) DEFAULT 0,
+    other_fee_pct NUMERIC(5,2) DEFAULT 0,
+    other_fixed_fee NUMERIC(12,2) DEFAULT 0,
+    fee_calc_base VARCHAR(20) DEFAULT 'gross',
+    effective_date DATE NOT NULL,
+    end_date DATE,
+    is_active BOOLEAN DEFAULT TRUE,
+    note TEXT DEFAULT '',
+    created_by UUID,
+    created_by_name VARCHAR(255),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_pfc_platform ON platform_fee_configs(platform_id);
+CREATE INDEX IF NOT EXISTS idx_pfc_outlet ON platform_fee_configs(outlet_id);
+CREATE INDEX IF NOT EXISTS idx_pfc_effective ON platform_fee_configs(effective_date, end_date);
+
+-- =============================================
+-- ONLINE ORDERS (with fee breakdown + settlement)
+-- =============================================
+CREATE TABLE IF NOT EXISTS online_orders (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    order_no VARCHAR(50) UNIQUE NOT NULL,
+    platform_id UUID NOT NULL REFERENCES online_platforms(id) ON DELETE RESTRICT,
+    platform_name VARCHAR(100),
+    outlet_id UUID,
+    outlet_name VARCHAR(255),
+    gross_sales NUMERIC(14,2) NOT NULL DEFAULT 0,
+    total_quantity INTEGER NOT NULL DEFAULT 0,
+    commission_amount NUMERIC(14,2) DEFAULT 0,
+    fixed_fee NUMERIC(14,2) DEFAULT 0,
+    tax_on_fee NUMERIC(14,2) DEFAULT 0,
+    merchant_promo NUMERIC(14,2) DEFAULT 0,
+    platform_promo NUMERIC(14,2) DEFAULT 0,
+    advertising_fee NUMERIC(14,2) DEFAULT 0,
+    other_fee NUMERIC(14,2) DEFAULT 0,
+    total_deduction NUMERIC(14,2) DEFAULT 0,
+    expected_settlement NUMERIC(14,2) DEFAULT 0,
+    actual_settlement NUMERIC(14,2),
+    settlement_variance NUMERIC(14,2),
+    settlement_status VARCHAR(20) DEFAULT 'pending',
+    settlement_date DATE,
+    settlement_note TEXT DEFAULT '',
+    total_cogs NUMERIC(14,2) DEFAULT 0,
+    gross_profit NUMERIC(14,2) DEFAULT 0,
+    profit_margin NUMERIC(5,2) DEFAULT 0,
+    effective_fee_pct NUMERIC(5,2) DEFAULT 0,
+    fee_config_id UUID,
+    fee_config_snapshot JSONB DEFAULT '{}'::jsonb,
+    customer_name VARCHAR(255),
+    platform_order_ref VARCHAR(100),
+    note TEXT DEFAULT '',
+    status VARCHAR(20) DEFAULT 'completed',
+    created_by UUID,
+    created_by_name VARCHAR(255),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_oo_platform ON online_orders(platform_id);
+CREATE INDEX IF NOT EXISTS idx_oo_outlet ON online_orders(outlet_id);
+CREATE INDEX IF NOT EXISTS idx_oo_status ON online_orders(status);
+CREATE INDEX IF NOT EXISTS idx_oo_created ON online_orders(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_oo_settlement_status ON online_orders(settlement_status);
+
+-- =============================================
+-- ONLINE ORDER ITEMS
+-- =============================================
+CREATE TABLE IF NOT EXISTS online_order_items (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    order_id UUID NOT NULL REFERENCES online_orders(id) ON DELETE CASCADE,
+    product_id UUID,
+    product_name VARCHAR(255) NOT NULL,
+    variant_name VARCHAR(255),
+    sku VARCHAR(100),
+    online_price NUMERIC(12,2) NOT NULL DEFAULT 0,
+    cost NUMERIC(12,2) DEFAULT 0,
+    quantity INTEGER NOT NULL DEFAULT 1,
+    gross_sales NUMERIC(14,2) DEFAULT 0,
+    cogs NUMERIC(14,2) DEFAULT 0,
+    profit NUMERIC(14,2) DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_ooi_order ON online_order_items(order_id);
+CREATE INDEX IF NOT EXISTS idx_ooi_product ON online_order_items(product_id);
+
 -- ==========================================================================
 -- END OF SCHEMA
 -- ==========================================================================

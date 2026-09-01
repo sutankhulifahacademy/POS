@@ -56,6 +56,9 @@ from routes.kds import router as kds_router
 from routes.coupons import router as coupons_router
 from routes.schedules import router as schedules_router
 from routes.payroll import router as payroll_router
+from routes.online_platforms import router as online_platforms_router
+from routes.online_orders import router as online_orders_router
+from routes.online_profit import router as online_profit_router
 
 # ============ APP ============
 app = FastAPI(title="Sutan Khulifah POS API (PostgreSQL)")
@@ -101,6 +104,9 @@ app.include_router(kds_router, prefix="/api")
 app.include_router(coupons_router, prefix="/api")
 app.include_router(schedules_router, prefix="/api")
 app.include_router(payroll_router, prefix="/api")
+app.include_router(online_platforms_router, prefix="/api")
+app.include_router(online_orders_router, prefix="/api")
+app.include_router(online_profit_router, prefix="/api")
 
 # ============ CORS ============
 app.add_middleware(

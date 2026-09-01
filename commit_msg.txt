@@ -1,15 +1,19 @@
-feat: product additional pricing (Eceran, Reseller, Partai, Online) + SQL schema consolidation
+feat: online marketplace profit analysis (GrabFood, GoFood, ShopeeFood)
 
-- Add product_type, retail_price, reseller_price, wholesale_price, online_price to products
-- Add sales_channel (offline/online) and price_type (ecceran/reseller/partai/online) to sales
-- Backend price resolver: ONLINE channel always uses online_price, OFFLINE uses price_type
-- Existing product.price is IMMUTABLE - additional pricing is additive, not replacement
-- Sales items store price snapshot (resolved by backend, not frontend)
-- Frontend: Product form with Additional Pricing section + variant-level pricing
-- Frontend: POS channel + price type selector with live price resolution
-- Frontend: Reports with By Channel and By Price Type breakdowns
-- Consolidate all CREATE TABLE into postgres_schema.sql, remove 6 migration files
-- Acceptance tests: 7/7 passed, Regression: 110 + 66 passed, 0 failed
+- New tables: online_platforms, platform_fee_configs, online_orders, online_order_items
+- Platform fee configs with effective dates + outlet scope (history preserved, not overwritten)
+- Settlement calculation engine: commission, fixed fee, tax, promo, advertising, other fee
+- Fee components are configurable per platform + outlet + effective date (NOT hardcoded)
+- Online orders with full settlement breakdown + COGS + gross profit after platform
+- Settlement reconciliation: expected vs actual, variance tracking (matched/variance)
+- Break-even / recommended price calculator (simulation, does NOT auto-change prices)
+- Online profitability report: filter by date/outlet/platform, group by platform/outlet/product/daily/weekly/monthly
+- AI analysis: platform comparison, fee trends, product warnings, recommendations
+- AI distinguishes ACTUAL DATA vs ESTIMATED/MARKET BENCHMARK (no hallucination)
+- Market benchmarks labeled as ESTIMATED, actual merchant config is source of truth
+- Frontend: OnlinePlatforms (fee config CRUD), OnlineOrders (create+detail+reconcile), OnlineProfit (report+AI)
+- Existing product.price, POS, sales, and transactions NOT modified (additive layer)
+- Acceptance tests: 11/11 passed, Regression: 110 + 7 passed, 0 failed
 
 Generated with [Devin](https://devin.ai)
 

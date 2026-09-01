@@ -77,3 +77,22 @@ async def ai_forecast(
     from services.ai_service import ai_forecast as _forecast
     result = await _forecast(user, outlet_id, days)
     return result
+
+
+# ============ AI ONLINE PROFITABILITY ANALYSIS ============
+@router.get("/ai/online-profit")
+async def ai_online_profit(
+    outlet_id: Optional[str] = None,
+    target_margin: float = Query(25.0, ge=0, le=100),
+    user=Depends(require_permission("ai", "query")),
+):
+    """
+    AI Online Profitability Analysis — platform comparison, fee trends,
+    product warnings, recommendations.
+
+    Distinguishes ACTUAL DATA vs ESTIMATED/MARKET BENCHMARK.
+    No hallucination — all numbers from database.
+    """
+    from services.online_ai_service import ai_online_analysis
+    result = await ai_online_analysis(user, outlet_id, target_margin)
+    return result
