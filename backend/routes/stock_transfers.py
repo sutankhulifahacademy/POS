@@ -2,8 +2,10 @@ import json
 from typing import Optional
 from routes.deps import *
 from routes.inventory import _adjust_outlet_stock
+from services.inventory_service import _adjust_outlet_stock_tx
 from routes.audit_logs import log_action
 from routes.alerts import create_alert
+from sqlalchemy import text
 
 router = APIRouter()
 
@@ -130,6 +132,10 @@ async def create_transfer(body: TransferIn, user=Depends(require_permission("tra
     if not body.items:
         raise HTTPException(400, "Item tidak boleh kosong")
 
+    # Validate outlet access for both source and destination
+    validate_outlet_access(user, body.from_outlet_id)
+    validate_outlet_access(user, body.to_outlet_id)
+
     # Validate stock availability at source
     for it in body.items:
         p = await q_one("SELECT * FROM products WHERE id=:id", id=it.product_id)
@@ -151,42 +157,60 @@ async def create_transfer(body: TransferIn, user=Depends(require_permission("tra
     tno = f"TRF-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{str(new_id())[:8]}"
     tid = new_id()
     total_qty = sum(i.quantity for i in body.items)
+    dno = f"SJ-{datetime.now(timezone.utc).strftime('%Y%m%d')}-{str(new_id())[:4].upper()}"
+    dnid = new_id()
 
-    # Create transfer with status='pending' (NOT completed)
-    await q_exec("""INSERT INTO stock_transfers (id, transfer_no, from_outlet_id, to_outlet_id, from_outlet_name,
+    # Atomic transaction: transfer record, items, stock deduction, delivery note
+    async with transaction() as session:
+        # Create transfer with status='pending' (NOT completed)
+        await session.execute(
+            text("""INSERT INTO stock_transfers (id, transfer_no, from_outlet_id, to_outlet_id, from_outlet_name,
                     to_outlet_name, items, total_quantity, note, status, created_by, created_by_name, created_at)
-                    VALUES (:id, :tno, :fo, :to, :fn, :tn, CAST(:it AS jsonb), :tq, :note, 'pending', :cb, :cbn, NOW())""",
-                 id=tid, tno=tno, fo=_u(body.from_outlet_id), to=_u(body.to_outlet_id),
-                 fn=body.from_outlet_name, tn=body.to_outlet_name, it=json.dumps([i.model_dump() for i in body.items]),
-                 tq=total_qty, note=body.note or "", cb=user["id"], cbn=user.get("name", ""))
+                    VALUES (:id, :tno, :fo, :to, :fn, :tn, CAST(:it AS jsonb), :tq, :note, 'pending', :cb, :cbn, NOW())"""),
+            {"id": tid, "tno": tno, "fo": _u(body.from_outlet_id), "to": _u(body.to_outlet_id),
+             "fn": body.from_outlet_name, "tn": body.to_outlet_name, "it": json.dumps([i.model_dump() for i in body.items]),
+             "tq": total_qty, "note": body.note or "", "cb": user["id"], "cbn": user.get("name", "")},
+        )
 
-    # Create transfer_items (one row per item)
-    for it in body.items:
-        await q_exec("""INSERT INTO transfer_items (id, transfer_id, product_id, product_name, qty_sent, status, created_at)
-                        VALUES (:id, :tid, :pid, :pn, :qs, 'pending', NOW())""",
-                     id=new_id(), tid=tid, pid=_u(it.product_id), pn=it.name, qs=it.quantity)
+        # Create transfer_items + deduct source stock + record movements
+        for it in body.items:
+            await session.execute(
+                text("""INSERT INTO transfer_items (id, transfer_id, product_id, product_name, qty_sent, status, created_at)
+                        VALUES (:id, :tid, :pid, :pn, :qs, 'pending', NOW())"""),
+                {"id": new_id(), "tid": tid, "pid": _u(it.product_id), "pn": it.name, "qs": it.quantity},
+            )
 
-        # Deduct stock from SOURCE only (transfer_out)
-        await q_exec("""INSERT INTO stock_movements (id, product_id, product_name, delta, reason, note, outlet_id, user_id, created_at)
-                        VALUES (:id, :pid, :pn, :d, :r, :note, :oid, :u, NOW())""",
-                     id=new_id(), pid=_u(it.product_id), pn=it.name, d=-it.quantity,
-                     r="transfer_out", note=f"{tno} → {body.to_outlet_name}", oid=_u(body.from_outlet_id), u=user["id"])
-        await _adjust_outlet_stock(it.product_id, body.from_outlet_id, -it.quantity)
+            # Deduct stock from SOURCE only (transfer_out) — transaction-aware
+            affected = await _adjust_outlet_stock_tx(session, it.product_id, body.from_outlet_id, -it.quantity)
+            if affected == 0:
+                raise HTTPException(400, f"Stok {it.name} tidak cukup di outlet asal untuk transfer")
 
-    # Audit log
+            # Record stock movement
+            await session.execute(
+                text("""INSERT INTO stock_movements (id, product_id, product_name, delta, reason, note, outlet_id, user_id, created_at)
+                        VALUES (:id, :pid, :pn, :d, :r, :note, :oid, :u, NOW())"""),
+                {"id": new_id(), "pid": _u(it.product_id), "pn": it.name, "d": -it.quantity,
+                 "r": "transfer_out", "note": f"{tno} → {body.to_outlet_name}",
+                 "oid": _u(body.from_outlet_id), "u": user["id"]},
+            )
+
+        # Auto-generate delivery note (Surat Jalan) in same transaction
+        await session.execute(
+            text("""INSERT INTO delivery_notes (id, delivery_no, transfer_id, status, generated_by, generated_by_name, generated_at, created_at)
+                    VALUES (:id, :dno, :tid, 'generated', :gb, :gbn, NOW(), NOW())"""),
+            {"id": dnid, "dno": dno, "tid": tid, "gb": user["id"], "gbn": user.get("name", "")},
+        )
+        await session.execute(
+            text("UPDATE stock_transfers SET delivery_note_id = :dnid WHERE id = :tid"),
+            {"dnid": dnid, "tid": tid},
+        )
+
+    # Audit log + alerts (non-critical, outside transaction)
     await log_action(user, "TRANSFER_CREATED", "stock_transfer", entity_id=tid,
                      outlet_id=body.from_outlet_id,
                      new_value={"transfer_no": tno, "from": body.from_outlet_name,
                                 "to": body.to_outlet_name, "items": [i.model_dump() for i in body.items],
                                 "note": body.note or ""})
-
-    # Auto-generate delivery note (Surat Jalan)
-    dno = f"SJ-{datetime.now(timezone.utc).strftime('%Y%m%d')}-{str(new_id())[:4].upper()}"
-    dnid = new_id()
-    await q_exec("""INSERT INTO delivery_notes (id, delivery_no, transfer_id, status, generated_by, generated_by_name, generated_at, created_at)
-                    VALUES (:id, :dno, :tid, 'generated', :gb, :gbn, NOW(), NOW())""",
-                 id=dnid, dno=dno, tid=tid, gb=user["id"], gbn=user.get("name", ""))
-    await q_exec("UPDATE stock_transfers SET delivery_note_id = :dnid WHERE id = :tid", dnid=dnid, tid=tid)
     await log_action(user, "DELIVERY_NOTE_GENERATED", "delivery_note", entity_id=dnid,
                      outlet_id=body.from_outlet_id,
                      new_value={"delivery_no": dno, "transfer_no": tno})
@@ -239,7 +263,13 @@ async def check_transfer_item(item_id: str, body: dict, user=Depends(require_rol
 
 @router.post("/stock-transfers/items/{item_id}/approve")
 async def approve_transfer_item(item_id: str, user=Depends(require_role("owner", "manager"))):
-    """Approve item: add stock to destination outlet + stock movement + audit log."""
+    """Approve item: add stock to destination outlet + stock movement + audit log.
+
+    Race-condition safe: status transition is guarded by an atomic
+    conditional UPDATE inside a single transaction. Previously two
+    concurrent approvals could both pass the in-Python status check
+    and double-increment destination stock.
+    """
     item = await q_one("""SELECT ti.*, t.from_outlet_id, t.to_outlet_id, t.transfer_no,
                           t.from_outlet_name, t.to_outlet_name
                           FROM transfer_items ti JOIN stock_transfers t ON t.id = ti.transfer_id
@@ -267,30 +297,65 @@ async def approve_transfer_item(item_id: str, user=Depends(require_role("owner",
 
     qty = item["qty_received"]
 
-    # Atomic: update item + stock movement + inventory + audit log
-    await q_exec("""UPDATE transfer_items SET status = 'approved', approved_by = :ab,
-                    approved_by_name = :abn, approved_at = NOW() WHERE id = :id""",
-                 ab=user["id"], abn=user.get("name", ""), id=item_id)
+    # =========================================================
+    # ATOMIC TRANSACTION
+    # =========================================================
+    # Status claim + stock movement + outlet stock increment +
+    # transfer status update must all commit together. The
+    # conditional UPDATE on transfer_items.status prevents
+    # double-approve at the DB level even under concurrency.
+    # =========================================================
+    from database import transaction, execute as _tx_execute
+    async with transaction() as session:
+        claim = await _tx_execute(
+            session,
+            """UPDATE transfer_items
+               SET status = 'approved', approved_by = :ab,
+                   approved_by_name = :abn, approved_at = NOW()
+               WHERE id = :id AND status IN ('pending', 'checked')""",
+            ab=user["id"], abn=user.get("name", ""), id=item_id,
+        )
+        if claim.rowcount == 0:
+            raise HTTPException(400, "Item sudah di-approve/reject oleh user lain (race condition dicegah)")
 
-    # Stock movement: transfer_in to destination
-    await q_exec("""INSERT INTO stock_movements (id, product_id, product_name, delta, reason, note, outlet_id, user_id, created_at, reference_no, approved_by)
-                    VALUES (:id, :pid, :pn, :d, :r, :note, :oid, :u, NOW(), :ref, :ab)""",
-                 id=new_id(), pid=item["product_id"], pn=item["product_name"], d=qty,
-                 r="transfer_in", note=f"{item['transfer_no']} ← {item['from_outlet_name']}",
-                 oid=item["to_outlet_id"], u=user["id"], ref=item["transfer_no"], ab=user["id"])
+        # Stock movement: transfer_in to destination
+        await _tx_execute(
+            session,
+            """INSERT INTO stock_movements (id, product_id, product_name, delta, reason, note, outlet_id, user_id, created_at, reference_no, approved_by)
+               VALUES (:id, :pid, :pn, :d, :r, :note, :oid, :u, NOW(), :ref, :ab)""",
+            id=new_id(), pid=item["product_id"], pn=item["product_name"], d=qty,
+            r="transfer_in", note=f"{item['transfer_no']} ← {item['from_outlet_name']}",
+            oid=item["to_outlet_id"], u=user["id"], ref=item["transfer_no"], ab=user["id"],
+        )
 
-    # Add stock to destination
-    await _adjust_outlet_stock(str(item["product_id"]), str(item["to_outlet_id"]), qty)
+        # Atomic outlet stock upsert (safe under concurrency)
+        await _tx_execute(
+            session,
+            """
+            INSERT INTO outlet_stocks (product_id, outlet_id, quantity, updated_at)
+            VALUES (:p, :o, :q, NOW())
+            ON CONFLICT (product_id, outlet_id)
+            DO UPDATE SET quantity = outlet_stocks.quantity + EXCLUDED.quantity,
+                          updated_at = NOW()
+            """,
+            p=str(item["product_id"]), o=str(item["to_outlet_id"]), q=qty,
+        )
 
-    # Update transfer status
-    await _update_transfer_status(item["transfer_id"])
+    # Update transfer status (post-tx; non-critical if it fails)
+    try:
+        await _update_transfer_status(item["transfer_id"])
+    except Exception:
+        pass
 
-    # Audit log
-    await log_action(user, "TRANSFER_ITEM_APPROVED", "transfer_item", entity_id=item_id,
-                     outlet_id=item["to_outlet_id"],
-                     new_value={"transfer_no": item["transfer_no"], "product": item["product_name"],
-                                "qty_sent": item["qty_sent"], "qty_received": qty,
-                                "qty_to_inventory": qty, "approved_by": user.get("name", "")})
+    # Audit log (post-tx; non-critical)
+    try:
+        await log_action(user, "TRANSFER_ITEM_APPROVED", "transfer_item", entity_id=item_id,
+                         outlet_id=item["to_outlet_id"],
+                         new_value={"transfer_no": item["transfer_no"], "product": item["product_name"],
+                                    "qty_sent": item["qty_sent"], "qty_received": qty,
+                                    "qty_to_inventory": qty, "approved_by": user.get("name", "")})
+    except Exception:
+        pass
 
     return {"ok": True, "qty_added": qty}
 
@@ -319,15 +384,23 @@ async def reject_transfer_item(item_id: str, body: dict, user=Depends(require_ro
     qty_received = item["qty_received"] if item["qty_received"] is not None else 0
     difference = qty_received - item["qty_sent"]
 
-    await q_exec("""UPDATE transfer_items SET status = 'rejected', note = :note,
-                    qty_received = :qr, checked_by = :cb, checked_by_name = :cbn, checked_at = NOW(),
-                    approved_by = :ab, approved_by_name = :abn, approved_at = NOW()
-                    WHERE id = :id""",
-                 note=note, qr=qty_received, cb=user["id"], cbn=user.get("name", ""),
-                 ab=user["id"], abn=user.get("name", ""), id=item_id)
+    # Atomic conditional update — prevents double-reject race
+    r = await q_exec(
+        """UPDATE transfer_items SET status = 'rejected', note = :note,
+            qty_received = :qr, checked_by = :cb, checked_by_name = :cbn, checked_at = NOW(),
+            approved_by = :ab, approved_by_name = :abn, approved_at = NOW()
+           WHERE id = :id AND status NOT IN ('approved', 'rejected')""",
+        note=note, qr=qty_received, cb=user["id"], cbn=user.get("name", ""),
+        ab=user["id"], abn=user.get("name", ""), id=item_id,
+    )
+    if r == 0:
+        raise HTTPException(400, "Item sudah di-approve/reject oleh user lain")
 
     # Update transfer status
-    await _update_transfer_status(item["transfer_id"])
+    try:
+        await _update_transfer_status(item["transfer_id"])
+    except Exception:
+        pass
 
     # Audit log
     await log_action(user, "TRANSFER_ITEM_REJECTED", "transfer_item", entity_id=item_id,
@@ -438,15 +511,21 @@ async def ship_transfer(transfer_id: str, user=Depends(require_role("owner", "ma
     if transfer["status"] in ("completed",):
         raise HTTPException(400, "Transfer sudah selesai")
 
-    await q_exec("""UPDATE stock_transfers SET status = 'shipped', shipped_by = :sb, shipped_by_name = :sbn,
-                    shipped_at = NOW(), updated_at = NOW() WHERE id = :id""",
-                 sb=user["id"], sbn=user.get("name", ""), id=transfer_id)
+    # Atomic conditional update — prevents double-ship race
+    r = await q_exec(
+        """UPDATE stock_transfers SET status = 'shipped', shipped_by = :sb, shipped_by_name = :sbn,
+            shipped_at = NOW(), updated_at = NOW()
+           WHERE id = :id AND status NOT IN ('shipped', 'completed')""",
+        sb=user["id"], sbn=user.get("name", ""), id=transfer_id,
+    )
+    if r == 0:
+        raise HTTPException(400, "Transfer status sudah berubah (kemungkinan sedang diproses)")
 
     # Update delivery note if exists
     dn = await q_one("SELECT id FROM delivery_notes WHERE transfer_id = :tid", tid=transfer_id)
     if dn:
         await q_exec("""UPDATE delivery_notes SET status = 'shipped', shipped_by = :sb, shipped_by_name = :sbn, shipped_at = NOW()
-                        WHERE id = :id""",
+                        WHERE id = :id AND status != 'shipped'""",
                      sb=user["id"], sbn=user.get("name", ""), id=dn["id"])
 
     await log_action(user, "TRANSFER_SENT", "stock_transfer", entity_id=transfer_id,

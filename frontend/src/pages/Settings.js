@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import api from "../lib/api";
+import api, { formatApiErrorDetail } from "../lib/api";
 import PageHeader from "../components/PageHeader";
 import { toast } from "sonner";
 import { Plus, Trash2, RotateCcw, Upload } from "lucide-react";
@@ -38,9 +38,13 @@ export default function Settings() {
   };
 
   const loadAll = async () => {
-    const [b, c] = await Promise.all([api.get("/business"), api.get("/categories")]);
-    if (b.data) setBusiness({ ...DEFAULT_COLORS, ...b.data });
-    setCategories(c.data);
+    try {
+      const [b, c] = await Promise.all([api.get("/business"), api.get("/categories")]);
+      if (b.data) setBusiness({ ...DEFAULT_COLORS, ...b.data });
+      setCategories(c.data);
+    } catch (e) {
+      toast.error(formatApiErrorDetail(e.response?.data?.detail) || "Gagal memuat data");
+    }
   };
   useEffect(() => { loadAll(); }, []);
 

@@ -69,6 +69,23 @@ async def create_user(body: UserCreate, user=Depends(require_permission("users",
 
 @router.put("/users/{user_id}")
 async def update_user(user_id: str, body: UserUpdate, user=Depends(require_permission("users", "update"))):
+    # Prevent self-role-change (privilege escalation/lockout)
+    if str(user_id) == str(user["id"]) and body.role is not None and body.role != user["role"]:
+        raise HTTPException(403, "Tidak bisa mengubah peran sendiri")
+
+    # Check target user exists and get their role
+    target = await q_one("SELECT role FROM users WHERE id=:id", id=user_id)
+    if not target:
+        raise HTTPException(404, "User not found")
+
+    # Non-owners cannot modify owner accounts
+    if target["role"] == "owner" and user["role"] != "owner":
+        raise HTTPException(403, "Hanya owner yang bisa memodifikasi akun owner")
+
+    # Non-owners cannot deactivate owners
+    if body.is_active is False and target["role"] == "owner" and user["role"] != "owner":
+        raise HTTPException(403, "Tidak bisa menonaktifkan akun owner")
+
     body_dict = body.model_dump()
     outlet_ids = body_dict.pop("outlet_ids", None)
     primary_outlet_id = body_dict.pop("primary_outlet_id", None)
@@ -82,6 +99,11 @@ async def update_user(user_id: str, body: UserUpdate, user=Depends(require_permi
         if r == 0: raise HTTPException(404, "User not found")
     # Update outlet assignments if provided
     if outlet_ids is not None:
+        # Validate that the acting user has access to the outlets being assigned
+        if user["role"] != "owner":
+            for oid in outlet_ids:
+                if str(oid) not in user.get("outlet_ids", []):
+                    raise HTTPException(403, f"Tidak ada akses ke outlet {oid}")
         await q_exec("DELETE FROM user_outlet_access WHERE user_id = :uid", uid=user_id)
         if outlet_ids:
             primary = primary_outlet_id or outlet_ids[0]
@@ -95,6 +117,13 @@ async def update_user(user_id: str, body: UserUpdate, user=Depends(require_permi
 
 @router.post("/users/{user_id}/reset-password")
 async def reset_pw(user_id: str, body: PasswordReset, user=Depends(require_permission("users", "update"))):
+    # Check target user exists and get their role
+    target = await q_one("SELECT role FROM users WHERE id=:id", id=user_id)
+    if not target:
+        raise HTTPException(404, "User not found")
+    # Non-owners cannot reset owner passwords
+    if target["role"] == "owner" and user["role"] != "owner":
+        raise HTTPException(403, "Hanya owner yang bisa reset password owner")
     if len(body.new_password) < 6: raise HTTPException(400, "Password minimal 6 karakter")
     r = await q_exec("UPDATE users SET password_hash=:h, updated_at=NOW() WHERE id=:id",
                      h=hash_password(body.new_password), id=user_id)

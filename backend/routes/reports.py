@@ -172,7 +172,7 @@ async def report_dashboard(
         query_params["outlet_id"] = outlet_id
 
     # ---------------------------------------------------------
-    # SUMMARY
+    # SUMMARY — exclude voided sales
     # ---------------------------------------------------------
     stats = await q_one(f"""
         SELECT
@@ -181,6 +181,7 @@ async def report_dashboard(
         FROM sales
         WHERE created_at >= :start_at
           AND created_at < :end_at
+          AND (status IS NULL OR status != 'voided')
           {outlet_clause}
     """,
         **query_params
@@ -201,6 +202,7 @@ async def report_dashboard(
              jsonb_array_elements(items) elem
         WHERE created_at >= :start_at
           AND created_at < :end_at
+          AND (status IS NULL OR status != 'voided')
           {outlet_clause}
     """,
         **query_params
@@ -221,8 +223,17 @@ async def report_dashboard(
 
     # ---------------------------------------------------------
     # LOW STOCK — use outlet_stocks when outlet_id specified
+    # Count all low stock items, but only display top 10
     # ---------------------------------------------------------
     if outlet_id:
+        low_stock_count = await q_one("""
+            SELECT COUNT(*) AS c
+            FROM products p
+            JOIN outlet_stocks os ON os.product_id = p.id
+            WHERE os.outlet_id = :outlet_id
+              AND os.quantity <= p.low_stock_threshold
+              AND p.is_active = true
+        """, outlet_id=outlet_id)
         low_stock = await q_all("""
             SELECT p.id, p.name, p.sku, p.low_stock_threshold,
                    os.quantity AS stock, o.name AS outlet_name
@@ -231,10 +242,18 @@ async def report_dashboard(
             JOIN outlets o ON o.id = os.outlet_id
             WHERE os.outlet_id = :outlet_id
               AND os.quantity <= p.low_stock_threshold
+              AND p.is_active = true
             ORDER BY os.quantity ASC
             LIMIT 10
         """, outlet_id=outlet_id)
     else:
+        low_stock_count = await q_one("""
+            SELECT COUNT(*) AS c
+            FROM products p
+            LEFT JOIN outlet_stocks os ON os.product_id = p.id
+            WHERE COALESCE(os.quantity, p.stock) <= p.low_stock_threshold
+              AND p.is_active = true
+        """)
         low_stock = await q_all("""
             SELECT p.id, p.name, p.sku, p.low_stock_threshold,
                    COALESCE(os.quantity, p.stock) AS stock, o.name AS outlet_name
@@ -242,6 +261,7 @@ async def report_dashboard(
             LEFT JOIN outlet_stocks os ON os.product_id = p.id
             LEFT JOIN outlets o ON o.id = os.outlet_id
             WHERE COALESCE(os.quantity, p.stock) <= p.low_stock_threshold
+              AND p.is_active = true
             ORDER BY COALESCE(os.quantity, p.stock) ASC
             LIMIT 10
         """)
@@ -261,6 +281,7 @@ async def report_dashboard(
             FROM sales
             WHERE created_at >= :start_at
               AND created_at < :end_at
+              AND (status IS NULL OR status != 'voided')
               {outlet_clause}
             GROUP BY bucket
             ORDER BY bucket
@@ -287,6 +308,7 @@ async def report_dashboard(
             FROM sales
             WHERE created_at >= :start_at
               AND created_at < :end_at
+              AND (status IS NULL OR status != 'voided')
               {outlet_clause}
             GROUP BY bucket
             ORDER BY bucket
@@ -315,6 +337,7 @@ async def report_dashboard(
             FROM sales
             WHERE created_at >= :start_at
               AND created_at < :end_at
+              AND (status IS NULL OR status != 'voided')
               {outlet_clause}
             GROUP BY bucket
             ORDER BY bucket
@@ -377,6 +400,7 @@ async def report_dashboard(
 
         WHERE created_at >= :start_at
           AND created_at < :end_at
+          AND (status IS NULL OR status != 'voided')
           {outlet_clause}
 
         GROUP BY
@@ -404,6 +428,7 @@ async def report_dashboard(
             LEFT JOIN sales s ON s.outlet_id = o.id
                 AND s.created_at >= :start_at
                 AND s.created_at < :end_at
+                AND (s.status IS NULL OR s.status != 'voided')
             GROUP BY o.id, o.name
             ORDER BY revenue DESC
         """,
@@ -438,7 +463,7 @@ async def report_dashboard(
         "products_count": int(products_count["c"] or 0),
         "customers_count": int(customers_count["c"] or 0),
 
-        "low_stock_count": len(low_stock),
+        "low_stock_count": int(low_stock_count["c"] or 0),
         "low_stock_items": clean_list(low_stock),
 
         "chart": chart,
@@ -473,12 +498,23 @@ async def report_sales(
     params.update(o_params)
 
     # ---- SUMMARY ----
+    # Use separate queries to avoid LEFT JOIN LATERAL inflating COUNT/SUM
     summary = await q_one(f"""
         SELECT
             COALESCE(SUM(total), 0) AS revenue,
             COUNT(*) AS transactions,
             COALESCE(SUM(discount), 0) AS total_discount,
-            COALESCE(SUM(tax), 0) AS total_tax,
+            COALESCE(SUM(tax), 0) AS total_tax
+        FROM sales
+        WHERE created_at >= :start_at
+          AND created_at < :end_at
+          AND (status IS NULL OR status != 'voided')
+          {o_filter}
+    """, **params)
+
+    # Items sold — separate query with LATERAL JOIN (only for quantity sum)
+    items_row = await q_one(f"""
+        SELECT
             COALESCE(
                 SUM(
                     COALESCE((elem->>'quantity')::numeric, 0)
@@ -488,6 +524,7 @@ async def report_sales(
         LEFT JOIN LATERAL jsonb_array_elements(items) elem ON true
         WHERE created_at >= :start_at
           AND created_at < :end_at
+          AND (status IS NULL OR status != 'voided')
           {o_filter}
     """, **params)
 
@@ -503,6 +540,7 @@ async def report_sales(
         FROM sales
         WHERE created_at >= :start_at
           AND created_at < :end_at
+          AND (status IS NULL OR status != 'voided')
           {o_filter}
         GROUP BY payment_method
         ORDER BY total DESC
@@ -526,6 +564,7 @@ async def report_sales(
         FROM sales
         WHERE created_at >= :start_at
           AND created_at < :end_at
+          AND (status IS NULL OR status != 'voided')
           {o_filter}
         GROUP BY source
         ORDER BY total DESC
@@ -549,6 +588,7 @@ async def report_sales(
         FROM sales
         WHERE created_at >= :start_at
           AND created_at < :end_at
+          AND (status IS NULL OR status != 'voided')
           {o_filter}
         GROUP BY sales_channel
         ORDER BY total DESC
@@ -572,6 +612,7 @@ async def report_sales(
         FROM sales
         WHERE created_at >= :start_at
           AND created_at < :end_at
+          AND (status IS NULL OR status != 'voided')
           {o_filter}
         GROUP BY price_type
         ORDER BY total DESC
@@ -605,6 +646,7 @@ async def report_sales(
         LEFT JOIN categories c ON p.category_id = c.id
         WHERE s.created_at >= :start_at
           AND s.created_at < :end_at
+          AND (s.status IS NULL OR s.status != 'voided')
           {o_filter.replace('outlet_id = :outlet_id', 's.outlet_id = :outlet_id')}
         GROUP BY c.name
         ORDER BY revenue DESC
@@ -638,12 +680,12 @@ async def report_sales(
                     CASE
                         WHEN jsonb_typeof(elem->'paket_items') = 'array' AND jsonb_array_length(elem->'paket_items') > 0 THEN
                             COALESCE((
-                                SELECT SUM(COALESCE(pc.cost, 0) * COALESCE((pi->>'quantity')::numeric, 0))
+                                SELECT SUM(COALESCE((pi->>'cost')::numeric, pc.cost, 0) * COALESCE((pi->>'quantity')::numeric, 0))
                                 FROM jsonb_array_elements(elem->'paket_items') pi
                                 LEFT JOIN products pc ON (pi->>'product_id') = pc.id::text
                             ), 0)
                         ELSE
-                            COALESCE(p.cost, 0) * COALESCE((elem->>'quantity')::numeric, 0)
+                            COALESCE((elem->>'cost')::numeric, p.cost, 0) * COALESCE((elem->>'quantity')::numeric, 0)
                     END
                 ), 0
             ) AS cost
@@ -652,6 +694,7 @@ async def report_sales(
         LEFT JOIN products p ON (elem->>'product_id') = p.id::text
         WHERE s.created_at >= :start_at
           AND s.created_at < :end_at
+          AND (s.status IS NULL OR s.status != 'voided')
           {o_filter.replace('outlet_id = :outlet_id', 's.outlet_id = :outlet_id')}
         GROUP BY (elem->>'product_id'), elem->>'name'
         ORDER BY revenue DESC
@@ -681,6 +724,7 @@ async def report_sales(
         LEFT JOIN outlets o ON s.outlet_id = o.id
         WHERE s.created_at >= :start_at
           AND s.created_at < :end_at
+          AND (s.status IS NULL OR s.status != 'voided')
           {o_filter.replace('outlet_id = :outlet_id', 's.outlet_id = :outlet_id')}
         GROUP BY s.outlet_id, o.name
         ORDER BY total DESC
@@ -706,6 +750,7 @@ async def report_sales(
         FROM sales
         WHERE created_at >= :start_at
           AND created_at < :end_at
+          AND (status IS NULL OR status != 'voided')
           {o_filter}
         GROUP BY cashier_id, cashier_name
         ORDER BY total DESC
@@ -731,6 +776,7 @@ async def report_sales(
             FROM sales
             WHERE created_at >= :start_at
               AND created_at < :end_at
+              AND (status IS NULL OR status != 'voided')
               {o_filter}
             GROUP BY bucket
             ORDER BY bucket
@@ -752,6 +798,7 @@ async def report_sales(
             FROM sales
             WHERE created_at >= :start_at
               AND created_at < :end_at
+              AND (status IS NULL OR status != 'voided')
               {o_filter}
             GROUP BY bucket
             ORDER BY bucket
@@ -773,6 +820,7 @@ async def report_sales(
             FROM sales
             WHERE created_at >= :start_at
               AND created_at < :end_at
+              AND (status IS NULL OR status != 'voided')
               {o_filter}
             GROUP BY bucket
             ORDER BY bucket
@@ -796,6 +844,7 @@ async def report_sales(
         FROM sales
         WHERE created_at >= :start_at
           AND created_at < :end_at
+          AND (status IS NULL OR status != 'voided')
           {o_filter}
         ORDER BY created_at DESC
         LIMIT 10
@@ -825,7 +874,7 @@ async def report_sales(
             "avg_transaction": round(revenue / transactions, 2) if transactions else 0.0,
             "total_discount": float(summary["total_discount"] or 0),
             "total_tax": float(summary["total_tax"] or 0),
-            "items_sold": int(summary["items_sold"] or 0),
+            "items_sold": int(items_row["items_sold"] or 0),
         },
         "by_payment_method": by_payment_method,
         "by_source": by_source,
@@ -838,6 +887,153 @@ async def report_sales(
         "chart": chart,
         "recent_transactions": recent_transactions,
     }
+
+
+# ============ 1b. SALES DETAIL POPUP ============
+@router.get("/reports/sales-details")
+async def sales_details(
+    metric: Literal["revenue", "transactions", "avg_transaction", "discount", "tax", "items_sold"] = "revenue",
+    period: Literal["daily", "weekly", "monthly", "yearly", "custom"] = "weekly",
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    outlet_id: Optional[str] = None,
+    user=Depends(require_role("owner", "admin", "manager", "supervisor"))
+):
+    """Return detailed breakdown for a specific Sales report metric card.
+    Supports custom period (date_from/date_to) unlike dashboard-details."""
+    start_local, end_local = _period_range(period, date_from, date_to)
+    o_filter, o_params = _outlet_filter(outlet_id, user)
+
+    params = {"start_at": start_local, "end_at": end_local}
+    params.update(o_params)
+
+    # ============================================================
+    # REVENUE / TRANSACTIONS / AVG_TRANSACTION / DISCOUNT / TAX
+    # — all show transaction-level detail
+    # ============================================================
+    if metric in ("revenue", "transactions", "avg_transaction", "discount", "tax"):
+        # Summary (unlimited, exclude voided)
+        summary = await q_one(f"""
+            SELECT COALESCE(SUM(total), 0) AS total,
+                   COUNT(*) AS count,
+                   COALESCE(SUM(discount), 0) AS total_discount,
+                   COALESCE(SUM(tax), 0) AS total_tax
+            FROM sales
+            WHERE created_at >= :start_at
+              AND created_at < :end_at
+              AND (status IS NULL OR status != 'voided')
+              {o_filter}
+        """, **params)
+
+        # Payment method breakdown
+        method_rows = await q_all(f"""
+            SELECT payment_method, COUNT(*) AS cnt, COALESCE(SUM(total), 0) AS total
+            FROM sales
+            WHERE created_at >= :start_at
+              AND created_at < :end_at
+              AND (status IS NULL OR status != 'voided')
+              {o_filter}
+            GROUP BY payment_method
+            ORDER BY total DESC
+        """, **params)
+        by_method = {r["payment_method"] or "unknown": int(r["cnt"] or 0) for r in method_rows}
+
+        # Transaction list (limited to 100 most recent)
+        rows = await q_all(f"""
+            SELECT s.id, s.invoice_no, s.total, s.discount, s.tax,
+                   s.payment_method, s.source, s.cashier_name,
+                   s.created_at, o.name AS outlet_name, s.status
+            FROM sales s
+            LEFT JOIN outlets o ON o.id = s.outlet_id
+            WHERE s.created_at >= :start_at
+              AND s.created_at < :end_at
+              AND (s.status IS NULL OR s.status != 'voided')
+              {o_filter.replace('outlet_id = :outlet_id', 's.outlet_id = :outlet_id')}
+            ORDER BY s.created_at DESC
+            LIMIT 100
+        """, **params)
+
+        items = [
+            {
+                "invoice_no": r["invoice_no"],
+                "total": float(r["total"] or 0),
+                "discount": float(r["discount"] or 0),
+                "tax": float(r["tax"] or 0),
+                "payment_method": r["payment_method"],
+                "source": r["source"],
+                "cashier_name": r["cashier_name"],
+                "outlet_name": r.get("outlet_name"),
+                "status": r["status"],
+                "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+            }
+            for r in rows
+        ]
+
+        total = float(summary["total"] or 0)
+        count = int(summary["count"] or 0)
+        total_discount = float(summary["total_discount"] or 0)
+        total_tax = float(summary["total_tax"] or 0)
+        avg = round(total / count, 2) if count else 0.0
+
+        return {
+            "metric": metric,
+            "total": total,
+            "count": count,
+            "total_discount": total_discount,
+            "total_tax": total_tax,
+            "avg_transaction": avg,
+            "by_method": by_method,
+            "displayed": len(items),
+            "items": items,
+        }
+
+    # ============================================================
+    # ITEMS SOLD — product breakdown
+    # ============================================================
+    if metric == "items_sold":
+        total_row = await q_one(f"""
+            SELECT COALESCE(SUM((elem->>'quantity')::numeric), 0) AS total_qty
+            FROM sales s,
+                 jsonb_array_elements(s.items) elem
+            WHERE s.created_at >= :start_at
+              AND s.created_at < :end_at
+              AND (s.status IS NULL OR s.status != 'voided')
+              {o_filter.replace('outlet_id = :outlet_id', 's.outlet_id = :outlet_id')}
+        """, **params)
+
+        rows = await q_all(f"""
+            SELECT
+                elem->>'product_id' AS product_id,
+                COALESCE(elem->>'name', 'Produk Tanpa Nama') AS name,
+                COALESCE(SUM((elem->>'quantity')::numeric), 0) AS quantity,
+                COALESCE(SUM((elem->>'price')::numeric * (elem->>'quantity')::numeric), 0) AS revenue
+            FROM sales s,
+                 jsonb_array_elements(s.items) elem
+            WHERE s.created_at >= :start_at
+              AND s.created_at < :end_at
+              AND (s.status IS NULL OR s.status != 'voided')
+              {o_filter.replace('outlet_id = :outlet_id', 's.outlet_id = :outlet_id')}
+            GROUP BY elem->>'product_id', elem->>'name'
+            ORDER BY quantity DESC
+        """, **params)
+
+        items = [
+            {
+                "name": r["name"],
+                "quantity": int(r["quantity"] or 0),
+                "revenue": float(r["revenue"] or 0),
+            }
+            for r in rows
+        ]
+
+        return {
+            "metric": "items_sold",
+            "total_quantity": int(total_row["total_qty"] or 0),
+            "count": len(items),
+            "items": items,
+        }
+
+    return {"metric": metric, "items": []}
 
 
 # ============ 2. PROFIT / LOSS ============
@@ -857,22 +1053,33 @@ async def report_profit_loss(
     params.update(o_params)
 
     # ---- HEADLINE FIGURES ----
+    # Revenue/discount/tax — separate query (no LATERAL JOIN to avoid inflation)
     head = await q_one(f"""
         SELECT
             COALESCE(SUM(s.total), 0) AS revenue,
             COALESCE(SUM(s.discount), 0) AS total_discount,
-            COALESCE(SUM(s.tax), 0) AS total_tax,
+            COALESCE(SUM(s.tax), 0) AS total_tax
+        FROM sales s
+        WHERE s.created_at >= :start_at
+          AND s.created_at < :end_at
+          AND (s.status IS NULL OR s.status != 'voided')
+          {o_filter.replace('outlet_id = :outlet_id', 's.outlet_id = :outlet_id')}
+    """, **params)
+
+    # COGS — separate query with LATERAL JOIN (needed for per-item cost calculation)
+    cogs_row = await q_one(f"""
+        SELECT
             COALESCE(
                 SUM(
                     CASE
                         WHEN jsonb_typeof(elem->'paket_items') = 'array' AND jsonb_array_length(elem->'paket_items') > 0 THEN
                             COALESCE((
-                                SELECT SUM(COALESCE(pc.cost, 0) * COALESCE((pi->>'quantity')::numeric, 0))
+                                SELECT SUM(COALESCE((pi->>'cost')::numeric, pc.cost, 0) * COALESCE((pi->>'quantity')::numeric, 0))
                                 FROM jsonb_array_elements(elem->'paket_items') pi
                                 LEFT JOIN products pc ON (pi->>'product_id') = pc.id::text
                             ), 0)
                         ELSE
-                            COALESCE(p.cost, 0) * COALESCE((elem->>'quantity')::numeric, 0)
+                            COALESCE((elem->>'cost')::numeric, p.cost, 0) * COALESCE((elem->>'quantity')::numeric, 0)
                     END
                 ), 0
             ) AS cogs
@@ -881,11 +1088,12 @@ async def report_profit_loss(
         LEFT JOIN products p ON (elem->>'product_id') = p.id::text
         WHERE s.created_at >= :start_at
           AND s.created_at < :end_at
+          AND (s.status IS NULL OR s.status != 'voided')
           {o_filter.replace('outlet_id = :outlet_id', 's.outlet_id = :outlet_id')}
     """, **params)
 
     revenue = float(head["revenue"] or 0)
-    cogs = float(head["cogs"] or 0)
+    cogs = float(cogs_row["cogs"] or 0)
     total_discount = float(head["total_discount"] or 0)
     total_tax = float(head["total_tax"] or 0)
     gross_profit = revenue - cogs
@@ -910,12 +1118,12 @@ async def report_profit_loss(
                     CASE
                         WHEN jsonb_typeof(elem->'paket_items') = 'array' AND jsonb_array_length(elem->'paket_items') > 0 THEN
                             COALESCE((
-                                SELECT SUM(COALESCE(pc.cost, 0) * COALESCE((pi->>'quantity')::numeric, 0))
+                                SELECT SUM(COALESCE((pi->>'cost')::numeric, pc.cost, 0) * COALESCE((pi->>'quantity')::numeric, 0))
                                 FROM jsonb_array_elements(elem->'paket_items') pi
                                 LEFT JOIN products pc ON (pi->>'product_id') = pc.id::text
                             ), 0)
                         ELSE
-                            COALESCE(p.cost, 0) * COALESCE((elem->>'quantity')::numeric, 0)
+                            COALESCE((elem->>'cost')::numeric, p.cost, 0) * COALESCE((elem->>'quantity')::numeric, 0)
                     END
                 ), 0
             ) AS cost
@@ -924,6 +1132,7 @@ async def report_profit_loss(
         LEFT JOIN products p ON (elem->>'product_id') = p.id::text
         WHERE s.created_at >= :start_at
           AND s.created_at < :end_at
+          AND (s.status IS NULL OR s.status != 'voided')
           {o_filter.replace('outlet_id = :outlet_id', 's.outlet_id = :outlet_id')}
         GROUP BY elem->>'name'
         ORDER BY revenue DESC
@@ -959,12 +1168,12 @@ async def report_profit_loss(
                     CASE
                         WHEN jsonb_typeof(elem->'paket_items') = 'array' AND jsonb_array_length(elem->'paket_items') > 0 THEN
                             COALESCE((
-                                SELECT SUM(COALESCE(pc.cost, 0) * COALESCE((pi->>'quantity')::numeric, 0))
+                                SELECT SUM(COALESCE((pi->>'cost')::numeric, pc.cost, 0) * COALESCE((pi->>'quantity')::numeric, 0))
                                 FROM jsonb_array_elements(elem->'paket_items') pi
                                 LEFT JOIN products pc ON (pi->>'product_id') = pc.id::text
                             ), 0)
                         ELSE
-                            COALESCE(p.cost, 0) * COALESCE((elem->>'quantity')::numeric, 0)
+                            COALESCE((elem->>'cost')::numeric, p.cost, 0) * COALESCE((elem->>'quantity')::numeric, 0)
                     END
                 ), 0
             ) AS cost
@@ -974,6 +1183,7 @@ async def report_profit_loss(
         LEFT JOIN categories c ON p.category_id = c.id
         WHERE s.created_at >= :start_at
           AND s.created_at < :end_at
+          AND (s.status IS NULL OR s.status != 'voided')
           {o_filter.replace('outlet_id = :outlet_id', 's.outlet_id = :outlet_id')}
         GROUP BY c.name
         ORDER BY revenue DESC
@@ -1000,12 +1210,12 @@ async def report_profit_loss(
                     CASE
                         WHEN jsonb_typeof(elem->'paket_items') = 'array' AND jsonb_array_length(elem->'paket_items') > 0 THEN
                             COALESCE((
-                                SELECT SUM(COALESCE(pc.cost, 0) * COALESCE((pi->>'quantity')::numeric, 0))
+                                SELECT SUM(COALESCE((pi->>'cost')::numeric, pc.cost, 0) * COALESCE((pi->>'quantity')::numeric, 0))
                                 FROM jsonb_array_elements(elem->'paket_items') pi
                                 LEFT JOIN products pc ON (pi->>'product_id') = pc.id::text
                             ), 0)
                         ELSE
-                            COALESCE(p.cost, 0) * COALESCE((elem->>'quantity')::numeric, 0)
+                            COALESCE((elem->>'cost')::numeric, p.cost, 0) * COALESCE((elem->>'quantity')::numeric, 0)
                     END
                 ), 0
             ) AS cogs
@@ -1014,6 +1224,7 @@ async def report_profit_loss(
         LEFT JOIN products p ON (elem->>'product_id') = p.id::text
         WHERE s.created_at >= :start_at
           AND s.created_at < :end_at
+          AND (s.status IS NULL OR s.status != 'voided')
           {o_filter.replace('outlet_id = :outlet_id', 's.outlet_id = :outlet_id')}
         GROUP BY date
         ORDER BY date
@@ -1186,7 +1397,7 @@ async def report_stock(
     summ = await q_one(f"""
         SELECT
             COALESCE(SUM(delta) FILTER (WHERE delta > 0), 0) AS total_in,
-            COALESCE(SUM(delta) FILTER (WHERE delta < 0), 0) AS total_out
+            COALESCE(SUM(ABS(delta)) FILTER (WHERE delta < 0), 0) AS total_out
         FROM stock_movements
         WHERE created_at >= :start_at
           AND created_at < :end_at
@@ -1226,7 +1437,7 @@ async def report_stock(
         SELECT
             product_name,
             COALESCE(SUM(delta) FILTER (WHERE delta > 0), 0) AS total_in,
-            COALESCE(SUM(delta) FILTER (WHERE delta < 0), 0) AS total_out,
+            COALESCE(SUM(ABS(delta)) FILTER (WHERE delta < 0), 0) AS total_out,
             COALESCE(SUM(delta), 0) AS net
         FROM stock_movements
         WHERE created_at >= :start_at
@@ -1246,14 +1457,28 @@ async def report_stock(
         for row in prod_rows
     ]
 
-    # ---- LOW STOCK ----
-    low_stock = await q_all("""
-        SELECT id, name, sku, stock, low_stock_threshold, unit
-        FROM products
-        WHERE stock <= low_stock_threshold
-          AND is_active = true
-        ORDER BY stock ASC
-    """)
+    # ---- LOW STOCK — outlet-scoped when outlet_id specified ----
+    if outlet_id:
+        low_stock = await q_all("""
+            SELECT p.id, p.name, p.sku, os.quantity AS stock, p.low_stock_threshold, p.unit
+            FROM products p
+            JOIN outlet_stocks os ON os.product_id = p.id
+            WHERE os.outlet_id = :outlet_id
+              AND os.quantity <= p.low_stock_threshold
+              AND p.is_active = true
+            ORDER BY os.quantity ASC
+        """, outlet_id=outlet_id)
+    else:
+        low_stock = await q_all("""
+            SELECT p.id, p.name, p.sku,
+                   COALESCE(os.quantity, p.stock) AS stock,
+                   p.low_stock_threshold, p.unit
+            FROM products p
+            LEFT JOIN outlet_stocks os ON os.product_id = p.id
+            WHERE COALESCE(os.quantity, p.stock) <= p.low_stock_threshold
+              AND p.is_active = true
+            ORDER BY COALESCE(os.quantity, p.stock) ASC
+        """)
 
     low_stock_list = [
         {
@@ -1266,6 +1491,8 @@ async def report_stock(
         }
         for row in low_stock
     ]
+
+    summary["low_stock_count"] = len(low_stock_list)
 
     return {
         "period_start": start_local.isoformat(),
@@ -1305,6 +1532,7 @@ async def report_payment_reconciliation(
         FROM sales
         WHERE created_at >= :start_at
           AND created_at < :end_at
+          AND (status IS NULL OR status != 'voided')
           {o_filter}
         GROUP BY payment_method
         ORDER BY total DESC
@@ -1329,6 +1557,7 @@ async def report_payment_reconciliation(
         FROM sales
         WHERE created_at >= :start_at
           AND created_at < :end_at
+          AND (status IS NULL OR status != 'voided')
           {o_filter}
     """, **params)
 
@@ -1348,6 +1577,7 @@ async def report_payment_reconciliation(
         WHERE payment_method = 'card'
           AND created_at >= :start_at
           AND created_at < :end_at
+          AND (status IS NULL OR status != 'voided')
           {o_filter}
         GROUP BY card_brand
         ORDER BY total DESC
@@ -1374,6 +1604,7 @@ async def report_payment_reconciliation(
         WHERE payment_method = 'transfer'
           AND created_at >= :start_at
           AND created_at < :end_at
+          AND (status IS NULL OR status != 'voided')
           {o_filter}
         GROUP BY transfer_bank
         ORDER BY total DESC
@@ -1399,6 +1630,7 @@ async def report_payment_reconciliation(
         WHERE payment_method = 'qris'
           AND created_at >= :start_at
           AND created_at < :end_at
+          AND (status IS NULL OR status != 'voided')
           {o_filter}
     """, **params)
 
@@ -1418,6 +1650,7 @@ async def report_payment_reconciliation(
         FROM sales
         WHERE created_at >= :start_at
           AND created_at < :end_at
+          AND (status IS NULL OR status != 'voided')
           {o_filter}
         GROUP BY date
         ORDER BY date
@@ -1584,3 +1817,288 @@ async def branch_comparison(
         "period_end": end_local.isoformat(),
         "outlets": outlets_data,
     }
+
+
+# ============================================================
+# DASHBOARD METRIC DETAILS — popup detail for each metric card
+# ============================================================
+
+@router.get("/reports/dashboard-details")
+async def dashboard_details(
+    metric: Literal["revenue", "transactions", "items_sold", "customers", "products", "low_stock"] = "revenue",
+    period: Literal["daily", "weekly", "monthly", "yearly"] = "weekly",
+    outlet_id: Optional[str] = None,
+    user=Depends(require_role("owner", "admin", "manager", "supervisor"))
+):
+    """Return detailed breakdown for a specific dashboard metric card.
+    Used by popup modals when user clicks a metric card."""
+
+    now_local = datetime.now(JAKARTA)
+
+    # Build period range (same logic as dashboard)
+    if period == "daily":
+        start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_local = start_local + timedelta(days=1)
+    elif period == "weekly":
+        start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=6)
+        end_local = now_local.replace(hour=23, minute=59, second=59, microsecond=999999) + timedelta(microseconds=1)
+    elif period == "monthly":
+        start_local = now_local.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        end_local = start_local.replace(year=start_local.year + 1, month=1) if start_local.month == 12 else start_local.replace(month=start_local.month + 1)
+    else:
+        start_local = now_local.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        end_local = start_local.replace(year=start_local.year + 1)
+
+    # Outlet filter
+    outlet_clause = ""
+    query_params = {"start_at": start_local, "end_at": end_local}
+    if outlet_id:
+        if user["role"] != "owner" and outlet_id not in user.get("outlet_ids", []):
+            raise HTTPException(403, "Anda tidak memiliki akses ke outlet ini")
+        outlet_clause = " AND s.outlet_id = :outlet_id "
+        query_params["outlet_id"] = outlet_id
+    else:
+        if user["role"] != "owner":
+            user_outlets = user.get("outlet_ids", [])
+            if user_outlets:
+                ids_sql = ",".join(f"'{oid}'" for oid in user_outlets)
+                outlet_clause = f" AND s.outlet_id IN ({ids_sql}) "
+            else:
+                outlet_clause = " AND 1=0 "
+
+    # ============================================================
+    # REVENUE — list of sales with invoice, total, payment, cashier
+    # ============================================================
+    if metric == "revenue":
+        # Get actual total + count (not limited, exclude voided)
+        summary = await q_one(f"""
+            SELECT COALESCE(SUM(total), 0) AS total, COUNT(*) AS count
+            FROM sales s
+            WHERE s.created_at >= :start_at AND s.created_at < :end_at
+              AND (s.status IS NULL OR s.status != 'voided')
+              {outlet_clause}
+        """, **query_params)
+        # Get items for display (limited to 100 most recent, exclude voided)
+        rows = await q_all(f"""
+            SELECT s.id, s.invoice_no, s.total, s.payment_method, s.source,
+                   s.cashier_name, s.created_at, s.outlet_id,
+                   o.name AS outlet_name, s.table_name, s.status
+            FROM sales s
+            LEFT JOIN outlets o ON o.id = s.outlet_id
+            WHERE s.created_at >= :start_at AND s.created_at < :end_at
+              AND (s.status IS NULL OR s.status != 'voided')
+              {outlet_clause}
+            ORDER BY s.created_at DESC
+            LIMIT 100
+        """, **query_params)
+        items = [
+            {
+                "invoice_no": r["invoice_no"],
+                "total": float(r["total"] or 0),
+                "payment_method": r["payment_method"],
+                "source": r["source"],
+                "cashier_name": r["cashier_name"],
+                "outlet_name": r["outlet_name"],
+                "table_name": r["table_name"],
+                "status": r.get("status", "completed"),
+                "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+            }
+            for r in rows
+        ]
+        return {
+            "metric": "revenue",
+            "period": period,
+            "total": float(summary["total"] or 0),
+            "count": int(summary["count"] or 0),
+            "displayed": len(items),
+            "items": items,
+        }
+
+    # ============================================================
+    # TRANSACTIONS — same sales list but focused on count/payment breakdown
+    # ============================================================
+    if metric == "transactions":
+        # Get actual count + payment breakdown (not limited, exclude voided)
+        method_rows = await q_all(f"""
+            SELECT s.payment_method, COUNT(*) AS cnt
+            FROM sales s
+            WHERE s.created_at >= :start_at AND s.created_at < :end_at
+              AND (s.status IS NULL OR s.status != 'voided')
+              {outlet_clause}
+            GROUP BY s.payment_method
+        """, **query_params)
+        by_method = {r["payment_method"] or "unknown": int(r["cnt"] or 0) for r in method_rows}
+        actual_count = sum(by_method.values())
+        # Get items for display (limited to 100 most recent, exclude voided)
+        rows = await q_all(f"""
+            SELECT s.id, s.invoice_no, s.total, s.payment_method, s.source,
+                   s.cashier_name, s.created_at, o.name AS outlet_name, s.status
+            FROM sales s
+            LEFT JOIN outlets o ON o.id = s.outlet_id
+            WHERE s.created_at >= :start_at AND s.created_at < :end_at
+              AND (s.status IS NULL OR s.status != 'voided')
+              {outlet_clause}
+            ORDER BY s.created_at DESC
+            LIMIT 100
+        """, **query_params)
+        items = [
+            {
+                "invoice_no": r["invoice_no"],
+                "total": float(r["total"] or 0),
+                "payment_method": r["payment_method"],
+                "source": r["source"],
+                "cashier_name": r["cashier_name"],
+                "outlet_name": r["outlet_name"],
+                "status": r.get("status", "completed"),
+                "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+            }
+            for r in rows
+        ]
+        return {
+            "metric": "transactions",
+            "period": period,
+            "count": actual_count,
+            "displayed": len(items),
+            "by_method": by_method,
+            "items": items,
+        }
+
+    # ============================================================
+    # ITEMS SOLD — breakdown by product
+    # ============================================================
+    if metric == "items_sold":
+        # Get actual total quantity (not limited, exclude voided)
+        total_row = await q_one(f"""
+            SELECT COALESCE(SUM((elem->>'quantity')::numeric), 0) AS total_qty
+            FROM sales s,
+                 jsonb_array_elements(s.items) elem
+            WHERE s.created_at >= :start_at AND s.created_at < :end_at
+              AND (s.status IS NULL OR s.status != 'voided')
+              {outlet_clause}
+        """, **query_params)
+        # Get product breakdown (exclude voided, no LIMIT — show all products)
+        rows = await q_all(f"""
+            SELECT
+                elem->>'product_id' AS product_id,
+                COALESCE(elem->>'name', 'Produk Tanpa Nama') AS name,
+                COALESCE(SUM((elem->>'quantity')::numeric), 0) AS quantity,
+                COALESCE(SUM((elem->>'price')::numeric * (elem->>'quantity')::numeric), 0) AS revenue
+            FROM sales s,
+                 jsonb_array_elements(s.items) elem
+            WHERE s.created_at >= :start_at AND s.created_at < :end_at
+              AND (s.status IS NULL OR s.status != 'voided')
+              {outlet_clause}
+            GROUP BY elem->>'product_id', elem->>'name'
+            ORDER BY quantity DESC
+        """, **query_params)
+        items = [
+            {
+                "name": r["name"],
+                "quantity": int(r["quantity"] or 0),
+                "revenue": float(r["revenue"] or 0),
+            }
+            for r in rows
+        ]
+        return {
+            "metric": "items_sold",
+            "period": period,
+            "total_quantity": int(total_row["total_qty"] or 0),
+            "count": len(items),
+            "items": items,
+        }
+
+    # ============================================================
+    # CUSTOMERS — list of registered customers
+    # ============================================================
+    if metric == "customers":
+        rows = await q_all("""
+            SELECT c.id, c.name, c.phone, c.email,
+                   c.loyalty_points,
+                   c.visit_count AS total_transactions,
+                   c.total_spent,
+                   c.created_at
+            FROM customers c
+            ORDER BY c.total_spent DESC
+            LIMIT 50
+        """)
+        items = [
+            {
+                "name": r["name"],
+                "phone": r.get("phone"),
+                "email": r.get("email"),
+                "points": int(r.get("loyalty_points") or 0),
+                "total_transactions": int(r["total_transactions"] or 0),
+                "total_spent": float(r["total_spent"] or 0),
+                "last_transaction": r["created_at"].isoformat() if r.get("created_at") else None,
+            }
+            for r in rows
+        ]
+        return {"metric": "customers", "count": len(items), "items": items}
+
+    # ============================================================
+    # PRODUCTS — list of all active products
+    # ============================================================
+    if metric == "products":
+        rows = await q_all("""
+            SELECT p.id, p.name, p.sku, p.price, p.cost, p.stock,
+                   p.is_active, c.name AS category_name
+            FROM products p
+            LEFT JOIN categories c ON p.category_id = c.id
+            WHERE p.is_active = true
+            ORDER BY p.name
+        """)
+        items = [
+            {
+                "name": r["name"],
+                "sku": r.get("sku") or "-",
+                "price": float(r["price"] or 0),
+                "cost": float(r["cost"] or 0),
+                "stock": int(r["stock"] or 0),
+                "category": r.get("category_name") or "Tanpa Kategori",
+            }
+            for r in rows
+        ]
+        return {"metric": "products", "count": len(items), "items": items}
+
+    # ============================================================
+    # LOW STOCK — products at or below threshold (outlet-scoped)
+    # ============================================================
+    if metric == "low_stock":
+        if outlet_id:
+            rows = await q_all("""
+                SELECT p.id, p.name, p.sku, os.quantity AS stock,
+                       p.low_stock_threshold, p.unit, c.name AS category_name
+                FROM products p
+                JOIN outlet_stocks os ON os.product_id = p.id
+                LEFT JOIN categories c ON p.category_id = c.id
+                WHERE os.outlet_id = :outlet_id
+                  AND os.quantity <= p.low_stock_threshold
+                  AND p.is_active = true
+                ORDER BY os.quantity ASC
+            """, outlet_id=outlet_id)
+        else:
+            rows = await q_all("""
+                SELECT p.id, p.name, p.sku,
+                       COALESCE(os.quantity, p.stock) AS stock,
+                       p.low_stock_threshold, p.unit, c.name AS category_name
+                FROM products p
+                LEFT JOIN outlet_stocks os ON os.product_id = p.id
+                LEFT JOIN categories c ON p.category_id = c.id
+                WHERE COALESCE(os.quantity, p.stock) <= p.low_stock_threshold
+                  AND p.is_active = true
+                ORDER BY COALESCE(os.quantity, p.stock) ASC
+            """)
+        items = [
+            {
+                "name": r["name"],
+                "sku": r.get("sku") or "-",
+                "stock": int(r["stock"] or 0),
+                "threshold": int(r["low_stock_threshold"] or 0),
+                "unit": r.get("unit") or "",
+                "category": r.get("category_name") or "Tanpa Kategori",
+            }
+            for r in rows
+        ]
+        return {"metric": "low_stock", "count": len(items), "items": items}
+
+    return {"metric": metric, "items": []}

@@ -11,7 +11,7 @@ async def get_business():
 
 
 @router.post("/business")
-async def setup_business(body: BusinessIn, user=Depends(require_permission("settings", "manage"))):
+async def setup_business(body: BusinessIn, user=Depends(require_permission("settings", "update"))):
     existing = await q_one("SELECT id FROM business LIMIT 1")
     if existing:
         await q_exec("""UPDATE business SET name=:n, business_type=:bt, currency=:c, tax_rate=:t, address=:a,

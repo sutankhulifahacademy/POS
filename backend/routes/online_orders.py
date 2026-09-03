@@ -12,14 +12,19 @@ from services.online_pricing_service import (
     calculate_profit,
     calculate_break_even_price,
 )
+from services.pricing_service import resolve_product_price
+from services.money import money
 
 router = APIRouter()
 JAKARTA = ZoneInfo("Asia/Jakarta")
 
 
 def _outlet_filter(user, outlet_id=None):
-    """Build outlet SQL filter for online orders."""
+    """Build outlet SQL filter for online orders. Validates outlet access."""
     if outlet_id:
+        # Validate user has access to this outlet
+        if user["role"] != "owner" and str(outlet_id) not in user.get("outlet_ids", []):
+            raise HTTPException(403, "Tidak ada akses ke outlet ini")
         return " AND o.outlet_id = :outlet_id ", {"outlet_id": outlet_id}
     if user["role"] == "owner":
         return "", {}
@@ -50,7 +55,15 @@ async def list_online_orders(
     params = {"limit": limit, "offset": offset}
 
     clause, clause_params = _outlet_filter(user, outlet_id)
-    where.append(clause.replace(" AND o.", " AND "))
+    # _outlet_filter returns clauses like " AND o.outlet_id = :outlet_id "
+    # (with leading "AND"). Strip the leading "AND" and the "o." prefix
+    # so we can join with " AND " consistently below.
+    normalized = clause.replace(" AND o.", " AND ").strip()
+    # Remove leading "AND" if present (it will be re-added by join)
+    if normalized.upper().startswith("AND "):
+        normalized = normalized[4:].strip()
+    if normalized:
+        where.append(normalized)
     params.update(clause_params)
 
     if platform_id:
@@ -167,30 +180,67 @@ async def create_online_order(
         outlet = await q_one("SELECT name FROM outlets WHERE id=:id", id=outlet_id)
         outlet_name = outlet["name"] if outlet else None
 
-    # Calculate gross sales + COGS
+    # Calculate gross sales + COGS from authoritative DB prices.
+    # Frontend-supplied online_price and cost are ignored.
     total_gross = 0.0
     total_cogs = 0.0
     total_qty = 0
     normalized_items = []
 
     for item in items:
-        online_price = float(item.get("online_price") or 0)
-        cost = float(item.get("cost") or 0)
+        pid = item.get("product_id")
         qty = int(item.get("quantity") or 1)
-        gross = online_price * qty
-        cogs = cost * qty
+        if not pid or qty <= 0:
+            continue
+
+        product = await q_one(
+            """SELECT id, name, online_price, cost, price,
+                      retail_price, reseller_price, wholesale_price, variants
+               FROM products WHERE id=:id""",
+            id=pid,
+        )
+        if not product:
+            raise HTTPException(400, f"Produk {item.get('product_name', pid)} tidak ditemukan")
+
+        variants = product.get("variants") or []
+        if isinstance(variants, str):
+            try:
+                variants = json.loads(variants)
+            except Exception:
+                variants = []
+
+        product_for_pricing = {
+            "price": product["price"],
+            "retail_price": product.get("retail_price"),
+            "reseller_price": product.get("reseller_price"),
+            "wholesale_price": product.get("wholesale_price"),
+            "online_price": product.get("online_price"),
+            "variants": variants,
+        }
+
+        variant_name = item.get("variant_name") or ""
+        online_price = await resolve_product_price(
+            product_for_pricing,
+            variant_name=variant_name,
+            sales_channel="online",
+            price_type="online",
+        )
+        cost = money(product.get("cost") or 0)
+        qty = int(item.get("quantity") or 1)
+        gross = float(online_price * qty)
+        cogs = float(cost * qty)
 
         total_gross += gross
         total_cogs += cogs
         total_qty += qty
 
         normalized_items.append({
-            "product_id": item.get("product_id"),
-            "product_name": item.get("product_name", ""),
-            "variant_name": item.get("variant_name", ""),
+            "product_id": pid,
+            "product_name": product["name"],
+            "variant_name": variant_name,
             "sku": item.get("sku", ""),
-            "online_price": online_price,
-            "cost": cost,
+            "online_price": float(online_price),
+            "cost": float(cost),
             "quantity": qty,
             "gross_sales": gross,
             "cogs": cogs,

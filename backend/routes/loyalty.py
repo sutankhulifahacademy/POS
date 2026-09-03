@@ -122,7 +122,7 @@ async def adjust_points(body: dict, user=Depends(require_permission("loyalty", "
 
 
 @router.get("/loyalty/tiers")
-async def get_tier_info():
+async def get_tier_info(user=Depends(get_current_user)):
     """Get tier thresholds and info."""
     return {
         "tiers": [

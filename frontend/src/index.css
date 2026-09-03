@@ -11,6 +11,13 @@ body {
   -moz-osx-font-smoothing: grayscale;
   background-color: #1A0810;
   color: #F5F5F5;
+  /* Prevent overscroll/bounce on mobile POS */
+  overscroll-behavior-y: none;
+}
+
+/* Safe area support for mobile devices */
+@supports (padding: env(safe-area-inset-bottom)) {
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
 }
 
 .font-serif-luxury {
@@ -90,6 +97,10 @@ body {
   .overflow-y-auto {
     -webkit-overflow-scrolling: touch;
   }
+  /* Prevent pull-to-refresh inside POS/Tables containers */
+  .overflow-y-auto, .overflow-x-auto {
+    overscroll-behavior: contain;
+  }
 }
 
 @media (max-width: 768px) {
@@ -98,6 +109,37 @@ body {
     max-width: 100% !important;
     margin: 0 1rem !important;
   }
+}
+
+/* Touch-friendly: increase tap target for small buttons on coarse pointers */
+@media (pointer: coarse) {
+  button[class*="w-9"]:not([class*="h-10"]):not([class*="h-11"]) {
+    min-height: 40px;
+    min-width: 40px;
+  }
+}
+
+/* Orientation change: smooth reflow without layout jump */
+@media (orientation: portrait) and (max-width: 1024px) {
+  /* Tablet portrait: ensure product grids don't overflow */
+  .grid {
+    -webkit-grid-auto-rows: min-content;
+  }
+}
+
+/* dvh fallback for older browsers */
+@supports not (height: 100dvh) {
+  .h-dvh { height: 100vh !important; }
+  .max-h-\[35dvh\] { max-height: 35vh !important; }
+  .max-h-\[40dvh\] { max-height: 40vh !important; }
+  .max-h-\[50dvh\] { max-height: 50vh !important; }
+  .max-h-\[55dvh\] { max-height: 55vh !important; }
+  .max-h-\[60dvh\] { max-height: 60vh !important; }
+  .max-h-\[80dvh\] { max-height: 80vh !important; }
+  .max-h-\[88dvh\] { max-height: 88vh !important; }
+  .max-h-\[90dvh\] { max-height: 90vh !important; }
+  .max-h-\[92dvh\] { max-height: 92vh !important; }
+  .max-h-\[96dvh\] { max-height: 96vh !important; }
 }
 
 @media print {

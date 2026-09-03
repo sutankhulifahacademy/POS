@@ -18,7 +18,14 @@ FROM (VALUES
   ('shifts','view'), ('shifts','open'), ('shifts','close'),
   ('purchase_orders','view'), ('purchase_orders','create'), ('purchase_orders','update'), ('purchase_orders','delete'),
   ('stock_transfers','view'), ('stock_transfers','create'),
-  ('payment_accounts','view'), ('payment_accounts','create'), ('payment_accounts','update'), ('payment_accounts','delete')
+  ('payment_accounts','view'), ('payment_accounts','create'), ('payment_accounts','update'), ('payment_accounts','delete'),
+  ('expenses','view'), ('expenses','create'), ('expenses','update'), ('expenses','delete'),
+  ('payroll','view'), ('payroll','create'), ('payroll','update'),
+  ('schedules','view'), ('schedules','create'), ('schedules','update'), ('schedules','delete'),
+  ('loyalty','view'), ('loyalty','update'),
+  ('receipt','view'), ('receipt','update'),
+  ('kds','view'), ('kds','update'),
+  ('online_platforms','view'), ('online_platforms','create'), ('online_platforms','update'), ('online_platforms','delete')
 ) AS m(module, action)
 ON CONFLICT (role_id, module, action) DO NOTHING;
 
@@ -40,7 +47,14 @@ FROM (VALUES
   ('shifts','view'), ('shifts','open'), ('shifts','close'),
   ('purchase_orders','view'), ('purchase_orders','create'), ('purchase_orders','update'),
   ('stock_transfers','view'), ('stock_transfers','create'),
-  ('payment_accounts','view'), ('payment_accounts','create'), ('payment_accounts','update')
+  ('payment_accounts','view'), ('payment_accounts','create'), ('payment_accounts','update'),
+  ('expenses','view'), ('expenses','create'), ('expenses','update'),
+  ('payroll','view'), ('payroll','create'), ('payroll','update'),
+  ('schedules','view'), ('schedules','create'), ('schedules','update'),
+  ('loyalty','view'), ('loyalty','update'),
+  ('receipt','view'), ('receipt','update'),
+  ('kds','view'), ('kds','update'),
+  ('online_platforms','view'), ('online_platforms','create'), ('online_platforms','update')
 ) AS m(module, action)
 ON CONFLICT (role_id, module, action) DO NOTHING;
 
@@ -49,6 +63,7 @@ INSERT INTO role_permissions (role_id, module, action, granted)
 SELECT '00000000-0000-0000-0000-000000000a03', m.module, m.action, TRUE
 FROM (VALUES
   ('pos','view'), ('pos','create'), ('dinein','view'), ('dinein','create'),
-  ('tables','view'), ('shifts','view'), ('shifts','open')
+  ('tables','view'), ('shifts','view'), ('shifts','open'),
+  ('kds','view'), ('kds','update')
 ) AS m(module, action)
 ON CONFLICT (role_id, module, action) DO NOTHING;

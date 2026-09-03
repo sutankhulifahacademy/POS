@@ -7,7 +7,7 @@ router = APIRouter()
 
 
 @router.get("/roles/permission-tree")
-async def get_permission_tree(user=Depends(get_current_user)):
+async def get_permission_tree(user=Depends(require_role("owner", "admin"))):
     """Return the full permission tree definition — derived dynamically from menus table."""
     menus = await q_all("SELECT name, label, actions FROM menus WHERE is_active = TRUE ORDER BY sort_order ASC, label ASC")
     tree = []
@@ -74,7 +74,7 @@ async def get_my_permissions(user=Depends(get_current_user)):
 
 
 @router.get("/roles/{role_id}")
-async def get_role(role_id: str, user=Depends(get_current_user)):
+async def get_role(role_id: str, user=Depends(require_role("owner", "admin"))):
     """Get a single role with its permissions."""
     role = await q_one("SELECT * FROM roles WHERE id=:id", id=role_id)
     if not role:

@@ -7,6 +7,7 @@ import {
   AlertTriangle,
   DollarSign,
   Package,
+  X,
 } from "lucide-react";
 import {
   LineChart,
@@ -26,11 +27,13 @@ function MetricCard({
   value,
   sublabel,
   testId,
+  onClick,
 }) {
   return (
     <div
-      className="bg-[#331419] gold-border rounded-lg p-6 card-hover"
+      className="bg-[#331419] gold-border rounded-lg p-6 card-hover cursor-pointer hover:border-[#F4C842] transition-colors"
       data-testid={testId}
+      onClick={onClick}
     >
       <div className="flex items-start justify-between mb-4">
         <div className="w-11 h-11 rounded-md bg-[rgba(244,200,66,0.1)] flex items-center justify-center">
@@ -55,6 +58,35 @@ function MetricCard({
           {sublabel}
         </p>
       )}
+    </div>
+  );
+}
+
+function DetailModal({ open, onClose, title, subtitle, loading, children }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="bg-[#2A1015] gold-border rounded-lg w-full max-w-3xl max-h-[80vh] flex flex-col"
+      >
+        <div className="flex items-center justify-between p-6 border-b border-[rgba(244,200,66,0.15)]">
+          <div>
+            <p className="text-xs uppercase tracking-widest text-[#F4C842]">{subtitle}</p>
+            <h3 className="font-serif-luxury text-2xl text-[#F5F5F5] mt-1">{title}</h3>
+          </div>
+          <button onClick={onClose} className="text-[#C4A484] hover:text-[#F5F5F5]">
+            <X size={22} />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-6">
+          {loading ? (
+            <p className="text-[#C4A484] text-center py-8">Memuat...</p>
+          ) : (
+            children
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -99,6 +131,36 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const { outletIdForApi } = useOutlet();
+
+  // Popup detail state
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailMetric, setDetailMetric] = useState(null);
+  const [detailData, setDetailData] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  const openDetail = async (metric) => {
+    setDetailMetric(metric);
+    setDetailOpen(true);
+    setDetailLoading(true);
+    setDetailData(null);
+    try {
+      const outletParam = outletIdForApi ? `&outlet_id=${outletIdForApi}` : "";
+      const res = await api.get(
+        `/reports/dashboard-details?metric=${metric}&period=${period}${outletParam}`
+      );
+      setDetailData(res.data);
+    } catch (err) {
+      console.error("Detail error:", err);
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const closeDetail = () => {
+    setDetailOpen(false);
+    setDetailMetric(null);
+    setDetailData(null);
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -223,32 +285,36 @@ export default function Dashboard() {
                 icon={DollarSign}
                 label="Pendapatan"
                 value={formatIDR(data.revenue)}
-                sublabel={`${data.transactions} transaksi`}
+                sublabel={`${data.transactions} transaksi · klik untuk detail`}
                 testId="metric-revenue"
+                onClick={() => openDetail("revenue")}
               />
 
               <MetricCard
                 icon={TrendingUp}
                 label="Transaksi"
                 value={data.transactions}
-                sublabel={`${getPeriodLabel(period).toLowerCase()}`}
+                sublabel={`${getPeriodLabel(period).toLowerCase()} · klik untuk detail`}
                 testId="metric-transactions"
+                onClick={() => openDetail("transactions")}
               />
 
               <MetricCard
                 icon={ShoppingBag}
                 label="Item Terjual"
                 value={data.items_sold}
-                sublabel={`${getPeriodLabel(period).toLowerCase()}`}
+                sublabel={`${getPeriodLabel(period).toLowerCase()} · klik untuk detail`}
                 testId="metric-items-sold"
+                onClick={() => openDetail("items_sold")}
               />
 
               <MetricCard
                 icon={Users}
                 label="Pelanggan"
                 value={data.customers_count}
-                sublabel="terdaftar"
+                sublabel="terdaftar · klik untuk detail"
                 testId="metric-customers"
+                onClick={() => openDetail("customers")}
               />
 
             </div>
@@ -492,6 +558,216 @@ export default function Dashboard() {
         )}
 
       </div>
+
+      {/* =========================================
+          DETAIL POPUP MODAL
+      ========================================== */}
+      <DetailModal
+        open={detailOpen}
+        onClose={closeDetail}
+        title={
+          detailMetric === "revenue" ? "Detail Pendapatan" :
+          detailMetric === "transactions" ? "Detail Transaksi" :
+          detailMetric === "items_sold" ? "Detail Item Terjual" :
+          detailMetric === "customers" ? "Detail Pelanggan" : "Detail"
+        }
+        subtitle={getPeriodLabel(period)}
+        loading={detailLoading}
+      >
+        {detailData && detailMetric === "revenue" && (
+          <div>
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div className="bg-[#331419] rounded-md p-3">
+                <p className="text-xs text-[#C4A484]">Total Pendapatan</p>
+                <p className="text-xl text-[#F4C842] font-serif-luxury">{formatIDR(detailData.total)}</p>
+              </div>
+              <div className="bg-[#331419] rounded-md p-3">
+                <p className="text-xs text-[#C4A484]">Jumlah Transaksi</p>
+                <p className="text-xl text-[#F5F5F5] font-serif-luxury">{detailData.count}</p>
+              </div>
+            </div>
+            {detailData.displayed < detailData.count && (
+              <p className="text-xs text-[#C4A484] mb-3 italic">Menampilkan {detailData.displayed} dari {detailData.count} transaksi terbaru</p>
+            )}
+            {detailData.items.length === 0 ? (
+              <p className="text-sm text-[#C4A484] text-center py-8">Belum ada transaksi pada periode ini.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs uppercase tracking-wider text-[#C4A484] border-b border-[rgba(244,200,66,0.15)]">
+                      <th className="py-2">Invoice</th>
+                      <th className="py-2">Outlet</th>
+                      <th className="py-2">Kasir</th>
+                      <th className="py-2 text-right">Total</th>
+                      <th className="py-2">Bayar</th>
+                      <th className="py-2">Status</th>
+                      <th className="py-2">Waktu</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detailData.items.map((s, i) => (
+                      <tr key={i} className="border-b border-[rgba(244,200,66,0.08)]">
+                        <td className="py-2 text-[#F5F5F5]">{s.invoice_no}</td>
+                        <td className="py-2 text-[#C4A484]">{s.outlet_name || "-"}</td>
+                        <td className="py-2 text-[#C4A484]">{s.cashier_name || "-"}</td>
+                        <td className="py-2 text-right text-[#F4C842] font-semibold">{formatIDR(s.total)}</td>
+                        <td className="py-2 text-[#C4A484] capitalize">{s.payment_method}</td>
+                        <td className="py-2">
+                          <span className={`text-xs px-2 py-0.5 rounded ${s.status === "voided" ? "bg-[#8B0000] text-[#F5F5F5]" : "bg-[rgba(34,197,94,0.2)] text-green-400"}`}>
+                            {s.status || "completed"}
+                          </span>
+                        </td>
+                        <td className="py-2 text-xs text-[#C4A484]">{s.created_at ? new Date(s.created_at).toLocaleString("id-ID") : "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {detailData && detailMetric === "transactions" && (
+          <div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-4">
+              <div className="bg-[#331419] rounded-md p-3">
+                <p className="text-xs text-[#C4A484]">Total Transaksi</p>
+                <p className="text-xl text-[#F5F5F5] font-serif-luxury">{detailData.count}</p>
+              </div>
+              {Object.entries(detailData.by_method || {}).map(([method, count]) => (
+                <div key={method} className="bg-[#331419] rounded-md p-3">
+                  <p className="text-xs text-[#C4A484] capitalize">{method}</p>
+                  <p className="text-xl text-[#F4C842] font-serif-luxury">{count}</p>
+                </div>
+              ))}
+            </div>
+            {detailData.displayed < detailData.count && (
+              <p className="text-xs text-[#C4A484] mb-3 italic">Menampilkan {detailData.displayed} dari {detailData.count} transaksi terbaru</p>
+            )}
+            {detailData.items.length === 0 ? (
+              <p className="text-sm text-[#C4A484] text-center py-8">Belum ada transaksi pada periode ini.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs uppercase tracking-wider text-[#C4A484] border-b border-[rgba(244,200,66,0.15)]">
+                      <th className="py-2">Invoice</th>
+                      <th className="py-2">Outlet</th>
+                      <th className="py-2">Kasir</th>
+                      <th className="py-2">Source</th>
+                      <th className="py-2 text-right">Total</th>
+                      <th className="py-2">Bayar</th>
+                      <th className="py-2">Status</th>
+                      <th className="py-2">Waktu</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detailData.items.map((s, i) => (
+                      <tr key={i} className="border-b border-[rgba(244,200,66,0.08)]">
+                        <td className="py-2 text-[#F5F5F5]">{s.invoice_no}</td>
+                        <td className="py-2 text-[#C4A484]">{s.outlet_name || "-"}</td>
+                        <td className="py-2 text-[#C4A484]">{s.cashier_name || "-"}</td>
+                        <td className="py-2 text-[#C4A484] capitalize">{s.source || "-"}</td>
+                        <td className="py-2 text-right text-[#F4C842] font-semibold">{formatIDR(s.total)}</td>
+                        <td className="py-2 text-[#C4A484] capitalize">{s.payment_method}</td>
+                        <td className="py-2">
+                          <span className={`text-xs px-2 py-0.5 rounded ${s.status === "voided" ? "bg-[#8B0000] text-[#F5F5F5]" : "bg-[rgba(34,197,94,0.2)] text-green-400"}`}>
+                            {s.status || "completed"}
+                          </span>
+                        </td>
+                        <td className="py-2 text-xs text-[#C4A484]">{s.created_at ? new Date(s.created_at).toLocaleString("id-ID") : "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {detailData && detailMetric === "items_sold" && (
+          <div>
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div className="bg-[#331419] rounded-md p-3">
+                <p className="text-xs text-[#C4A484]">Total Item Terjual</p>
+                <p className="text-xl text-[#F4C842] font-serif-luxury">{detailData.total_quantity} pcs</p>
+              </div>
+              <div className="bg-[#331419] rounded-md p-3">
+                <p className="text-xs text-[#C4A484]">Jumlah Produk</p>
+                <p className="text-xl text-[#F5F5F5] font-serif-luxury">{detailData.count}</p>
+              </div>
+            </div>
+            {detailData.items.length === 0 ? (
+              <p className="text-sm text-[#C4A484] text-center py-8">Belum ada item terjual pada periode ini.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs uppercase tracking-wider text-[#C4A484] border-b border-[rgba(244,200,66,0.15)]">
+                      <th className="py-2">#</th>
+                      <th className="py-2">Produk</th>
+                      <th className="py-2 text-right">Qty</th>
+                      <th className="py-2 text-right">Pendapatan</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detailData.items.map((p, i) => (
+                      <tr key={i} className="border-b border-[rgba(244,200,66,0.08)]">
+                        <td className="py-2 text-[#F4C842]">{i + 1}</td>
+                        <td className="py-2 text-[#F5F5F5]">{p.name}</td>
+                        <td className="py-2 text-right text-[#C4A484]">{p.quantity}</td>
+                        <td className="py-2 text-right text-[#F4C842] font-semibold">{formatIDR(p.revenue)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {detailData && detailMetric === "customers" && (
+          <div>
+            <div className="bg-[#331419] rounded-md p-3 mb-4">
+              <p className="text-xs text-[#C4A484]">Total Pelanggan Terdaftar</p>
+              <p className="text-xl text-[#F4C842] font-serif-luxury">{detailData.count}</p>
+            </div>
+            {detailData.items.length === 0 ? (
+              <p className="text-sm text-[#C4A484] text-center py-8">Belum ada pelanggan terdaftar.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs uppercase tracking-wider text-[#C4A484] border-b border-[rgba(244,200,66,0.15)]">
+                      <th className="py-2">#</th>
+                      <th className="py-2">Nama</th>
+                      <th className="py-2">Telepon</th>
+                      <th className="py-2 text-right">Poin</th>
+                      <th className="py-2 text-right">Transaksi</th>
+                      <th className="py-2 text-right">Total Belanja</th>
+                      <th className="py-2">Terakhir</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detailData.items.map((c, i) => (
+                      <tr key={i} className="border-b border-[rgba(244,200,66,0.08)]">
+                        <td className="py-2 text-[#F4C842]">{i + 1}</td>
+                        <td className="py-2 text-[#F5F5F5]">{c.name}</td>
+                        <td className="py-2 text-[#C4A484]">{c.phone || "-"}</td>
+                        <td className="py-2 text-right text-[#F4C842]">{c.points}</td>
+                        <td className="py-2 text-right text-[#C4A484]">{c.total_transactions}</td>
+                        <td className="py-2 text-right text-[#F4C842] font-semibold">{formatIDR(c.total_spent)}</td>
+                        <td className="py-2 text-xs text-[#C4A484]">{c.last_transaction ? new Date(c.last_transaction).toLocaleDateString("id-ID") : "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </DetailModal>
     </div>
   );
 }

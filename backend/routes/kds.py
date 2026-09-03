@@ -78,16 +78,32 @@ async def update_kds_status(
         updates["started_at"] = "NOW()"
     if new_status in ("ready", "served"):
         updates["completed_at"] = "NOW()"
+        # Calculate elapsed seconds from created_at to now
+        updates["elapsed_seconds"] = "EXTRACT(EPOCH FROM (NOW() - created_at))::int"
 
     sets = []
     for k, v in updates.items():
         if v == "NOW()":
             sets.append(f"{k} = NOW()")
+        elif isinstance(v, str) and v.startswith("EXTRACT"):
+            sets.append(f"{k} = {v}")
         elif k != "id":
             sets.append(f"{k} = :{k}")
 
     outlet_filter = await filter_outlets_for_user(user)
     await q_exec(f"UPDATE kitchen_orders SET {', '.join(sets)} WHERE id = :id {outlet_filter}", **updates)
+
+    # Audit log for KDS status change
+    try:
+        from routes.audit_logs import log_action
+        await log_action(
+            user, "KDS_STATUS_UPDATE", "kitchen_orders", entity_id=order_id,
+            outlet_id=existing.get("outlet_id"),
+            new_value={"old_status": existing.get("status"), "new_status": new_status,
+                       "updated_by": user.get("name", "")},
+        )
+    except Exception:
+        pass
 
     return clean(await q_one("SELECT * FROM kitchen_orders WHERE id = :id", id=order_id))
 

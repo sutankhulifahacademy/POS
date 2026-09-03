@@ -4,19 +4,26 @@ export const API_BASE = "/api";
 
 const api = axios.create({
   baseURL: API_BASE,
-  withCredentials: true,
+  withCredentials: true, // Send HttpOnly cookies
 });
 
-// Attach token from localStorage as fallback
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("sk_token");
+// No localStorage token — authentication is via HttpOnly cookie only.
+// This prevents token theft via XSS attacks.
 
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+// Response interceptor: auto-logout on 401 (expired/invalid token)
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response && error.response.status === 401) {
+      // Cookie is expired/invalid — redirect to login
+      // Only redirect if not already on the login page
+      if (!window.location.pathname.startsWith("/login")) {
+        window.location.href = "/login";
+      }
+    }
+    return Promise.reject(error);
   }
-
-  return config;
-});
+);
 
 export function formatApiErrorDetail(detail) {
   if (detail == null) return "Terjadi kesalahan. Coba lagi.";

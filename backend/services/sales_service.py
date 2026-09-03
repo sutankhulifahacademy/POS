@@ -15,15 +15,34 @@ from database import (
 from utils import new_id, clean, clean_list, _u
 from services.inventory_service import _get_main_outlet_id
 from services.pricing_service import resolve_product_price
+from services.money import money, ZERO
 
 
-def _validate_sale_total(subtotal: float, discount: float, tax: float) -> float:
+def _validate_sale_total(subtotal, discount, tax):
     """
     Hitung total transaksi dengan aman.
-    Total tidak boleh negatif.
+    - Discount tidak boleh negatif atau melebihi subtotal.
+    - Tax tidak boleh negatif.
+    - Total tidak boleh negatif.
+    - Semua nilai uang dihitung dengan Decimal dan ROUND_HALF_UP.
     """
-    total = float(subtotal) - float(discount) + float(tax)
-    return max(0.0, total)
+    subtotal = money(subtotal)
+    discount = money(discount)
+    tax = money(tax)
+
+    if discount < ZERO:
+        raise HTTPException(400, "Discount tidak boleh negatif")
+    if tax < ZERO:
+        raise HTTPException(400, "Tax tidak boleh negatif")
+    if discount > subtotal:
+        raise HTTPException(400, "Discount tidak boleh melebihi subtotal")
+    if tax > subtotal:
+        raise HTTPException(400, "Tax tidak boleh melebihi subtotal")
+
+    total = subtotal - discount + tax
+    if total < ZERO:
+        total = ZERO
+    return money(total)
 
 
 def _validate_payment(
@@ -57,16 +76,17 @@ def _validate_payment(
 
     if payment_method == "cash":
 
-        if float(amount_paid) < total:
+        paid = money(amount_paid)
+        if paid < total:
             raise HTTPException(
                 400,
                 "Uang bayar kurang"
             )
 
-        paid = float(amount_paid)
-        change = max(0.0, paid - total)
-
-        return paid, change
+        change = paid - total
+        if change < ZERO:
+            change = ZERO
+        return paid, money(change)
 
     # =========================================================
     # CARD
@@ -112,7 +132,7 @@ def _validate_payment(
                 "No. referensi kartu wajib diisi"
             )
 
-        return total, 0.0
+        return total, ZERO
 
     # =========================================================
     # QRIS
@@ -120,7 +140,7 @@ def _validate_payment(
 
     if payment_method == "qris":
 
-        return total, 0.0
+        return total, ZERO
 
     # =========================================================
     # TRANSFER
@@ -154,7 +174,7 @@ def _validate_payment(
 
         # Transfer dianggap masuk sesuai nominal transaksi.
         # Verifikasi tidak boleh dipaksa dari frontend.
-        return total, 0.0
+        return total, ZERO
 
     raise HTTPException(
         400,
@@ -272,7 +292,7 @@ async def _validate_and_get_sale_items(items, sales_channel="offline", price_typ
         )
 
     normalized_items = []
-    subtotal = 0.0
+    subtotal = ZERO
 
     for item in items:
 
@@ -308,6 +328,7 @@ async def _validate_and_get_sale_items(items, sales_channel="offline", price_typ
                 name,
                 stock,
                 price,
+                cost,
                 variants,
                 retail_price,
                 reseller_price,
@@ -345,7 +366,7 @@ async def _validate_and_get_sale_items(items, sales_channel="offline", price_typ
                 variants = []
 
         product_for_pricing = {
-            "price": float(product["price"] or 0),
+            "price": product["price"],
             "retail_price": product.get("retail_price"),
             "reseller_price": product.get("reseller_price"),
             "wholesale_price": product.get("wholesale_price"),
@@ -361,6 +382,10 @@ async def _validate_and_get_sale_items(items, sales_channel="offline", price_typ
             sales_channel=sales_channel,
             price_type=price_type,
         )
+        resolved_price = money(resolved_price)
+
+        # Persist historical cost snapshot for this sale item
+        item_cost = money(product.get("cost") or 0)
 
         # Gunakan nama dari product jika frontend kosong.
         name = (
@@ -370,7 +395,8 @@ async def _validate_and_get_sale_items(items, sales_channel="offline", price_typ
 
         data["product_id"] = product_id
         data["name"] = name
-        data["price"] = resolved_price
+        data["price"] = float(resolved_price)
+        data["cost"] = float(item_cost)
         data["quantity"] = quantity
         data["variant_name"] = variant_name
         data["price_type"] = price_type
@@ -380,7 +406,7 @@ async def _validate_and_get_sale_items(items, sales_channel="offline", price_typ
 
         normalized_items.append(data)
 
-    return normalized_items, subtotal
+    return normalized_items, money(subtotal)
 
 
 async def _deduct_sale_stock(

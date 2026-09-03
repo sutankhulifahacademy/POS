@@ -127,6 +127,8 @@ async def validate_coupon(body: dict, user=Depends(get_current_user)):
     code = (body.get("code") or "").upper().strip()
     outlet_id = body.get("outlet_id")
     purchase_amount = float(body.get("purchase_amount", 0))
+    # Validate outlet access
+    validate_outlet_access(user, outlet_id)
 
     coupon = await q_one("""
         SELECT * FROM coupons

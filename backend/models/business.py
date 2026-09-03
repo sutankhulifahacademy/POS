@@ -33,6 +33,7 @@ class StockAdjustIn(BaseModel):
     delta: int
     reason: str
     note: Optional[str] = ""
+    outlet_id: Optional[str] = None
 
 
 class CustomerIn(BaseModel):

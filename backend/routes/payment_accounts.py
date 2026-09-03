@@ -32,6 +32,18 @@ async def list_payment_accounts(
         rows = await q_all(
             "SELECT * FROM payment_accounts ORDER BY is_active DESC, bank_name ASC, created_at DESC"
         )
+
+    # F3: Only users with payment_accounts.view (or owner/admin/manager) may see
+    # full account numbers. Cashiers get operational info (bank, account name,
+    # outlet, active status) without the sensitive account number.
+    can_view_sensitive = (
+        user["role"] in ("owner", "admin", "manager")
+        or await has_permission(user, "payment_accounts", "view")
+    )
+    if not can_view_sensitive:
+        for row in rows:
+            row.pop("account_no", None)
+
     return clean_list(rows)
 
 
@@ -40,6 +52,10 @@ async def create_payment_account(
     body: PaymentAccountCreate,
     user=Depends(require_permission("payment_accounts", "create")),
 ):
+    # Outlet authorization — prevent cross-outlet account creation
+    outlet_id = _u(body.outlet_id)
+    if outlet_id and user["role"] != "owner" and str(outlet_id) not in user.get("outlet_ids", []):
+        raise HTTPException(403, "Tidak ada akses ke outlet ini")
     aid = new_id()
     await q_exec(
         """INSERT INTO payment_accounts
@@ -49,7 +65,7 @@ async def create_payment_account(
         b=body.bank_name,
         an=body.account_name,
         no=body.account_no,
-        o=_u(body.outlet_id),
+        o=outlet_id,
         ia=body.is_active,
     )
     return clean(await q_one("SELECT * FROM payment_accounts WHERE id=:id", id=aid))
@@ -65,7 +81,11 @@ async def update_payment_account(
     if not updates:
         raise HTTPException(400, "No updates")
     if "outlet_id" in updates:
-        updates["outlet_id"] = _u(updates["outlet_id"])
+        new_oid = _u(updates["outlet_id"])
+        # Validate outlet access for the new outlet_id
+        if new_oid and user["role"] != "owner" and str(new_oid) not in user.get("outlet_ids", []):
+            raise HTTPException(403, "Tidak ada akses ke outlet ini")
+        updates["outlet_id"] = new_oid
     sets = ", ".join(f"{k}=:{k}" for k in updates.keys())
     updates["id"] = account_id
     outlet_filter = await filter_outlets_for_user(user)

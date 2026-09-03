@@ -6,14 +6,19 @@ Rules:
     channel == OFFLINE:
         price_type == RESELLER → reseller_price (fallback to price)
         price_type == PARTAI   → wholesale_price (fallback to price)
-        price_type == ECERAN   → retail_price (fallback to price)
+        price_type == ECERAN   → product.price (standard selling price)
         default                → price (existing behavior)
 
 Existing product.price is NEVER modified. Additional pricing fields are
 nullable — when NULL, the system falls back to product.price so old products
 remain valid.
+
+IMPORTANT: For standard POS/Dine-In (price_type == "ecceran"), the source
+of truth is products.price — NOT retail_price. The retail_price field is
+a separate pricing tier and must not automatically replace products.price.
 """
 from typing import Optional, Any
+from services.money import money
 
 
 def _resolve_price_from_obj(
@@ -26,8 +31,9 @@ def _resolve_price_from_obj(
 
     obj must contain 'price' (the existing price field).
     Optional: retail_price, reseller_price, wholesale_price, online_price.
+    Returns a Decimal money value.
     """
-    existing_price = float(obj.get("price") or 0)
+    existing_price = money(obj.get("price") or 0)
 
     sales_channel = (sales_channel or "offline").lower()
     price_type = (price_type or "ecceran").lower()
@@ -37,8 +43,8 @@ def _resolve_price_from_obj(
     # =====================================================
     if sales_channel == "online":
         online_price = obj.get("online_price")
-        if online_price is not None and float(online_price) >= 0:
-            return float(online_price)
+        if online_price is not None and money(online_price) >= 0:
+            return money(online_price)
         return existing_price
 
     # =====================================================
@@ -46,20 +52,23 @@ def _resolve_price_from_obj(
     # =====================================================
     if price_type == "reseller":
         rp = obj.get("reseller_price")
-        if rp is not None and float(rp) >= 0:
-            return float(rp)
+        if rp is not None and money(rp) >= 0:
+            return money(rp)
         return existing_price
 
     if price_type == "partai":
         wp = obj.get("wholesale_price")
-        if wp is not None and float(wp) >= 0:
-            return float(wp)
+        if wp is not None and money(wp) >= 0:
+            return money(wp)
         return existing_price
 
-    # Default: eceran → retail_price, fallback to existing price
-    rtp = obj.get("retail_price")
-    if rtp is not None and float(rtp) >= 0:
-        return float(rtp)
+    # =====================================================
+    # ECERAN (standard POS/Dine-In) — use products.price
+    # =====================================================
+    # products.price is the standard selling price for POS/Dine-In.
+    # retail_price is a separate pricing tier and must NOT automatically
+    # replace products.price for standard transactions.
+    # =====================================================
     return existing_price
 
 

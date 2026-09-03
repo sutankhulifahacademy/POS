@@ -60,6 +60,8 @@ async def clock_in(body: ClockInIn, user=Depends(get_current_user)):
         user_outlets = user.get("outlet_ids", [])
         if user_outlets:
             outlet_id = user_outlets[0]
+    # Validate outlet access
+    validate_outlet_access(user, outlet_id)
     aid = new_id()
     await q_exec("""INSERT INTO attendance (id, cashier_id, cashier_name, outlet_id, clock_in_at, clock_in_photo, clock_in_note, status)
                     VALUES (:id, :ci, :cn, :oid, NOW(), :p, :n, 'active')""",

@@ -78,6 +78,8 @@ async def create_leave_request(
         user_outlets = user.get("outlet_ids", [])
         if user_outlets:
             outlet_id = user_outlets[0]
+    # Validate outlet access
+    validate_outlet_access(user, outlet_id)
 
     lid = new_id()
     await q_exec("""

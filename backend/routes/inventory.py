@@ -1,21 +1,65 @@
 """Inventory routes — stock adjustments and movements."""
 from typing import Optional
 from routes.deps import *
-from services.inventory_service import _get_main_outlet_id, _adjust_outlet_stock
+from services.inventory_service import _get_main_outlet_id, _adjust_outlet_stock, _adjust_outlet_stock_tx
+from sqlalchemy import text
 
 router = APIRouter()
 
 
 @router.post("/inventory/adjust")
 async def adjust_stock(body: StockAdjustIn, user=Depends(require_permission("inventory", "update"))):
+    """Manual stock adjustment.
+
+    Updates BOTH products.stock (global) and outlet_stocks.quantity
+    (per-outlet) when outlet_id is provided. The entire operation is
+    wrapped in a single database transaction for atomicity — if any
+    step fails, all changes roll back.
+    """
     p = await q_one("SELECT * FROM products WHERE id=:id", id=body.product_id)
     if not p: raise HTTPException(404, "Product not found")
-    new_stock = max(0, p["stock"] + body.delta)
-    await q_exec("UPDATE products SET stock=:s, updated_at=NOW() WHERE id=:id", s=new_stock, id=body.product_id)
-    await q_exec("""INSERT INTO stock_movements (id, product_id, product_name, delta, reason, note, user_id, created_at)
-                    VALUES (:id, :pid, :pn, :d, :r, :note, :u, NOW())""",
-                 id=new_id(), pid=body.product_id, pn=p["name"], d=body.delta, r=body.reason, note=body.note or "", u=user["id"])
-    return {"product_id": body.product_id, "new_stock": new_stock}
+
+    # Determine target outlet (defaults to main outlet for backward compat)
+    outlet_id = getattr(body, "outlet_id", None)
+    if not outlet_id:
+        outlet_id = await _get_main_outlet_id()
+
+    # Validate outlet access before any write
+    validate_outlet_access(user, outlet_id)
+
+    # Atomic transaction: update global stock, outlet stock, and record movement
+    async with transaction() as session:
+        # Global stock update with non-negative guard
+        if body.delta < 0:
+            result = await session.execute(
+                text("UPDATE products SET stock=stock+:d, updated_at=NOW() WHERE id=:id AND stock+:d >= 0"),
+                {"d": body.delta, "id": body.product_id},
+            )
+            if result.rowcount == 0:
+                raise HTTPException(400, "Stok global tidak cukup untuk adjustment ini")
+        else:
+            await session.execute(
+                text("UPDATE products SET stock=stock+:d, updated_at=NOW() WHERE id=:id"),
+                {"d": body.delta, "id": body.product_id},
+            )
+
+        # Outlet stock update (transaction-aware)
+        if outlet_id:
+            affected = await _adjust_outlet_stock_tx(session, body.product_id, str(outlet_id), body.delta)
+            if body.delta < 0 and affected == 0:
+                raise HTTPException(400, "Stok outlet tidak cukup atau belum diinisialisasi")
+
+        # Record movement
+        await session.execute(
+            text("""INSERT INTO stock_movements (id, product_id, product_name, delta, reason, note, outlet_id, user_id, created_at)
+                    VALUES (:id, :pid, :pn, :d, :r, :note, :oid, :u, NOW())"""),
+            {"id": new_id(), "pid": body.product_id, "pn": p["name"], "d": body.delta,
+             "r": body.reason, "note": body.note or "", "oid": _u(outlet_id), "u": user["id"]},
+        )
+
+    # Re-read to return the actual current stock
+    updated = await q_one("SELECT stock FROM products WHERE id=:id", id=body.product_id)
+    return {"product_id": body.product_id, "new_stock": int(updated["stock"]) if updated else 0}
 
 @router.get("/inventory/movements")
 async def list_movements(

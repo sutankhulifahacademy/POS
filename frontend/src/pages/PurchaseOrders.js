@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import api, { formatIDR } from "../lib/api";
+import api, { formatIDR, formatApiErrorDetail } from "../lib/api";
 import { useOutlet } from "../context/OutletContext";
 import PageHeader from "../components/PageHeader";
 import { Plus, X, PackageCheck, Trash2, XCircle } from "lucide-react";
@@ -17,14 +17,18 @@ export default function PurchaseOrders() {
   const [detail, setDetail] = useState(null);
 
   const load = useCallback(async () => {
-    const params = new URLSearchParams();
-    if (outletIdForApi) params.append("outlet_id", outletIdForApi);
-    const [o, s, p] = await Promise.all([
-      api.get(`/purchase-orders?${params}`),
-      api.get("/suppliers"),
-      api.get(`/products?${params}`),
-    ]);
-    setOrders(o.data); setSuppliers(s.data); setProducts(p.data);
+    try {
+      const params = new URLSearchParams();
+      if (outletIdForApi) params.append("outlet_id", outletIdForApi);
+      const [o, s, p] = await Promise.all([
+        api.get(`/purchase-orders?${params}`),
+        api.get("/suppliers"),
+        api.get(`/products?${params}`),
+      ]);
+      setOrders(o.data); setSuppliers(s.data); setProducts(p.data);
+    } catch (e) {
+      toast.error(formatApiErrorDetail(e.response?.data?.detail) || "Gagal memuat data");
+    }
   }, [outletIdForApi]);
   useEffect(() => { load(); }, [load]);
 

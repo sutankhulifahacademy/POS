@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
-import api, { formatIDR } from "../lib/api";
+import api, { formatIDR, formatApiErrorDetail } from "../lib/api";
 import PageHeader from "../components/PageHeader";
-import { Plus, Users as UsersIcon, X, ShoppingBag, Trash2, Search, MapPin, Package } from "lucide-react";
+import Receipt, { printReceipt } from "../components/Receipt";
+import QRISPayment from "../components/QRISPayment";
+import { Plus, Users as UsersIcon, X, ShoppingBag, Trash2, Search, MapPin, Package, Printer } from "lucide-react";
 import { toast } from "sonner";
 import { useOutlet } from "../context/OutletContext";
 
@@ -20,6 +22,7 @@ export default function Tables({ embedded = false }) {
   const [guests, setGuests] = useState(1);
   const [activeOrder, setActiveOrder] = useState(null); // Loaded order for editing
   const [search, setSearch] = useState("");
+  const [activeCategory, setActiveCategory] = useState("all");
   const [showCheckout, setShowCheckout] = useState(false);
   const [payMethod, setPayMethod] = useState("cash");
   const [amountPaid, setAmountPaid] = useState("");
@@ -41,20 +44,36 @@ export default function Tables({ embedded = false }) {
   const [cardBrands, setCardBrands] = useState([]);
   const [cardBrandOther, setCardBrandOther] = useState("");
   const [paketComposer, setPaketComposer] = useState(null);
+  const [processing, setProcessing] = useState(false);
+  const [receiptData, setReceiptData] = useState(null);
+  const [variantPick, setVariantPick] = useState(null);
+  const [noteEdit, setNoteEdit] = useState(null); // { product_id, note }
+  const [moveTableModal, setMoveTableModal] = useState(false);
+  const [moveTargetTable, setMoveTargetTable] = useState("");
+  const [showQRIS, setShowQRIS] = useState(false);
+  const [activeShift, setActiveShift] = useState(null);
+  const [salesChannel, setSalesChannel] = useState("offline");
+  const [priceType, setPriceType] = useState("ecceran");
 
   const load = async () => {
     const oParam = outletIdForApi ? `?outlet_id=${outletIdForApi}` : "";
-    const [t, p, cat, c, pa, cb] = await Promise.all([
-      api.get(`/tables${oParam}`),
-      api.get(`/products${oParam}`),
-      api.get("/categories"),
-      api.get("/customers"),
-      api.get(`/payment-accounts${oParam}`),
-      api.get("/card-brands"),
-    ]);
-    setTables(t.data); setProducts(p.data); setCategories(cat.data || []); setCustomers(c.data);
-    setPaymentAccounts(pa.data || []);
-    setCardBrands(cb.data || []);
+    try {
+      const [t, p, cat, c, pa, cb, s] = await Promise.all([
+        api.get(`/tables${oParam}`),
+        api.get(`/products${oParam}`),
+        api.get("/categories"),
+        api.get("/customers"),
+        api.get(`/payment-accounts${oParam}`),
+        api.get("/card-brands"),
+        api.get(`/shifts/active${oParam}`).catch(() => ({ data: null })),
+      ]);
+      setTables(t.data); setProducts(p.data); setCategories(cat.data || []); setCustomers(c.data);
+      setPaymentAccounts(pa.data || []);
+      setCardBrands(cb.data || []);
+      setActiveShift(s.data);
+    } catch (e) {
+      toast.error(formatApiErrorDetail(e.response?.data?.detail) || "Gagal memuat data meja");
+    }
   };
   useEffect(() => { load(); }, [outletIdForApi]);
 
@@ -110,8 +129,15 @@ export default function Tables({ embedded = false }) {
   const isPaketProduct = (p) => p.category_id === paketCategoryId;
 
   const handleProductClick = (product) => {
+    // Only show variant picker for REAL variants (with "name" field).
+    // Frozen packages use "pack" field — those are NOT Dine-In variants,
+    // so we add to order directly at products.price.
+    const hasRealVariants = product.variants && product.variants.length > 0
+      && product.variants.some(v => v && v.name);
     if (isPaketProduct(product)) {
       setPaketComposer({ product, selections: {} });
+    } else if (hasRealVariants) {
+      setVariantPick(product);
     } else {
       addItem(product);
     }
@@ -162,25 +188,35 @@ export default function Tables({ embedded = false }) {
     setPaketComposer(null);
   };
 
-  const addItem = (p) => {
+  const addItem = (p, variantName = "", variantPrice = null) => {
     if (p.stock <= 0) return toast.error("Stok habis");
+    const price = variantPrice !== null ? Number(variantPrice) : Number(p.price);
+    const key = variantName ? `${p.id}__${variantName}` : p.id;
     setOrderItems(prev => {
-      const ex = prev.find(i => i.product_id === p.id);
-      if (ex) return prev.map(i => i.product_id === p.id ? { ...i, quantity: i.quantity + 1 } : i);
+      const ex = prev.find(i => (variantName ? `${i.product_id}__${i.variant_name}` : i.product_id) === key);
+      if (ex) return prev.map(i => (variantName ? `${i.product_id}__${i.variant_name}` : i.product_id) === key ? { ...i, quantity: i.quantity + 1 } : i);
       return [
         ...prev,
         {
           product_id: String(p.id),
           name: p.name,
-          price: Number(p.price),
+          price: price,
           quantity: 1,
-          variant_name: "",
+          variant_name: variantName,
           note: ""
         }
       ];
     });
   };
-  const changeQty = (pid, d) => setOrderItems(prev => prev.map(i => i.product_id === pid ? { ...i, quantity: Math.max(0, i.quantity + d) } : i).filter(i => i.quantity > 0));
+  const changeQty = (pid, d, variantName = "") => setOrderItems(prev => prev.map(i => {
+    const matchKey = variantName ? `${i.product_id}__${i.variant_name}` === `${pid}__${variantName}` : i.product_id === pid && !i.variant_name;
+    return matchKey ? { ...i, quantity: Math.max(0, i.quantity + d) } : i;
+  }).filter(i => i.quantity > 0));
+
+  const updateItemNote = (pid, note, variantName = "") => setOrderItems(prev => prev.map(i => {
+    const matchKey = variantName ? `${i.product_id}__${i.variant_name}` === `${pid}__${variantName}` : i.product_id === pid && !i.variant_name;
+    return matchKey ? { ...i, note } : i;
+  }));
 
   const saveOrder = async () => {
     if (orderItems.length === 0) {
@@ -248,6 +284,7 @@ export default function Tables({ embedded = false }) {
   };
 
   const doCheckout = async () => {
+    if (processing) return; // Double-submit protection
     const total = orderItems.reduce((s, i) => s + i.price * i.quantity, 0) - Number(discount || 0);
 
     // Resolve card brand: if "Lainnya", save new brand to backend
@@ -294,6 +331,27 @@ export default function Tables({ embedded = false }) {
         return toast.error("Transfer harus diverifikasi terlebih dahulu");
       }
     }
+    // QRIS: show QR modal first, then complete checkout on success
+    if (payMethod === "qris") {
+      setShowQRIS(true);
+      return;
+    }
+    await _doCheckout(finalCardBrand);
+  };
+
+  const [qrisOrderId, setQrisOrderId] = useState(null);
+
+  const onQRISSuccess = async (orderId) => {
+    if (processing) return; // Double-submit protection
+    setShowQRIS(false);
+    setQrisOrderId(orderId);
+    await _doCheckout(cardBrand, orderId);
+  };
+
+  const _doCheckout = async (resolvedCardBrand = cardBrand, qrisOrderIdOverride = null) => {
+    const total = orderItems.reduce((s, i) => s + i.price * i.quantity, 0) - Number(discount || 0);
+    if (processing) return; // Double-submit protection
+    setProcessing(true);
     try {
       // Save items first (in case edited)
       let oid;
@@ -325,15 +383,20 @@ export default function Tables({ embedded = false }) {
           setActiveOrder(data);
         }
       }
+      const orderCheckoutKey = `order-checkout-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
       const { data } = await api.post(`/orders/${oid}/checkout`, {
         payment_method: payMethod,
         amount_paid: payMethod === "cash" ? Number(amountPaid) : total,
         discount: Number(discount) || 0,
         tax: 0,
         customer_id: customerId,
+        outlet_id: outletIdForApi || undefined,
+        sales_channel: salesChannel,
+        price_type: salesChannel === "online" ? "online" : priceType,
+        qris_order_id: qrisOrderIdOverride || qrisOrderId || "",
 
         card_type: payMethod === "card" ? cardType : "",
-        card_brand: payMethod === "card" ? finalCardBrand : "",
+        card_brand: payMethod === "card" ? resolvedCardBrand : "",
         card_last4: payMethod === "card" ? cardLast4 : "",
         card_reference_no: payMethod === "card" ? cardReferenceNo : "",
         card_approval_code: payMethod === "card" ? cardApprovalCode : "",
@@ -345,8 +408,9 @@ export default function Tables({ embedded = false }) {
         transfer_reference_no: payMethod === "transfer" ? transferReferenceNo : "",
         transfer_sender_name: payMethod === "transfer" ? transferSenderName : "",
         transfer_verified: payMethod === "transfer" ? transferVerified : false,
-      });
+      }, { headers: { "Idempotency-Key": orderCheckoutKey } });
       toast.success(`Selesai: ${data.invoice_no}`);
+      setReceiptData(data);
       setShowCheckout(false); setOpenTable(null); setActiveOrder(null); setOrderItems([]);
       setAmountPaid("");
       setDiscount(0);
@@ -377,10 +441,11 @@ export default function Tables({ embedded = false }) {
             ? detail.map((x) => x.msg || "Data tidak valid").join(", ")
             : "Gagal menyimpan order";
 
-      console.error("UPDATE ORDER ERROR:", err.response?.data);
-      console.error("ORDER ITEMS:", orderItems);
+      // Removed console.error to prevent leaking order/payment data to browser console
 
       toast.error(message);
+    } finally {
+      setProcessing(false);
     }
   };
 
@@ -391,7 +456,27 @@ export default function Tables({ embedded = false }) {
     catch (err) { toast.error(err.response?.data?.detail || "Gagal"); }
   };
 
-  const filteredProducts = products.filter(p => p.is_active && (!search || p.name.toLowerCase().includes(search.toLowerCase())));
+  const doMoveTable = async () => {
+    if (!activeOrder || !moveTargetTable) return;
+    try {
+      await api.post(`/orders/${activeOrder.id}/move-table`, { new_table_id: moveTargetTable });
+      const newTable = tables.find(t => t.id === moveTargetTable);
+      toast.success(`Order dipindah ke meja ${newTable?.name || ""}`);
+      setMoveTableModal(false);
+      setMoveTargetTable("");
+      setOpenTable(null); setActiveOrder(null); setOrderItems([]);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Gagal memindah meja");
+    }
+  };
+
+  const filteredProducts = products.filter(p => {
+    if (!p.is_active) return false;
+    if (activeCategory !== "all" && p.category_id !== activeCategory) return false;
+    if (search && !p.name.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
   const orderTotal = orderItems.reduce((s, i) => s + i.price * i.quantity, 0);
   const zones = [...new Set(tables.map(t => t.zone || "Utama"))];
 
@@ -416,28 +501,28 @@ export default function Tables({ embedded = false }) {
             <h2 className="font-serif-luxury text-2xl text-[#F5F5F5] mb-4 flex items-center gap-2">
               <MapPin size={18} strokeWidth={1.5} className="text-[#F4C842]" /> Zona {zone}
             </h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 xl:grid-cols-9 2xl:grid-cols-11 gap-2 sm:gap-3">
               {tables.filter(t => (t.zone || "Utama") === zone).map(t => (
                 <div
                   key={t.id}
                   onClick={() => beginOrder(t)}
                   data-testid={`table-${t.id}`}
-                  className={`relative cursor-pointer rounded-lg p-5 card-hover ${
+                  className={`relative cursor-pointer rounded-lg p-3 sm:p-4 card-hover min-h-[90px] sm:min-h-[110px] ${
                     t.status === "occupied"
                       ? "bg-[#F4C842]/10 border border-[#F4C842] gold-glow"
                       : "bg-[#331419] gold-border hover:border-[#F4C842]"
                   }`}
                 >
-                  <button onClick={(e) => { e.stopPropagation(); deleteTable(t.id, t.name); }} className="absolute top-2 right-2 w-8 h-8 flex items-center justify-center text-[#C4A484] hover:text-[#8B0000] opacity-0 group-hover:opacity-100"><Trash2 size={14} /></button>
-                  <p className="font-serif-luxury text-2xl text-[#F5F5F5]">{t.name}</p>
-                  <p className="text-xs text-[#C4A484] mt-1 flex items-center gap-1"><UsersIcon size={11} /> {t.capacity} orang</p>
-                  <div className={`mt-3 text-[10px] uppercase tracking-widest px-2 py-1 rounded inline-block ${
+                  <button onClick={(e) => { e.stopPropagation(); deleteTable(t.id, t.name); }} className="absolute top-1.5 right-1.5 w-7 h-7 flex items-center justify-center text-[#C4A484] hover:text-[#8B0000] opacity-0 group-hover:opacity-100"><Trash2 size={12} /></button>
+                  <p className="font-serif-luxury text-lg sm:text-xl text-[#F5F5F5] leading-tight">{t.name}</p>
+                  <p className="text-[10px] sm:text-xs text-[#C4A484] mt-0.5 flex items-center gap-1"><UsersIcon size={10} /> {t.capacity} org</p>
+                  <div className={`mt-2 text-[9px] sm:text-[10px] uppercase tracking-widest px-1.5 py-0.5 rounded inline-block ${
                     t.status === "occupied" ? "bg-[#F4C842] text-[#1A0810]" : "bg-[#2E8B57]/20 text-[#2E8B57]"
                   }`}>
                     {t.status === "occupied" ? "TERISI" : "KOSONG"}
                   </div>
                   {t.active_order_total > 0 && (
-                    <p className="text-xs text-[#F4C842] mt-2 font-semibold">{formatIDR(t.active_order_total)}</p>
+                    <p className="text-[10px] sm:text-xs text-[#F4C842] mt-1.5 font-semibold">{formatIDR(t.active_order_total)}</p>
                   )}
                 </div>
               ))}
@@ -449,7 +534,7 @@ export default function Tables({ embedded = false }) {
       {/* Add table form */}
       {showForm && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setShowForm(false)}>
-          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-md w-full p-6">
+          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-md w-full p-4 sm:p-6 mx-4 max-h-[90dvh] max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-serif-luxury text-2xl text-[#F5F5F5]">Tambah Meja</h2>
               <button onClick={() => setShowForm(false)} className="text-[#C4A484]"><X size={20} /></button>
@@ -480,16 +565,20 @@ export default function Tables({ embedded = false }) {
 
       {/* Dine-in Order UI */}
       {openTable && (
-        <div className="fixed inset-0 bg-black/90 z-40 flex" onClick={() => { if (!activeOrder) setOpenTable(null); }}>
-          <div onClick={(e) => e.stopPropagation()} className="flex flex-col lg:flex-row w-full max-w-6xl mx-auto my-6">
+        <div className="fixed inset-0 bg-black/90 z-40 flex items-end sm:items-center justify-center" onClick={() => { if (!activeOrder) setOpenTable(null); }}>
+          <div onClick={(e) => e.stopPropagation()} className="flex flex-col lg:flex-row w-full max-w-6xl lg:mx-auto lg:my-6 max-h-[96dvh] max-h-[96vh] bg-[#2A1015] rounded-t-xl lg:rounded-lg sm:mx-4">
+            {/* Mobile drag handle */}
+            <div className="lg:hidden flex justify-center pt-2 pb-1">
+              <div className="w-10 h-1 rounded-full bg-[#C4A484]/40" />
+            </div>
             {/* Left: product picker */}
-            <div className="flex-1 bg-[#2A1015] gold-border rounded-l-lg p-6 overflow-y-auto max-h-[50vh] lg:max-h-[80vh]">
+            <div className="flex-1 gold-border rounded-t-none lg:rounded-l-lg lg:rounded-tr-none p-3 sm:p-4 lg:p-6 overflow-y-auto max-h-[55dvh] max-h-[55vh] lg:max-h-none">
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <p className="text-xs uppercase tracking-widest text-[#F4C842]">Meja {openTable.name}</p>
-                  <h2 className="font-serif-luxury text-3xl text-[#F5F5F5]">{activeOrder ? "Edit Order" : "Buka Order Baru"}</h2>
+                  <h2 className="font-serif-luxury text-2xl sm:text-3xl text-[#F5F5F5]">{activeOrder ? "Edit Order" : "Buka Order Baru"}</h2>
                 </div>
-                <button onClick={() => { setOpenTable(null); setActiveOrder(null); setOrderItems([]); }} className="text-[#C4A484] hover:text-[#F5F5F5]"><X size={22} /></button>
+                <button onClick={() => { setOpenTable(null); setActiveOrder(null); setOrderItems([]); }} className="text-[#C4A484] hover:text-[#F5F5F5] p-1.5"><X size={22} /></button>
               </div>
               {!activeOrder && (
                 <div className="mb-4">
@@ -499,36 +588,53 @@ export default function Tables({ embedded = false }) {
               )}
               <div className="mb-4 relative">
                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#C4A484]" />
-                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari menu..." className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md pl-9 pr-3 py-2 text-sm text-[#F5F5F5]" data-testid="dinein-search" />
+                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari menu..." className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md pl-9 pr-3 py-2.5 text-sm text-[#F5F5F5] min-h-[44px]" data-testid="dinein-search" />
               </div>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {filteredProducts.map(p => (
-                  <button key={p.id} onClick={() => handleProductClick(p)} disabled={p.stock <= 0} data-testid={`dinein-product-${p.id}`} className="bg-[#331419] gold-border rounded-md p-3 text-left card-hover disabled:opacity-40">
+              {/* Category filter — same style as POS */}
+              <div className="mb-4 flex gap-2 overflow-x-auto pb-2">
+                <button onClick={() => setActiveCategory("all")} className={`px-4 py-2.5 rounded-md text-sm whitespace-nowrap transition-colors min-h-[40px] ${activeCategory === "all" ? "bg-[#F4C842] text-[#1A0810]" : "bg-[#331419] text-[#C4A484] hover:text-[#F5F5F5]"}`} data-testid="dinein-cat-all">Semua</button>
+                {categories.map((c) => (
+                  <button key={c.id} onClick={() => setActiveCategory(c.id)} className={`px-4 py-2.5 rounded-md text-sm whitespace-nowrap transition-colors min-h-[40px] ${activeCategory === c.id ? "bg-[#F4C842] text-[#1A0810]" : "bg-[#331419] text-[#C4A484] hover:text-[#F5F5F5]"}`} data-testid={`dinein-cat-${c.id}`}>{c.name}</button>
+                ))}
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 gap-2 sm:gap-3">
+                {filteredProducts.length === 0 ? (
+                  <div className="col-span-full text-center py-12 text-[#C4A484] text-sm">Tidak ada produk di kategori ini.</div>
+                ) : filteredProducts.map(p => (
+                  <button key={p.id} onClick={() => handleProductClick(p)} disabled={p.stock <= 0} data-testid={`dinein-product-${p.id}`} className="bg-[#331419] gold-border rounded-md p-2 sm:p-3 text-left card-hover disabled:opacity-40">
                     {isPaketProduct(p) && (
-                      <span className="inline-flex items-center gap-1 mb-1 text-[9px] uppercase tracking-widest bg-[#F4C842] text-[#1A0810] px-1.5 py-0.5 rounded font-semibold">
-                        <Package size={9} /> Paket
+                      <span className="inline-flex items-center gap-1 mb-1 text-[8px] uppercase tracking-widest bg-[#F4C842] text-[#1A0810] px-1 py-0.5 rounded font-semibold">
+                        <Package size={8} /> Paket
                       </span>
                     )}
-                    <p className="text-sm text-[#F5F5F5] truncate">{p.name}</p>
+                    <p className="text-xs sm:text-sm text-[#F5F5F5] truncate leading-tight">{p.name}</p>
                     <p className="text-[10px] text-[#C4A484]">Stok: {p.stock}</p>
-                    <p className="text-[#F4C842] font-semibold text-sm mt-1">{formatIDR(p.price)}</p>
+                    <p className="text-[#F4C842] font-semibold text-xs sm:text-sm mt-1">{formatIDR(p.price)}</p>
                   </button>
                 ))}
               </div>
             </div>
             {/* Right: order cart */}
-            <div className="w-full lg:w-96 bg-[#1A0810] gold-border rounded-r-lg p-6 flex flex-col overflow-y-auto max-h-[50vh] lg:max-h-[80vh]">
+            <div className="w-full lg:w-96 bg-[#1A0810] gold-border rounded-b-lg lg:rounded-r-lg lg:rounded-bl-none p-3 sm:p-4 lg:p-6 flex flex-col overflow-y-auto max-h-[40dvh] max-h-[40vh] lg:max-h-none" style={{ paddingBottom: "calc(1rem + env(safe-area-inset-bottom))" }}>
               <div className="flex items-center gap-2 mb-4">
                 <ShoppingBag size={18} strokeWidth={1.5} className="text-[#F4C842]" />
                 <h3 className="font-serif-luxury text-xl text-[#F5F5F5]">Order</h3>
                 <span className="ml-auto text-xs text-[#C4A484]">{orderItems.length} item</span>
               </div>
               <div className="flex-1 overflow-y-auto space-y-2 mb-4">
-                {orderItems.length === 0 ? <p className="text-xs text-[#C4A484] italic text-center py-8">Belum ada item</p> : orderItems.map(i => (
-                  <div key={i.product_id} className="bg-[#331419] rounded-md p-2 flex items-center justify-between text-sm">
+                {orderItems.length === 0 ? <p className="text-xs text-[#C4A484] italic text-center py-8">Belum ada item</p> : orderItems.map(i => {
+                  const itemKey = i.variant_name ? `${i.product_id}__${i.variant_name}` : i.product_id;
+                  return (
+                  <div key={itemKey} className="bg-[#331419] rounded-md p-2 flex items-center justify-between text-sm">
                     <div className="flex-1 min-w-0">
                       <p className="text-[#F5F5F5] truncate">{i.name}</p>
+                      {i.variant_name && (
+                        <p className="text-[10px] text-[#F4C842] truncate">Varian: {i.variant_name}</p>
+                      )}
                       <p className="text-xs text-[#C4A484]">{formatIDR(i.price)}</p>
+                      {i.note && (
+                        <p className="text-[10px] text-[#C4A484] italic truncate">Catatan: {i.note}</p>
+                      )}
                       {i.paket_items && i.paket_items.length > 0 && (
                         <ul className="mt-1 space-y-0.5">
                           {i.paket_items.map((pi, idx) => (
@@ -539,14 +645,21 @@ export default function Tables({ embedded = false }) {
                           ))}
                         </ul>
                       )}
+                      <button
+                        onClick={() => setNoteEdit({ product_id: i.product_id, variant_name: i.variant_name || "", note: i.note || "" })}
+                        className="text-[10px] text-[#F4C842] hover:underline mt-1"
+                      >
+                        {i.note ? "Edit catatan" : "+ Tambah catatan"}
+                      </button>
                     </div>
                     <div className="flex items-center gap-2">
-                      <button onClick={() => changeQty(i.product_id, -1)} className="w-9 h-9 rounded bg-[#2A1015] border border-[rgba(244,200,66,0.2)] text-[#F4C842] text-base">−</button>
+                      <button onClick={() => changeQty(i.product_id, -1, i.variant_name)} className="w-10 h-10 rounded bg-[#2A1015] border border-[rgba(244,200,66,0.2)] text-[#F4C842] text-base flex items-center justify-center">−</button>
                       <span className="text-[#F5F5F5] min-w-[20px] text-center">{i.quantity}</span>
-                      <button onClick={() => changeQty(i.product_id, 1)} className="w-9 h-9 rounded bg-[#2A1015] border border-[rgba(244,200,66,0.2)] text-[#F4C842] text-base">+</button>
+                      <button onClick={() => changeQty(i.product_id, 1, i.variant_name)} className="w-10 h-10 rounded bg-[#2A1015] border border-[rgba(244,200,66,0.2)] text-[#F4C842] text-base flex items-center justify-center">+</button>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
               <div className="border-t border-[rgba(244,200,66,0.15)] pt-3 space-y-1 mb-3">
                 <div className="flex justify-between text-lg text-[#F5F5F5]">
@@ -555,14 +668,23 @@ export default function Tables({ embedded = false }) {
                 </div>
               </div>
               <div className="space-y-2">
-                <button onClick={saveOrder} data-testid="save-order-btn" className="w-full border border-[#F4C842] text-[#F4C842] py-2.5 rounded-md text-xs uppercase tracking-widest font-semibold hover:bg-[#F4C842]/10 transition-colors">
+                <button onClick={saveOrder} data-testid="save-order-btn" className="w-full border border-[#F4C842] text-[#F4C842] py-2.5 rounded-md text-xs uppercase tracking-widest font-semibold hover:bg-[#F4C842]/10 transition-colors min-h-[44px]">
                   {activeOrder ? "Update Order" : "Simpan (Belum Bayar)"}
                 </button>
-                <button onClick={() => setShowCheckout(true)} disabled={orderItems.length === 0} data-testid="dinein-checkout-btn" className="w-full bg-[#F4C842] text-[#1A0810] py-3 rounded-md text-sm uppercase tracking-widest font-semibold hover:bg-[#FFDD5C] transition-colors disabled:opacity-50">
+                <button onClick={() => setShowCheckout(true)} disabled={orderItems.length === 0 || processing} data-testid="dinein-checkout-btn" className="w-full bg-[#F4C842] text-[#1A0810] py-3 rounded-md text-sm uppercase tracking-widest font-semibold hover:bg-[#FFDD5C] transition-colors disabled:opacity-50 min-h-[48px]">
                   Bayar Sekarang
                 </button>
                 {activeOrder && (
-                  <button onClick={cancelOrder} data-testid="cancel-order-btn" className="w-full text-[#8B0000] py-1 text-xs uppercase tracking-widest hover:text-[#A00000]">Batalkan Order</button>
+                  <>
+                    <button
+                      onClick={() => setMoveTableModal(true)}
+                      data-testid="move-table-btn"
+                      className="w-full border border-[rgba(244,200,66,0.3)] text-[#C4A484] py-1.5 text-xs uppercase tracking-widest hover:text-[#F4C842] hover:border-[#F4C842] transition-colors"
+                    >
+                      Pindah Meja
+                    </button>
+                    <button onClick={cancelOrder} data-testid="cancel-order-btn" className="w-full text-[#8B0000] py-1 text-xs uppercase tracking-widest hover:text-[#A00000]">Batalkan Order</button>
+                  </>
                 )}
               </div>
             </div>
@@ -572,14 +694,32 @@ export default function Tables({ embedded = false }) {
 
       {/* Checkout modal */}
       {showCheckout && openTable && (
-        <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#2A1015] gold-border rounded-lg max-w-full sm:max-w-md mx-4 w-full max-h-[90vh] overflow-y-auto p-6">
-            <h3 className="font-serif-luxury text-2xl text-[#F5F5F5] mb-4">Bayar - Meja {openTable.name}</h3>
+        <div className="fixed inset-0 bg-black/95 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+          <div className="bg-[#2A1015] gold-border rounded-t-xl sm:rounded-lg max-w-full sm:max-w-md mx-0 sm:mx-4 w-full max-h-[92dvh] max-h-[92vh] overflow-y-auto p-4 sm:p-6" style={{ paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom))" }}>
+            {/* Mobile drag handle */}
+            <div className="sm:hidden flex justify-center pt-1 pb-2">
+              <div className="w-10 h-1 rounded-full bg-[#C4A484]/40" />
+            </div>
+            <h3 className="font-serif-luxury text-xl sm:text-2xl text-[#F5F5F5] mb-4">Bayar - Meja {openTable.name}</h3>
+            {!activeShift && (
+              <div className="mb-3 p-2 bg-[#8B0000]/20 border border-[#8B0000]/40 rounded text-[10px] text-[#FF6B6B]">
+                Shift belum dibuka. Transaksi tetap bisa dilakukan tetapi tidak akan tercatat di shift.
+              </div>
+            )}
             <div className="space-y-3">
               <select value={customerId} onChange={(e) => setCustomerId(e.target.value)} className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]">
                 <option value="">Pelanggan (opsional)</option>
                 {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
+              <div className="grid grid-cols-1 gap-3">
+                <div>
+                  <label className="text-[10px] uppercase tracking-widest text-[#C4A484]">Channel</label>
+                  <select value={salesChannel} onChange={(e) => setSalesChannel(e.target.value)} className="mt-1 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]">
+                    <option value="offline">Offline</option>
+                    <option value="online">Online</option>
+                  </select>
+                </div>
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-[10px] uppercase tracking-widest text-[#C4A484]">Metode</label>
@@ -833,8 +973,10 @@ export default function Tables({ embedded = false }) {
                 <span className="text-[#F4C842] font-serif-luxury">{formatIDR(orderTotal - Number(discount || 0))}</span>
               </div>
               <div className="flex gap-2">
-                <button onClick={() => setShowCheckout(false)} className="flex-1 border border-[rgba(244,200,66,0.3)] text-[#F4C842] py-2.5 rounded-md text-xs uppercase tracking-widest">Batal</button>
-                <button onClick={doCheckout} data-testid="dinein-confirm-checkout" className="flex-1 bg-[#F4C842] text-[#1A0810] py-2.5 rounded-md text-xs font-semibold uppercase tracking-widest">Konfirmasi</button>
+                <button onClick={() => setShowCheckout(false)} disabled={processing} className="flex-1 border border-[rgba(244,200,66,0.3)] text-[#F4C842] py-2.5 rounded-md text-xs uppercase tracking-widest disabled:opacity-50">Batal</button>
+                <button onClick={doCheckout} disabled={processing} data-testid="dinein-confirm-checkout" className="flex-1 bg-[#F4C842] text-[#1A0810] py-2.5 rounded-md text-xs font-semibold uppercase tracking-widest disabled:opacity-60">
+                  {processing ? "Memproses..." : "Konfirmasi"}
+                </button>
               </div>
             </div>
           </div>
@@ -844,7 +986,7 @@ export default function Tables({ embedded = false }) {
       {/* Paket composer modal */}
       {paketComposer && (
         <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-[60] p-4" onClick={() => setPaketComposer(null)}>
-          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-full sm:max-w-lg mx-4 w-full max-h-[90vh] overflow-y-auto p-6">
+          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-full sm:max-w-lg mx-4 w-full max-h-[90dvh] max-h-[90vh] overflow-y-auto p-4 sm:p-6">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <p className="text-xs uppercase tracking-widest text-[#F4C842] flex items-center gap-1"><Package size={12} /> Paket</p>
@@ -879,6 +1021,158 @@ export default function Tables({ embedded = false }) {
               <span className="text-xs text-[#C4A484]">Total item: <span className="text-[#F4C842] font-semibold">{paketTotalItems}</span></span>
               <button onClick={addPaketToOrder} disabled={paketTotalItems === 0} data-testid="add-paket-to-order" className="bg-[#F4C842] text-[#1A0810] px-5 py-2 rounded-md text-xs font-semibold uppercase tracking-widest hover:bg-[#FFDD5C] transition-colors disabled:opacity-50">
                 Tambah ke Pesanan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Variant picker modal */}
+      {variantPick && (
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-[60] p-4" onClick={() => setVariantPick(null)}>
+          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-full sm:max-w-md mx-4 w-full max-h-[80dvh] max-h-[80vh] overflow-y-auto p-4 sm:p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <p className="text-xs uppercase tracking-widest text-[#F4C842]">Pilih Varian</p>
+                <h3 className="font-serif-luxury text-2xl text-[#F5F5F5]">{variantPick.name}</h3>
+              </div>
+              <button onClick={() => setVariantPick(null)} className="text-[#C4A484] hover:text-[#F5F5F5]"><X size={20} /></button>
+            </div>
+            <div className="space-y-2">
+              {(Array.isArray(variantPick.variants) ? variantPick.variants : []).map((v, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => {
+                    const vName = typeof v === "object" ? (v.name || v.label || v.variant_name || "") : String(v);
+                    const vPrice = typeof v === "object" ? (v.price || v.variant_price || null) : null;
+                    addItem(variantPick, vName, vPrice);
+                    setVariantPick(null);
+                  }}
+                  className="w-full bg-[#331419] gold-border rounded-md p-3 text-left card-hover hover:border-[#F4C842]"
+                >
+                  <p className="text-sm text-[#F5F5F5]">{typeof v === "object" ? (v.name || v.label || v.variant_name || "Varian") : String(v)}</p>
+                  <p className="text-[#F4C842] font-semibold text-sm mt-1">
+                    {formatIDR(typeof v === "object" ? (v.price || v.variant_price || variantPick.price) : variantPick.price)}
+                  </p>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Note edit modal */}
+      {noteEdit && (
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-[60] p-4" onClick={() => setNoteEdit(null)}>
+          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-full sm:max-w-sm mx-4 w-full p-4 sm:p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-serif-luxury text-xl text-[#F5F5F5]">Catatan Item</h3>
+              <button onClick={() => setNoteEdit(null)} className="text-[#C4A484] hover:text-[#F5F5F5]"><X size={20} /></button>
+            </div>
+            <textarea
+              value={noteEdit.note}
+              onChange={(e) => setNoteEdit({ ...noteEdit, note: e.target.value })}
+              placeholder="Contoh: Tidak pedas, sambal terpisah..."
+              rows={3}
+              className="w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-3 py-2 text-sm text-[#F5F5F5]"
+              data-testid="item-note-input"
+            />
+            <div className="flex gap-2 mt-4">
+              <button onClick={() => setNoteEdit(null)} className="flex-1 border border-[rgba(244,200,66,0.3)] text-[#F4C842] py-2 rounded-md text-xs uppercase tracking-widest">Batal</button>
+              <button
+                onClick={() => {
+                  updateItemNote(noteEdit.product_id, noteEdit.note, noteEdit.variant_name);
+                  setNoteEdit(null);
+                  toast.success("Catatan disimpan");
+                }}
+                className="flex-1 bg-[#F4C842] text-[#1A0810] py-2 rounded-md text-xs font-semibold uppercase tracking-widest"
+              >
+                Simpan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Receipt modal */}
+      {receiptData && (
+        <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-[70] p-4" onClick={() => setReceiptData(null)}>
+          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-sm w-full p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-serif-luxury text-2xl text-[#F5F5F5]">Struk</h3>
+              <button onClick={() => setReceiptData(null)} className="text-[#C4A484] hover:text-[#F5F5F5]"><X size={20} /></button>
+            </div>
+            <Receipt sale={receiptData} businessName="Republik Dimsum" />
+            <div className="flex gap-2 mt-4">
+              <button onClick={() => setReceiptData(null)} className="flex-1 border border-[rgba(244,200,66,0.3)] text-[#F4C842] py-2.5 rounded-md text-xs uppercase tracking-widest">Tutup</button>
+              <button
+                onClick={() => printReceipt()}
+                className="flex-1 bg-[#F4C842] text-[#1A0810] py-2.5 rounded-md text-xs font-semibold uppercase tracking-widest flex items-center justify-center gap-2"
+              >
+                <Printer size={14} /> Cetak
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* QRIS Payment modal */}
+      {showQRIS && (
+        <QRISPayment
+          amount={orderItems.reduce((s, i) => s + i.price * i.quantity, 0) - Number(discount || 0)}
+          description={`Dine-in - Meja ${openTable?.name || ""}`}
+          transaction={{
+            outlet_id: outletIdForApi,
+            price_type: salesChannel === "online" ? "online" : priceType,
+            discount: Number(discount) || 0,
+            tax: 0,
+            items: orderItems.map((i) => ({
+              product_id: i.product_id,
+              variant_name: i.variant_name,
+              quantity: i.quantity,
+              note: i.note || "",
+            })),
+          }}
+          onSuccess={onQRISSuccess}
+          onClose={() => setShowQRIS(false)}
+        />
+      )}
+
+      {/* Move table modal */}
+      {moveTableModal && activeOrder && (
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-[60] p-4" onClick={() => setMoveTableModal(false)}>
+          <div onClick={(e) => e.stopPropagation()} className="bg-[#2A1015] gold-border rounded-lg max-w-full sm:max-w-md mx-4 w-full p-4 sm:p-6 max-h-[90dvh] max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-serif-luxury text-2xl text-[#F5F5F5]">Pindah Meja</h3>
+              <button onClick={() => setMoveTableModal(false)} className="text-[#C4A484] hover:text-[#F5F5F5]"><X size={20} /></button>
+            </div>
+            <p className="text-xs text-[#C4A484] mb-3">Pilih meja tujuan (harus kosong):</p>
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-[40dvh] max-h-[40vh] overflow-y-auto">
+              {tables.filter(t => t.status === "available" && t.id !== openTable?.id).map(t => (
+                <button
+                  key={t.id}
+                  onClick={() => setMoveTargetTable(t.id)}
+                  className={`rounded-md p-3 text-sm transition-colors ${
+                    moveTargetTable === t.id
+                      ? "bg-[#F4C842] text-[#1A0810] font-semibold"
+                      : "bg-[#331419] gold-border text-[#F5F5F5] hover:border-[#F4C842]"
+                  }`}
+                >
+                  {t.name}
+                </button>
+              ))}
+              {tables.filter(t => t.status === "available" && t.id !== openTable?.id).length === 0 && (
+                <p className="col-span-full text-xs text-[#C4A484] italic text-center py-4">Tidak ada meja kosong</p>
+              )}
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button onClick={() => setMoveTableModal(false)} className="flex-1 border border-[rgba(244,200,66,0.3)] text-[#F4C842] py-2.5 rounded-md text-xs uppercase tracking-widest">Batal</button>
+              <button
+                onClick={doMoveTable}
+                disabled={!moveTargetTable}
+                className="flex-1 bg-[#F4C842] text-[#1A0810] py-2.5 rounded-md text-xs font-semibold uppercase tracking-widest disabled:opacity-50"
+              >
+                Pindah
               </button>
             </div>
           </div>

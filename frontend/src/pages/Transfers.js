@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import api from "../lib/api";
+import api, { formatApiErrorDetail } from "../lib/api";
 import PageHeader from "../components/PageHeader";
 import { Plus, X, Trash2, ArrowRightLeft, CheckCircle, XCircle, Clock, Package, ClipboardCheck, FileText, Truck } from "lucide-react";
 import { toast } from "sonner";
@@ -44,15 +44,19 @@ export default function Transfers() {
   const canShip = user && (user.role === "owner" || user.role === "manager" || user.role === "admin" || user.role === "supervisor");
 
   const load = async () => {
-    const oParam = outletIdForApi ? `?outlet_id=${outletIdForApi}` : "";
-    const [t, p, pt] = await Promise.all([
-      api.get(`/stock-transfers${oParam}`),
-      api.get(`/products${oParam}`),
-      api.get(`/stock-transfers/pending${oParam}`),
-    ]);
-    setTransfers(t.data);
-    setProducts(p.data);
-    setPendingTransfers(pt.data);
+    try {
+      const oParam = outletIdForApi ? `?outlet_id=${outletIdForApi}` : "";
+      const [t, p, pt] = await Promise.all([
+        api.get(`/stock-transfers${oParam}`),
+        api.get(`/products${oParam}`),
+        api.get(`/stock-transfers/pending${oParam}`),
+      ]);
+      setTransfers(t.data);
+      setProducts(p.data);
+      setPendingTransfers(pt.data);
+    } catch (e) {
+      toast.error(formatApiErrorDetail(e.response?.data?.detail) || "Gagal memuat data");
+    }
   };
   useEffect(() => { load(); }, [outletIdForApi]);
 

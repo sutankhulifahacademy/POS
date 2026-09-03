@@ -1,7 +1,9 @@
 """Sales routes — POS transactions, takeaway sales."""
 import json
+import hashlib
 from routes.deps import *
 from routes.inventory import _get_main_outlet_id
+from services.money import money
 from services.sales_service import (
     _validate_sale_total,
     _validate_payment,
@@ -14,9 +16,68 @@ from services.sales_service import (
 router = APIRouter()
 
 
+# ============================================================
+# IDEMPOTENCY CACHE
+# ============================================================
+# Prevents duplicate sale creation from double-click, network
+# retry, or browser refresh. The frontend sends an
+# Idempotency-Key header; the backend stores keys in the database
+# with a UNIQUE constraint so duplicate requests return the original
+# sale atomically, even across multiple workers/containers.
+# ============================================================
+async def _resolve_idempotency(
+    session,
+    idempotency_key: str,
+    sale_id: str,
+):
+    """
+    Database-backed atomic idempotency.
+
+    Insert idempotency key with the planned sale_id. If the key already
+    exists, return the existing sale. Uses PostgreSQL ON CONFLICT so the
+    check-and-claim is atomic.
+
+    Returns:
+        (ok, existing_sale_row or None)
+    """
+    if not idempotency_key:
+        return True, None
+
+    claim = await execute(
+        session,
+        """
+        INSERT INTO idempotency_keys (id, key, sale_id, created_at)
+        VALUES (:id, :key, :sale_id, NOW())
+        ON CONFLICT (key) DO NOTHING
+        """,
+        id=new_id(),
+        key=idempotency_key,
+        sale_id=sale_id,
+    )
+
+    if claim.rowcount == 1:
+        return True, None
+
+    existing = await session_one(
+        session,
+        """
+        SELECT s.*, s.change_amount AS change, o.name AS outlet_name,
+               o.address AS outlet_address, o.phone AS outlet_phone
+        FROM idempotency_keys ik
+        JOIN sales s ON ik.sale_id = s.id
+        LEFT JOIN outlets o ON s.outlet_id = o.id
+        WHERE ik.key = :key
+        LIMIT 1
+        """,
+        key=idempotency_key,
+    )
+    return False, existing
+
+
 @router.post("/sales")
 async def create_sale(
     body: SaleCreate,
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
     user=Depends(get_current_user)
 ):
     """
@@ -32,11 +93,15 @@ async def create_sale(
     """
 
     # =========================================================
-    # VALIDASI ITEMS + STOCK
+    # VALIDASI ITEMS + STOCK (read-only, deterministic)
     # =========================================================
 
     sales_channel = getattr(body, "sales_channel", "offline") or "offline"
     price_type = getattr(body, "price_type", "ecceran") or "ecceran"
+
+    # F1: cashier must not use privileged pricing tiers (reseller/partai)
+    # without manager/owner authorization.
+    assert_price_type_authorized(user, price_type, sales_channel)
 
     items, subtotal = await _validate_and_get_sale_items(
         body.items,
@@ -53,6 +118,40 @@ async def create_sale(
         body.discount,
         body.tax
     )
+
+    # F2: cashier cannot apply a 100% discount (discount >= subtotal) without
+    # manager/owner authorization. _validate_sale_total already rejects
+    # discount > subtotal; this guard catches discount == subtotal (total <= tax).
+    assert_discount_authorized(user, subtotal, body.discount, body.tax)
+
+    # =========================================================
+    # QRIS AMOUNT VALIDATION
+    # =========================================================
+    # For QRIS payments, the sale total must match the QRIS charge
+    # amount already created by /payments/qris. Both are calculated
+    # canonically from the same item snapshot.
+    # =========================================================
+    qris_order = None
+    if body.payment_method == "qris":
+        if not body.qris_order_id:
+            raise HTTPException(400, "QRIS order_id wajib disertakan")
+        qris_order = await q_one(
+            "SELECT * FROM qris_orders WHERE order_id=:oid",
+            oid=body.qris_order_id,
+        )
+        if not qris_order:
+            raise HTTPException(404, "QRIS order tidak ditemukan")
+        if qris_order.get("sale_id"):
+            raise HTTPException(400, "QRIS order sudah digunakan untuk transaksi lain")
+        if qris_order.get("status") in ("expire", "deny", "cancel"):
+            raise HTTPException(400, "QRIS order tidak aktif")
+        qris_amount = money(qris_order.get("amount") or 0)
+        if total != qris_amount:
+            raise HTTPException(
+                400,
+                f"Total transaksi ({total}) tidak cocok dengan QRIS ({qris_amount}). "
+                "Harga produk mungkin berubah setelah QRIS dibuat."
+            )
 
     # =========================================================
     # PAYMENT
@@ -128,6 +227,16 @@ async def create_sale(
         or await _get_main_outlet_id()
     )
 
+    # Outlet access enforcement — prevent cross-outlet sale creation
+    # (IDOR). Owner bypasses; non-owner must have outlet_id in their
+    # assigned outlet_ids. This mirrors the check used by list_sales.
+    if user["role"] != "owner" and outlet_id:
+        if str(outlet_id) not in user.get("outlet_ids", []):
+            raise HTTPException(
+                403,
+                "Tidak ada akses ke outlet ini"
+            )
+
     # =========================================================
     # ATOMIC TRANSACTION
     # =========================================================
@@ -148,6 +257,19 @@ async def create_sale(
     async with transaction() as session:
 
         # -----------------------------------------------------
+        # ATOMIC IDEMPOTENCY CLAIM
+        # -----------------------------------------------------
+        # If the same Idempotency-Key has already been used, return the
+        # existing sale. The claim is done inside the same transaction
+        # as the sale insert so a concurrent duplicate cannot slip past.
+        # -----------------------------------------------------
+        ok, existing = await _resolve_idempotency(session, idempotency_key or "", sale_id)
+        if not ok:
+            if existing:
+                return clean(existing)
+            raise HTTPException(500, "Idempotensi tidak dapat diproses")
+
+        # -----------------------------------------------------
         # INSERT SALES
         # -----------------------------------------------------
 
@@ -161,8 +283,8 @@ async def create_sale(
             user=user,
             items=items,
             subtotal=subtotal,
-            discount=body.discount,
-            tax=body.tax,
+            discount=money(body.discount),
+            tax=money(body.tax),
             total=total,
             payment_method=body.payment_method,
             amount_paid=amount_paid,
@@ -195,6 +317,18 @@ async def create_sale(
         #
         # Jika terjadi HTTPException / error:
         # transaction() akan rollback semuanya.
+
+    # =========================================================
+    # LINK QRIS ORDER
+    # =========================================================
+    if qris_order:
+        try:
+            await q_exec(
+                "UPDATE qris_orders SET sale_id=:sid, updated_at=NOW() WHERE order_id=:oid",
+                sid=sale_id, oid=body.qris_order_id,
+            )
+        except Exception:
+            pass  # Don't fail the sale if QRIS link update fails
 
     # =========================================================
     # RETURN
@@ -266,6 +400,29 @@ async def create_sale(
                 )
     except Exception:
         pass
+
+    # =========================================================
+    # KDS — Create kitchen order ticket
+    # =========================================================
+    # Send food items to kitchen display. Only items that need
+    # kitchen preparation are sent. The kitchen_orders row links
+    # to the sale via sale_id and includes the items snapshot.
+    # =========================================================
+    try:
+        kds_items = [
+            {"name": it.get("name", ""), "quantity": int(it.get("quantity", 0)),
+             "note": it.get("note", ""), "variant_name": it.get("variant_name", "")}
+            for it in items
+        ]
+        if kds_items:
+            await q_exec(
+                """INSERT INTO kitchen_orders (id, outlet_id, sale_id, invoice_no, items, status, created_at)
+                   VALUES (:id, :oid, :sid, :inv, CAST(:it AS jsonb), 'new', NOW())""",
+                id=new_id(), oid=_u(outlet_id), sid=sale_id,
+                inv=row["invoice_no"], it=json.dumps(kds_items),
+            )
+    except Exception:
+        pass  # KDS creation should not block sale completion
 
     return clean(row)
 
@@ -340,3 +497,140 @@ async def get_sale(
         )
 
     return clean(row)
+
+
+# ============================================================
+# VOID / CANCEL SALE
+# ============================================================
+# Voids a completed sale: marks status='voided', restores stock,
+# creates reverse stock movements, and logs an audit entry.
+# The sale record is preserved for audit (no hard delete).
+# ============================================================
+@router.post("/sales/{sale_id}/void")
+async def void_sale(
+    sale_id: str,
+    body: dict,
+    user=Depends(require_role("owner", "admin", "manager", "supervisor")),
+):
+    """Void a completed sale. Restores stock and creates audit log."""
+    sale = await q_one("SELECT * FROM sales WHERE id=:id", id=sale_id)
+    if not sale:
+        raise HTTPException(404, "Transaksi tidak ditemukan")
+
+    # Outlet authorization
+    if user["role"] != "owner" and sale.get("outlet_id"):
+        if str(sale["outlet_id"]) not in user.get("outlet_ids", []):
+            raise HTTPException(403, "Tidak ada akses ke outlet ini")
+
+    if sale.get("status") == "voided":
+        raise HTTPException(400, "Transaksi sudah dibatalkan")
+
+    reason = body.get("reason", "")
+    items = sale["items"] if isinstance(sale["items"], list) else json.loads(sale["items"])
+
+    from database import transaction, execute as _tx_execute
+    async with transaction() as session:
+        # Mark sale as voided
+        r = await _tx_execute(
+            session,
+            """UPDATE sales SET status='voided', voided_by=:uid, voided_at=NOW(), void_reason=:reason
+               WHERE id=:id AND (status='completed' OR status IS NULL)""",
+            uid=user["id"], reason=reason, id=sale_id,
+        )
+        if r.rowcount == 0:
+            raise HTTPException(400, "Transaksi tidak bisa dibatalkan (kemungkinan sudah void)")
+
+        # Restore stock for each item
+        for it in items:
+            qty = int(it.get("quantity", 0))
+            if qty <= 0:
+                continue
+            pid = it.get("product_id")
+            if not pid:
+                continue
+
+            # Restore global stock
+            await _tx_execute(
+                session,
+                "UPDATE products SET stock = stock + :q, updated_at = NOW() WHERE id = :id",
+                q=qty, id=pid,
+            )
+
+            # Restore outlet stock
+            if sale.get("outlet_id"):
+                await _tx_execute(
+                    session,
+                    """INSERT INTO outlet_stocks (product_id, outlet_id, quantity, updated_at)
+                       VALUES (:p, :o, :q, NOW())
+                       ON CONFLICT (product_id, outlet_id)
+                       DO UPDATE SET quantity = outlet_stocks.quantity + :q, updated_at = NOW()""",
+                    p=pid, o=sale["outlet_id"], q=qty,
+                )
+
+            # Reverse stock movement
+            await _tx_execute(
+                session,
+                """INSERT INTO stock_movements (id, product_id, product_name, delta, reason, note, outlet_id, user_id, created_at)
+                   VALUES (:id, :pid, :pn, :d, 'void', :note, :oid, :u, NOW())""",
+                id=new_id(), pid=pid, pn=it.get("name", ""),
+                d=qty, note=f"Void sale {sale['invoice_no']}",
+                oid=_u(sale.get("outlet_id")), u=user["id"],
+            )
+
+    # Audit log
+    try:
+        from routes.audit_logs import log_action
+        await log_action(
+            user, "SALE_VOIDED", "sales", entity_id=sale_id,
+            outlet_id=sale.get("outlet_id"),
+            new_value={"invoice_no": sale.get("invoice_no"), "reason": reason,
+                       "voided_by": user.get("name", "")},
+        )
+    except Exception:
+        pass
+
+    return {"ok": True, "message": f"Transaksi {sale['invoice_no']} dibatalkan"}
+
+
+# ============================================================
+# REPRINT RECEIPT
+# ============================================================
+# Returns the sale data for receipt reprinting. Does NOT create
+# a new transaction, does NOT deduct stock, does NOT create a
+# new payment. Only logs the reprint action for audit.
+# ============================================================
+@router.get("/sales/{sale_id}/reprint")
+async def reprint_receipt(
+    sale_id: str,
+    user=Depends(get_current_user),
+):
+    """Get sale data for receipt reprinting."""
+    sale = await q_one(
+        """SELECT s.*, s.change_amount AS change, o.name AS outlet_name,
+                  o.address AS outlet_address, o.phone AS outlet_phone
+           FROM sales s
+           LEFT JOIN outlets o ON s.outlet_id = o.id
+           WHERE s.id=:id""",
+        id=sale_id,
+    )
+    if not sale:
+        raise HTTPException(404, "Transaksi tidak ditemukan")
+
+    # Outlet authorization
+    if user["role"] != "owner" and sale.get("outlet_id"):
+        if str(sale["outlet_id"]) not in user.get("outlet_ids", []):
+            raise HTTPException(403, "Tidak ada akses ke outlet ini")
+
+    # Log reprint for audit
+    try:
+        from routes.audit_logs import log_action
+        await log_action(
+            user, "RECEIPT_REPRINTED", "sales", entity_id=sale_id,
+            outlet_id=sale.get("outlet_id"),
+            new_value={"invoice_no": sale.get("invoice_no"),
+                       "reprinted_by": user.get("name", "")},
+        )
+    except Exception:
+        pass
+
+    return clean(sale)

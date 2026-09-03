@@ -8,8 +8,8 @@ router = APIRouter()
 
 # ============ MENUS CRUD ============
 @router.get("/menus")
-async def list_menus(user=Depends(get_current_user)):
-    """List all menus (admin/manager only for full list)."""
+async def list_menus(user=Depends(require_role("owner", "admin"))):
+    """List all menus (owner/admin only for full list)."""
     rows = await q_all("SELECT * FROM menus ORDER BY sort_order ASC, label ASC")
     return clean_list(rows)
 

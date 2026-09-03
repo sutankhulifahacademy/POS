@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import api from "../lib/api";
+import api, { formatApiErrorDetail } from "../lib/api";
 import PageHeader from "../components/PageHeader";
 import { Plus, Minus, History } from "lucide-react";
 import { toast } from "sonner";
@@ -16,13 +16,17 @@ export default function Inventory() {
   const [tab, setTab] = useState("adjust");
 
   const load = useCallback(async () => {
-    const oParam = outletIdForApi ? `?outlet_id=${outletIdForApi}` : "";
-    const [p, m] = await Promise.all([
-      api.get(`/products${oParam}`),
-      api.get(`/inventory/movements${oParam}`),
-    ]);
-    setProducts(p.data);
-    setMovements(m.data);
+    try {
+      const oParam = outletIdForApi ? `?outlet_id=${outletIdForApi}` : "";
+      const [p, m] = await Promise.all([
+        api.get(`/products${oParam}`),
+        api.get(`/inventory/movements${oParam}`),
+      ]);
+      setProducts(p.data);
+      setMovements(m.data);
+    } catch (e) {
+      toast.error(formatApiErrorDetail(e.response?.data?.detail) || "Gagal memuat data");
+    }
   }, [outletIdForApi]);
   useEffect(() => { load(); }, [load]);
 

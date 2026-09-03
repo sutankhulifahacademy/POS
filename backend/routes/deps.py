@@ -2,7 +2,7 @@
 Shared dependencies for route modules.
 All route files import from here to avoid circular imports.
 """
-from fastapi import APIRouter, HTTPException, Depends, Request, Response
+from fastapi import APIRouter, HTTPException, Depends, Request, Response, Header
 from pydantic import BaseModel, EmailStr
 from typing import List, Optional, Literal, Any
 from datetime import datetime, timezone, timedelta
@@ -24,7 +24,7 @@ from utils import (
     _u,
     create_token,
 )
-from routes.auth import get_current_user, require_role, require_permission, require_outlet_access, get_user_outlets, filter_outlets_for_user
+from routes.auth import get_current_user, require_role, require_permission, require_outlet_access, get_user_outlets, filter_outlets_for_user, validate_outlet_access, has_permission, assert_price_type_authorized, assert_discount_authorized
 from models import (
     RegisterIn, LoginIn, AuthUser,
     UserRole, UserCreate, UserUpdate, PasswordReset, UserResponse, UserOutletAccessUpdate,
@@ -42,7 +42,7 @@ from models import (
 
 __all__ = [
     # fastapi
-    "APIRouter", "HTTPException", "Depends", "Request", "Response",
+    "APIRouter", "HTTPException", "Depends", "Request", "Response", "Header",
     # pydantic
     "BaseModel", "EmailStr",
     # typing
@@ -54,7 +54,7 @@ __all__ = [
     # utils
     "verify_password", "hash_password", "new_id", "clean", "clean_list", "_u", "create_token",
     # auth
-    "get_current_user", "require_role", "require_permission", "require_outlet_access", "get_user_outlets", "filter_outlets_for_user",
+    "get_current_user", "require_role", "require_permission", "require_outlet_access", "get_user_outlets", "filter_outlets_for_user", "validate_outlet_access", "has_permission", "assert_price_type_authorized", "assert_discount_authorized",
     # models
     "RegisterIn", "LoginIn", "AuthUser",
     "UserRole", "UserCreate", "UserUpdate", "PasswordReset", "UserResponse", "UserOutletAccessUpdate",

@@ -22,6 +22,8 @@ async def list_audit_logs(
     params = {"limit": limit, "offset": offset}
 
     if outlet_id:
+        # Validate outlet access before filtering
+        validate_outlet_access(user, outlet_id)
         where.append("outlet_id = :outlet_id")
         params["outlet_id"] = outlet_id
     elif user["role"] != "owner":

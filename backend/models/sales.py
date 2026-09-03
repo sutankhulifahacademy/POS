@@ -6,8 +6,9 @@ class SaleItem(BaseModel):
     product_id: str
     variant_name: Optional[str] = ""
     name: str
-    price: float
-    quantity: int
+    price: float = Field(..., ge=0)
+    quantity: int = Field(..., ge=1)
+    note: Optional[str] = ""
     paket_items: Optional[list[dict[str, Any]]] = None
 
 
@@ -24,7 +25,7 @@ class SaleCreate(BaseModel):
         "transfer",
     ] = "cash"
 
-    amount_paid: float
+    amount_paid: float = Field(..., ge=0)
 
     # Sales channel + price type for additional pricing
     sales_channel: Optional[str] = "offline"   # offline, online
@@ -56,6 +57,11 @@ class SaleCreate(BaseModel):
     # GENERAL
     # =========================
 
-    discount: float = 0.0
-    tax: float = 0.0
+    discount: float = Field(0.0, ge=0)
+    tax: float = Field(0.0, ge=0)
     note: Optional[str] = ""
+
+    # QRIS order reference: when provided, the backend uses the
+    # canonical amount stored in qris_orders instead of recalculating
+    # from current product prices. This prevents QRIS/sale divergence.
+    qris_order_id: Optional[str] = ""

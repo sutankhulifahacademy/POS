@@ -26,10 +26,16 @@ CREATE TABLE IF NOT EXISTS users (
     photo text NULL,
     ktp_image text NULL,
     ktp_number varchar(100) NULL,
+    mfa_secret text NULL,
+    mfa_enabled bool DEFAULT false NOT NULL,
     CONSTRAINT users_email_key UNIQUE (email),
     CONSTRAINT users_pkey PRIMARY KEY (id)
 );
 CREATE INDEX idx_users_email ON public.users USING btree (email);
+
+-- Safe migration for existing databases
+ALTER TABLE users ADD COLUMN IF NOT EXISTS mfa_secret text NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS mfa_enabled bool DEFAULT false NOT NULL;
 
 -- =============================================
 -- BUSINESS PROFILE
@@ -209,6 +215,12 @@ CREATE TABLE IF NOT EXISTS sales (
     -- Pricing channel + price type for additional pricing
     sales_channel varchar(10) DEFAULT 'offline',   -- offline, online
     price_type varchar(10) DEFAULT 'ecceran',       -- ecceran, reseller, partai, online
+    -- Void/refund lifecycle
+    status varchar(20) DEFAULT 'completed',         -- completed, voided, refunded
+    voided_by uuid NULL,
+    voided_at timestamptz NULL,
+    void_reason text NULL,
+    original_sale_id uuid NULL,                     -- for refund references
     CONSTRAINT sales_invoice_no_key UNIQUE (invoice_no),
     CONSTRAINT sales_pkey PRIMARY KEY (id)
 );

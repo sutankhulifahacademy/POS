@@ -31,19 +31,27 @@ async def list_tables(user=Depends(get_current_user), outlet_id: Optional[str] =
 
 @router.post("/tables")
 async def create_table(body: TableIn, user=Depends(require_permission("tables", "create"))):
+    # Outlet authorization — prevent cross-outlet table creation
+    outlet_id = _u(body.outlet_id)
+    if outlet_id and user["role"] != "owner" and str(outlet_id) not in user.get("outlet_ids", []):
+        raise HTTPException(403, "Tidak ada akses ke outlet ini")
     tid = new_id()
     await q_exec("""INSERT INTO tables (id, name, capacity, outlet_id, zone, status, created_at)
                     VALUES (:id, :n, :c, :oid, :z, 'available', NOW())""",
-                 id=tid, n=body.name, c=body.capacity, oid=_u(body.outlet_id), z=body.zone or "Utama")
+                 id=tid, n=body.name, c=body.capacity, oid=outlet_id, z=body.zone or "Utama")
     return clean(await q_one("SELECT * FROM tables WHERE id=:id", id=tid))
 
 
 @router.put("/tables/{table_id}")
 async def update_table(table_id: str, body: TableIn, user=Depends(require_permission("tables", "update"))):
+    # Outlet authorization — validate new outlet_id
+    outlet_id = _u(body.outlet_id)
+    if outlet_id and user["role"] != "owner" and str(outlet_id) not in user.get("outlet_ids", []):
+        raise HTTPException(403, "Tidak ada akses ke outlet ini")
     outlet_filter = await filter_outlets_for_user(user)
     r = await q_exec(f"""UPDATE tables SET name=:n, capacity=:c, outlet_id=:oid, zone=:z, updated_at=NOW()
                         WHERE id=:id {outlet_filter}""", id=table_id, n=body.name, c=body.capacity,
-                     oid=_u(body.outlet_id), z=body.zone or "Utama")
+                     oid=outlet_id, z=body.zone or "Utama")
     if r == 0:
         raise HTTPException(404, "Not found")
     return clean(await q_one("SELECT * FROM tables WHERE id=:id", id=table_id))

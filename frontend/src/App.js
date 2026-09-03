@@ -1,10 +1,11 @@
 import "@/index.css";
+import { useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import { OutletProvider } from "./context/OutletContext";
 import Login from "./pages/Login";
-import Layout, { canAccess, defaultLandingFor } from "./components/Layout";
+import Layout, { canAccess, defaultLandingFor, menusLoaded, fetchMyMenus } from "./components/Layout";
 import Dashboard from "./pages/Dashboard";
 import POS from "./pages/POS";
 import Products from "./pages/Products";
@@ -41,10 +42,33 @@ import OnlineProfit from "./pages/OnlineProfit";
 function Protected({ children, path }) {
   const { user, loading } = useAuth();
   const location = useLocation();
+  const [menuLoading, setMenuLoading] = useState(!menusLoaded());
+
+  useEffect(() => {
+    if (!user?.role) return;
+    if (menusLoaded()) {
+      setMenuLoading(false);
+      return;
+    }
+    let mounted = true;
+    fetchMyMenus(user.role)
+      .then(() => {
+        if (mounted) setMenuLoading(false);
+      })
+      .catch(() => {
+        if (mounted) setMenuLoading(false);
+      });
+    return () => { mounted = false; };
+  }, [user?.role]);
+
   if (loading || user === null) return <div className="min-h-screen flex items-center justify-center bg-[#1A0810] text-[#C4A484]">Memuat...</div>;
   if (!user) return <Navigate to="/login" replace />;
-  // Role check for specific path
+  // Wait for menus to load before checking access — prevents auth bypass
+  // during initial load when _cachedMenus is null.
   const targetPath = path || location.pathname;
+  if (targetPath !== "/pos" && targetPath !== "/kds" && menuLoading) {
+    return <div className="min-h-screen flex items-center justify-center bg-[#1A0810] text-[#C4A484]">Memuat menu...</div>;
+  }
   if (targetPath !== "/pos" && !canAccess(user.role, targetPath)) {
     return <Navigate to={defaultLandingFor(user.role)} replace />;
   }
@@ -96,7 +120,6 @@ function App() {
             <Route path="/leave-requests" element={<Protected path="/leave-requests"><LeaveRequests /></Protected>} />
             <Route path="/receipt-config" element={<Protected path="/receipt-config"><ReceiptConfig /></Protected>} />
             <Route path="/loyalty" element={<Protected path="/loyalty"><Loyalty /></Protected>} />
-            <Route path="/kds" element={<Protected path="/kds"><KitchenDisplay /></Protected>} />
             <Route path="/coupons" element={<Protected path="/coupons"><Coupons /></Protected>} />
             <Route path="/schedules" element={<Protected path="/schedules"><Schedules /></Protected>} />
             <Route path="/payroll" element={<Protected path="/payroll"><Payroll /></Protected>} />
@@ -106,6 +129,7 @@ function App() {
             <Route path="/mobile-dashboard" element={<Protected path="/mobile-dashboard"><MobileDashboard /></Protected>} />
           </Route>
           <Route path="/pos" element={<Protected><POS /></Protected>} />
+          <Route path="/kds" element={<Protected><KitchenDisplay /></Protected>} />
           <Route path="/" element={<HomeRedirect />} />
           <Route path="*" element={<HomeRedirect />} />
         </Routes>

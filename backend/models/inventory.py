@@ -1,12 +1,12 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 from typing import Optional, List
 
 
 class POItem(BaseModel):
     product_id: str
     name: str
-    quantity: int
-    cost: float
+    quantity: int = Field(..., ge=1)
+    cost: float = Field(..., ge=0)
 
 
 class POIn(BaseModel):
@@ -20,7 +20,7 @@ class POIn(BaseModel):
 class TransferItem(BaseModel):
     product_id: str
     name: str
-    quantity: int
+    quantity: int = Field(..., ge=1)
 
 
 class TransferIn(BaseModel):
@@ -31,21 +31,29 @@ class TransferIn(BaseModel):
     items: List[TransferItem]
     note: Optional[str] = ""
 
+    @model_validator(mode='after')
+    def validate_outlets_different(self):
+        if self.from_outlet_id == self.to_outlet_id:
+            raise ValueError("from_outlet_id dan to_outlet_id tidak boleh sama")
+        if not self.items:
+            raise ValueError("Items tidak boleh kosong")
+        return self
+
 
 class ShiftOpenIn(BaseModel):
     outlet_id: Optional[str] = ""
-    opening_cash: float = 0.0
+    opening_cash: float = Field(0.0, ge=0)
     note: Optional[str] = ""
 
 
 class ShiftCloseIn(BaseModel):
-    actual_cash: float
+    actual_cash: float = Field(..., ge=0)
     note: Optional[str] = ""
 
 
 class TableIn(BaseModel):
     name: str
-    capacity: int = 2
+    capacity: int = Field(2, ge=1)
     outlet_id: Optional[str] = ""
     zone: Optional[str] = "Utama"
 

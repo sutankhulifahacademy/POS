@@ -11,10 +11,12 @@ load_dotenv(ROOT_DIR / '.env')
 import os
 import logging
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from starlette.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
-from config import CORS_ORIGINS, ADMIN_EMAIL, ADMIN_PASSWORD
+from config import CORS_ORIGINS, ADMIN_EMAIL, ADMIN_PASSWORD, DEBUG, ENVIRONMENT
 from database import q_one, q_exec, close_database
 from utils import new_id, hash_password, verify_password
 
@@ -61,13 +63,86 @@ from routes.online_orders import router as online_orders_router
 from routes.online_profit import router as online_profit_router
 
 # ============ APP ============
-app = FastAPI(title="Sutan Khulifah POS API (PostgreSQL)")
+# Disable API docs in production to prevent schema leakage.
+app = FastAPI(
+    title="Sutan Khulifah POS API (PostgreSQL)",
+    docs_url="/docs" if DEBUG else None,
+    redoc_url="/redoc" if DEBUG else None,
+    openapi_url="/openapi.json" if DEBUG else None,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
+# ============ CSRF PROTECTION (Origin validation) ============
+# With SameSite=Lax cookies, cross-site mutations are already blocked
+# by the browser. This Origin/Referer check is defense-in-depth.
+# It validates that mutating requests originate from an allowed origin.
+
+_MUTATION_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+
+class CSRFMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        if request.method in _MUTATION_METHODS:
+            origin = request.headers.get("origin", "")
+            referer = request.headers.get("referer", "")
+
+            # For same-origin requests, Origin is typically empty or matches.
+            # Check against allowed CORS origins.
+            if origin:
+                # Strip trailing slash for comparison
+                origin_clean = origin.rstrip("/")
+                allowed = [o.rstrip("/") for o in CORS_ORIGINS]
+                # Also allow same-host requests (no Origin header = same-origin)
+                if origin_clean not in allowed:
+                    return JSONResponse(
+                        status_code=403,
+                        content={"detail": "Forbidden: origin not allowed"},
+                    )
+            elif referer:
+                # Fall back to Referer header
+                try:
+                    from urllib.parse import urlparse
+                    parsed = urlparse(referer)
+                    ref_origin = f"{parsed.scheme}://{parsed.netloc}"
+                    ref_clean = ref_origin.rstrip("/")
+                    allowed = [o.rstrip("/") for o in CORS_ORIGINS]
+                    if ref_clean not in allowed:
+                        return JSONResponse(
+                            status_code=403,
+                            content={"detail": "Forbidden: referer not allowed"},
+                        )
+                except Exception:
+                    pass
+            # If neither Origin nor Referer is present, allow the request.
+            # Some legitimate clients (curl, Postman) don't send these headers.
+            # The SameSite=Lax cookie is the primary CSRF defense.
+
+        return await call_next(request)
+
+
+app.add_middleware(CSRFMiddleware)
+
+
+# ============ GLOBAL EXCEPTION HANDLER ============
+# Prevent internal error/stack trace leakage to clients.
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unhandled exception on {request.method} {request.url.path}: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Terjadi kesalahan internal. Tim teknis telah diberi notifikasi."},
+    )
+
 # ============ MOUNT ROUTERS ============
 app.include_router(auth_router, prefix="/api")
+
+# ============ HEALTH CHECK ============
+@app.get("/api/health")
+async def health_check():
+    return {"status": "ok"}
 app.include_router(business_router, prefix="/api")
 app.include_router(users_router, prefix="/api")
 app.include_router(outlets_router, prefix="/api")
@@ -109,12 +184,16 @@ app.include_router(online_orders_router, prefix="/api")
 app.include_router(online_profit_router, prefix="/api")
 
 # ============ CORS ============
+# Use consolidated CORS_ORIGINS from config.py (which reads env with a safe
+# non-wildcard default). Avoid re-reading os.environ here — the previous
+# inline default of "*" combined with allow_credentials=True was a credential
+# leakage risk (CORS reflection).
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=CORS_ORIGINS,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
 )
 
 # ============ STATIC FILES (uploads) ============
@@ -128,7 +207,10 @@ app.mount("/api/uploads", StaticFiles(directory=str(_uploads_dir)), name="upload
 # ============ STARTUP / SHUTDOWN ============
 @app.on_event("startup")
 async def startup():
-    # Seed admin
+    # Seed admin (only if missing). In production (DEBUG=false) we never
+    # overwrite an existing admin's password — that would let anyone with
+    # access to the env file silently take over the account. In DEBUG/dev
+    # mode we sync the password from env so developers can reset via env.
     existing = await q_one(
         "SELECT id, password_hash FROM users WHERE email=:e",
         e=ADMIN_EMAIL.lower(),
@@ -143,26 +225,31 @@ async def startup():
             h=hash_password(ADMIN_PASSWORD),
         )
         logger.info(f"Seeded admin: {ADMIN_EMAIL}")
-    elif not verify_password(ADMIN_PASSWORD, existing["password_hash"]):
+    elif DEBUG and not verify_password(ADMIN_PASSWORD, existing["password_hash"]):
+        # Dev-only: sync admin password from env so devs can reset via .env.
         await q_exec(
             "UPDATE users SET password_hash=:h WHERE email=:e",
             h=hash_password(ADMIN_PASSWORD),
             e=ADMIN_EMAIL.lower(),
         )
+        logger.info("Synced admin password from env (DEBUG mode).")
 
-    # Seed sample kasir
-    k = await q_one(
-        "SELECT id FROM users WHERE email=:e",
-        e="kasir@sutankhulifah.com",
-    )
-    if not k:
-        await q_exec(
-            """INSERT INTO users (id, email, name, role, password_hash, is_active, created_at)
-               VALUES (:id, :e, 'Kasir Demo', 'kasir', :h, TRUE, NOW())""",
-            id=new_id(),
+    # Demo kasir seed is gated behind DEBUG flag. Never seed demo accounts
+    # in production — they ship with publicly known passwords.
+    if DEBUG:
+        k = await q_one(
+            "SELECT id FROM users WHERE email=:e",
             e="kasir@sutankhulifah.com",
-            h=hash_password("Kasir@2026"),
         )
+        if not k:
+            await q_exec(
+                """INSERT INTO users (id, email, name, role, password_hash, is_active, created_at)
+                   VALUES (:id, :e, 'Kasir Demo', 'kasir', :h, TRUE, NOW())""",
+                id=new_id(),
+                e="kasir@sutankhulifah.com",
+                h=hash_password("Kasir@2026"),
+            )
+            logger.info("Seeded demo kasir (DEBUG mode only).")
 
 
 @app.on_event("shutdown")

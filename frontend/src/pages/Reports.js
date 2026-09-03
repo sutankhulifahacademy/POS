@@ -22,6 +22,7 @@ import {
   QrCode,
   ArrowLeftRight,
   Loader2,
+  X,
 } from "lucide-react";
 import Receipt, { printReceipt } from "../components/Receipt";
 import { toast } from "sonner";
@@ -163,9 +164,13 @@ function ExportButtons({ onExcel, onPDF }) {
   );
 }
 
-function Card({ label, value, icon: Icon, accent = "text-[#F4C842]" }) {
+function Card({ label, value, icon: Icon, accent = "text-[#F4C842]", onClick }) {
+  const clickable = !!onClick;
   return (
-    <div className="bg-[#331419] gold-border rounded-lg p-4">
+    <div
+      onClick={onClick}
+      className={`bg-[#331419] gold-border rounded-lg p-4 ${clickable ? "cursor-pointer hover:bg-[#3d171c] transition-colors" : ""}`}
+    >
       {Icon && (
         <div className="w-9 h-9 rounded-md bg-[rgba(244,200,66,0.1)] flex items-center justify-center mb-3">
           <Icon size={18} strokeWidth={1.5} className="text-[#F4C842]" />
@@ -173,6 +178,38 @@ function Card({ label, value, icon: Icon, accent = "text-[#F4C842]" }) {
       )}
       <p className="text-xs uppercase tracking-widest text-[#C4A484]">{label}</p>
       <p className={`font-serif-luxury text-2xl ${accent} mt-1`}>{value}</p>
+    </div>
+  );
+}
+
+/* ============================================================
+ *  DETAIL MODAL — popup for metric card details
+ * ============================================================ */
+function DetailModal({ open, onClose, title, subtitle, loading, children }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="bg-[#2A1015] gold-border rounded-lg w-full max-w-3xl max-h-[80vh] flex flex-col"
+      >
+        <div className="flex items-center justify-between p-6 border-b border-[rgba(244,200,66,0.15)]">
+          <div>
+            <p className="text-xs uppercase tracking-widest text-[#F4C842]">{subtitle}</p>
+            <h3 className="font-serif-luxury text-2xl text-[#F5F5F5] mt-1">{title}</h3>
+          </div>
+          <button onClick={onClose} className="text-[#C4A484] hover:text-[#F5F5F5]">
+            <X size={22} />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-6">
+          {loading ? (
+            <p className="text-[#C4A484] text-center py-8">Memuat...</p>
+          ) : (
+            children
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -537,6 +574,35 @@ function DashboardTab({ globalOutletId }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Popup detail state
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailMetric, setDetailMetric] = useState(null);
+  const [detailData, setDetailData] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  const openDetail = async (metric) => {
+    setDetailMetric(metric);
+    setDetailOpen(true);
+    setDetailLoading(true);
+    setDetailData(null);
+    try {
+      const params = { metric, period };
+      if (globalOutletId) params.outlet_id = globalOutletId;
+      const res = await api.get("/reports/dashboard-details", { params });
+      setDetailData(res.data);
+    } catch (err) {
+      console.error("Detail error:", err);
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const closeDetail = () => {
+    setDetailOpen(false);
+    setDetailMetric(null);
+    setDetailData(null);
+  };
+
   useEffect(() => {
     setLoading(true);
     const params = { period };
@@ -556,6 +622,16 @@ function DashboardTab({ globalOutletId }) {
     value: c.revenue,
   }));
 
+  const periodLabel = PERIODS.find((p) => p.value === period)?.label || "Mingguan";
+
+  const detailTitle =
+    detailMetric === "revenue" ? "Detail Pendapatan" :
+    detailMetric === "transactions" ? "Detail Transaksi" :
+    detailMetric === "items_sold" ? "Detail Item Terjual" :
+    detailMetric === "customers" ? "Detail Pelanggan" :
+    detailMetric === "products" ? "Detail Produk" :
+    detailMetric === "low_stock" ? "Detail Stok Menipis" : "Detail";
+
   return (
     <div className="space-y-6">
       {/* Period selector */}
@@ -566,14 +642,14 @@ function DashboardTab({ globalOutletId }) {
         <PeriodSelector value={period} onChange={setPeriod} />
       </div>
 
-      {/* Summary cards */}
+      {/* Summary cards — clickable for detail popup */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-        <Card label="Revenue" value={formatIDR(data.revenue)} icon={DollarSign} />
-        <Card label="Transaksi" value={data.transactions} icon={ShoppingCart} accent="text-[#F5F5F5]" />
-        <Card label="Item Terjual" value={data.items_sold} icon={Package} accent="text-[#F5F5F5]" />
-        <Card label="Produk" value={data.products_count} icon={Boxes} accent="text-[#F5F5F5]" />
-        <Card label="Pelanggan" value={data.customers_count} icon={Users} accent="text-[#F5F5F5]" />
-        <Card label="Low Stock" value={data.low_stock_count} icon={AlertTriangle} accent={data.low_stock_count > 0 ? "text-red-400" : "text-[#F5F5F5]"} />
+        <Card label="Revenue" value={formatIDR(data.revenue)} icon={DollarSign} onClick={() => openDetail("revenue")} />
+        <Card label="Transaksi" value={data.transactions} icon={ShoppingCart} accent="text-[#F5F5F5]" onClick={() => openDetail("transactions")} />
+        <Card label="Item Terjual" value={data.items_sold} icon={Package} accent="text-[#F5F5F5]" onClick={() => openDetail("items_sold")} />
+        <Card label="Produk" value={data.products_count} icon={Boxes} accent="text-[#F5F5F5]" onClick={() => openDetail("products")} />
+        <Card label="Pelanggan" value={data.customers_count} icon={Users} accent="text-[#F5F5F5]" onClick={() => openDetail("customers")} />
+        <Card label="Low Stock" value={data.low_stock_count} icon={AlertTriangle} accent={data.low_stock_count > 0 ? "text-red-400" : "text-[#F5F5F5]"} onClick={() => openDetail("low_stock")} />
       </div>
 
       {/* Chart */}
@@ -617,6 +693,297 @@ function DashboardTab({ globalOutletId }) {
           />
         </SectionCard>
       </div>
+
+      {/* =========================================
+          DETAIL POPUP MODAL
+      ========================================== */}
+      <DetailModal
+        open={detailOpen}
+        onClose={closeDetail}
+        title={detailTitle}
+        subtitle={periodLabel}
+        loading={detailLoading}
+      >
+        {/* REVENUE */}
+        {detailData && detailMetric === "revenue" && (
+          <div>
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div className="bg-[#331419] rounded-md p-3">
+                <p className="text-xs text-[#C4A484]">Total Pendapatan</p>
+                <p className="text-xl text-[#F4C842] font-serif-luxury">{formatIDR(detailData.total)}</p>
+              </div>
+              <div className="bg-[#331419] rounded-md p-3">
+                <p className="text-xs text-[#C4A484]">Jumlah Transaksi</p>
+                <p className="text-xl text-[#F5F5F5] font-serif-luxury">{detailData.count}</p>
+              </div>
+            </div>
+            {detailData.displayed < detailData.count && (
+              <p className="text-xs text-[#C4A484] mb-3 italic">Menampilkan {detailData.displayed} dari {detailData.count} transaksi terbaru</p>
+            )}
+            {detailData.items.length === 0 ? (
+              <p className="text-sm text-[#C4A484] text-center py-8">Belum ada transaksi pada periode ini.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs uppercase tracking-wider text-[#C4A484] border-b border-[rgba(244,200,66,0.15)]">
+                      <th className="py-2">Invoice</th>
+                      <th className="py-2">Outlet</th>
+                      <th className="py-2">Kasir</th>
+                      <th className="py-2 text-right">Total</th>
+                      <th className="py-2">Bayar</th>
+                      <th className="py-2">Status</th>
+                      <th className="py-2">Waktu</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detailData.items.map((s, i) => (
+                      <tr key={i} className="border-b border-[rgba(244,200,66,0.08)]">
+                        <td className="py-2 text-[#F5F5F5]">{s.invoice_no}</td>
+                        <td className="py-2 text-[#C4A484]">{s.outlet_name || "-"}</td>
+                        <td className="py-2 text-[#C4A484]">{s.cashier_name || "-"}</td>
+                        <td className="py-2 text-right text-[#F4C842] font-semibold">{formatIDR(s.total)}</td>
+                        <td className="py-2 text-[#C4A484] capitalize">{s.payment_method}</td>
+                        <td className="py-2">
+                          <span className={`text-xs px-2 py-0.5 rounded ${s.status === "voided" ? "bg-[#8B0000] text-[#F5F5F5]" : "bg-[rgba(34,197,94,0.2)] text-green-400"}`}>
+                            {s.status || "completed"}
+                          </span>
+                        </td>
+                        <td className="py-2 text-xs text-[#C4A484]">{s.created_at ? new Date(s.created_at).toLocaleString("id-ID") : "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TRANSACTIONS */}
+        {detailData && detailMetric === "transactions" && (
+          <div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-4">
+              <div className="bg-[#331419] rounded-md p-3">
+                <p className="text-xs text-[#C4A484]">Total Transaksi</p>
+                <p className="text-xl text-[#F5F5F5] font-serif-luxury">{detailData.count}</p>
+              </div>
+              {Object.entries(detailData.by_method || {}).map(([method, count]) => (
+                <div key={method} className="bg-[#331419] rounded-md p-3">
+                  <p className="text-xs text-[#C4A484] capitalize">{method}</p>
+                  <p className="text-xl text-[#F4C842] font-serif-luxury">{count}</p>
+                </div>
+              ))}
+            </div>
+            {detailData.displayed < detailData.count && (
+              <p className="text-xs text-[#C4A484] mb-3 italic">Menampilkan {detailData.displayed} dari {detailData.count} transaksi terbaru</p>
+            )}
+            {detailData.items.length === 0 ? (
+              <p className="text-sm text-[#C4A484] text-center py-8">Belum ada transaksi pada periode ini.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs uppercase tracking-wider text-[#C4A484] border-b border-[rgba(244,200,66,0.15)]">
+                      <th className="py-2">Invoice</th>
+                      <th className="py-2">Outlet</th>
+                      <th className="py-2">Kasir</th>
+                      <th className="py-2">Source</th>
+                      <th className="py-2 text-right">Total</th>
+                      <th className="py-2">Bayar</th>
+                      <th className="py-2">Status</th>
+                      <th className="py-2">Waktu</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detailData.items.map((s, i) => (
+                      <tr key={i} className="border-b border-[rgba(244,200,66,0.08)]">
+                        <td className="py-2 text-[#F5F5F5]">{s.invoice_no}</td>
+                        <td className="py-2 text-[#C4A484]">{s.outlet_name || "-"}</td>
+                        <td className="py-2 text-[#C4A484]">{s.cashier_name || "-"}</td>
+                        <td className="py-2 text-[#C4A484] capitalize">{s.source || "-"}</td>
+                        <td className="py-2 text-right text-[#F4C842] font-semibold">{formatIDR(s.total)}</td>
+                        <td className="py-2 text-[#C4A484] capitalize">{s.payment_method}</td>
+                        <td className="py-2">
+                          <span className={`text-xs px-2 py-0.5 rounded ${s.status === "voided" ? "bg-[#8B0000] text-[#F5F5F5]" : "bg-[rgba(34,197,94,0.2)] text-green-400"}`}>
+                            {s.status || "completed"}
+                          </span>
+                        </td>
+                        <td className="py-2 text-xs text-[#C4A484]">{s.created_at ? new Date(s.created_at).toLocaleString("id-ID") : "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ITEMS SOLD */}
+        {detailData && detailMetric === "items_sold" && (
+          <div>
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div className="bg-[#331419] rounded-md p-3">
+                <p className="text-xs text-[#C4A484]">Total Item Terjual</p>
+                <p className="text-xl text-[#F4C842] font-serif-luxury">{detailData.total_quantity} pcs</p>
+              </div>
+              <div className="bg-[#331419] rounded-md p-3">
+                <p className="text-xs text-[#C4A484]">Jumlah Produk</p>
+                <p className="text-xl text-[#F5F5F5] font-serif-luxury">{detailData.count}</p>
+              </div>
+            </div>
+            {detailData.items.length === 0 ? (
+              <p className="text-sm text-[#C4A484] text-center py-8">Belum ada item terjual pada periode ini.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs uppercase tracking-wider text-[#C4A484] border-b border-[rgba(244,200,66,0.15)]">
+                      <th className="py-2">#</th>
+                      <th className="py-2">Produk</th>
+                      <th className="py-2 text-right">Qty</th>
+                      <th className="py-2 text-right">Pendapatan</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detailData.items.map((p, i) => (
+                      <tr key={i} className="border-b border-[rgba(244,200,66,0.08)]">
+                        <td className="py-2 text-[#F4C842]">{i + 1}</td>
+                        <td className="py-2 text-[#F5F5F5]">{p.name}</td>
+                        <td className="py-2 text-right text-[#C4A484]">{p.quantity}</td>
+                        <td className="py-2 text-right text-[#F4C842] font-semibold">{formatIDR(p.revenue)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* CUSTOMERS */}
+        {detailData && detailMetric === "customers" && (
+          <div>
+            <div className="bg-[#331419] rounded-md p-3 mb-4">
+              <p className="text-xs text-[#C4A484]">Total Pelanggan Terdaftar</p>
+              <p className="text-xl text-[#F4C842] font-serif-luxury">{detailData.count}</p>
+            </div>
+            {detailData.items.length === 0 ? (
+              <p className="text-sm text-[#C4A484] text-center py-8">Belum ada pelanggan terdaftar.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs uppercase tracking-wider text-[#C4A484] border-b border-[rgba(244,200,66,0.15)]">
+                      <th className="py-2">#</th>
+                      <th className="py-2">Nama</th>
+                      <th className="py-2">Telepon</th>
+                      <th className="py-2 text-right">Poin</th>
+                      <th className="py-2 text-right">Transaksi</th>
+                      <th className="py-2 text-right">Total Belanja</th>
+                      <th className="py-2">Terakhir</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detailData.items.map((c, i) => (
+                      <tr key={i} className="border-b border-[rgba(244,200,66,0.08)]">
+                        <td className="py-2 text-[#F4C842]">{i + 1}</td>
+                        <td className="py-2 text-[#F5F5F5]">{c.name}</td>
+                        <td className="py-2 text-[#C4A484]">{c.phone || "-"}</td>
+                        <td className="py-2 text-right text-[#F4C842]">{c.points}</td>
+                        <td className="py-2 text-right text-[#C4A484]">{c.total_transactions}</td>
+                        <td className="py-2 text-right text-[#F4C842] font-semibold">{formatIDR(c.total_spent)}</td>
+                        <td className="py-2 text-xs text-[#C4A484]">{c.last_transaction ? new Date(c.last_transaction).toLocaleDateString("id-ID") : "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* PRODUCTS */}
+        {detailData && detailMetric === "products" && (
+          <div>
+            <div className="bg-[#331419] rounded-md p-3 mb-4">
+              <p className="text-xs text-[#C4A484]">Total Produk Aktif</p>
+              <p className="text-xl text-[#F4C842] font-serif-luxury">{detailData.count}</p>
+            </div>
+            {detailData.items.length === 0 ? (
+              <p className="text-sm text-[#C4A484] text-center py-8">Belum ada produk terdaftar.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs uppercase tracking-wider text-[#C4A484] border-b border-[rgba(244,200,66,0.15)]">
+                      <th className="py-2">#</th>
+                      <th className="py-2">Produk</th>
+                      <th className="py-2">Kategori</th>
+                      <th className="py-2">SKU</th>
+                      <th className="py-2 text-right">Harga</th>
+                      <th className="py-2 text-right">Cost</th>
+                      <th className="py-2 text-right">Stok</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detailData.items.map((p, i) => (
+                      <tr key={i} className="border-b border-[rgba(244,200,66,0.08)]">
+                        <td className="py-2 text-[#F4C842]">{i + 1}</td>
+                        <td className="py-2 text-[#F5F5F5]">{p.name}</td>
+                        <td className="py-2 text-[#C4A484]">{p.category}</td>
+                        <td className="py-2 text-[#C4A484]">{p.sku}</td>
+                        <td className="py-2 text-right text-[#F4C842]">{formatIDR(p.price)}</td>
+                        <td className="py-2 text-right text-red-400">{formatIDR(p.cost)}</td>
+                        <td className="py-2 text-right text-[#F5F5F5]">{p.stock}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* LOW STOCK */}
+        {detailData && detailMetric === "low_stock" && (
+          <div>
+            <div className="bg-[#331419] rounded-md p-3 mb-4">
+              <p className="text-xs text-[#C4A484]">Total Produk Stok Menipis</p>
+              <p className="text-xl text-red-400 font-serif-luxury">{detailData.count}</p>
+            </div>
+            {detailData.items.length === 0 ? (
+              <p className="text-sm text-[#C4A484] text-center py-8">Semua stok aman.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs uppercase tracking-wider text-[#C4A484] border-b border-[rgba(244,200,66,0.15)]">
+                      <th className="py-2">#</th>
+                      <th className="py-2">Produk</th>
+                      <th className="py-2">Kategori</th>
+                      <th className="py-2">SKU</th>
+                      <th className="py-2 text-right">Stok</th>
+                      <th className="py-2 text-right">Threshold</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detailData.items.map((p, i) => (
+                      <tr key={i} className="border-b border-[rgba(244,200,66,0.08)]">
+                        <td className="py-2 text-[#F4C842]">{i + 1}</td>
+                        <td className="py-2 text-[#F5F5F5]">{p.name}</td>
+                        <td className="py-2 text-[#C4A484]">{p.category}</td>
+                        <td className="py-2 text-[#C4A484]">{p.sku}</td>
+                        <td className="py-2 text-right text-red-400 font-semibold">{p.stock} {p.unit}</td>
+                        <td className="py-2 text-right text-[#C4A484]">{p.threshold}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </DetailModal>
     </div>
   );
 }
@@ -633,6 +1000,44 @@ function SalesTab({ globalOutletId }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedSaleId, setSelectedSaleId] = useState(null);
+
+  // Popup detail state
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailMetric, setDetailMetric] = useState(null);
+  const [detailData, setDetailData] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  const openDetail = async (metric) => {
+    setDetailMetric(metric);
+    setDetailOpen(true);
+    setDetailLoading(true);
+    setDetailData(null);
+    try {
+      const params = { metric, period };
+      if (period === "custom") {
+        if (!dateFrom || !dateTo) {
+          toast.error("Pilih tanggal mulai dan akhir untuk periode custom");
+          setDetailLoading(false);
+          return;
+        }
+        params.date_from = dateFrom;
+        params.date_to = dateTo;
+      }
+      if (outletId) params.outlet_id = outletId;
+      const res = await api.get("/reports/sales-details", { params });
+      setDetailData(res.data);
+    } catch (err) {
+      console.error("Detail error:", err);
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const closeDetail = () => {
+    setDetailOpen(false);
+    setDetailMetric(null);
+    setDetailData(null);
+  };
 
   const fetchData = useCallback(() => {
     setLoading(true);
@@ -817,14 +1222,14 @@ function SalesTab({ globalOutletId }) {
         <ExportButtons onExcel={exportExcel} onPDF={exportPDF} />
       </div>
 
-      {/* Summary cards */}
+      {/* Summary cards — clickable for detail popup */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-        <Card label="Revenue" value={formatIDR(s.revenue)} icon={DollarSign} />
-        <Card label="Transaksi" value={s.transactions} icon={ShoppingCart} accent="text-[#F5F5F5]" />
-        <Card label="Avg Transaksi" value={formatIDR(s.avg_transaction)} icon={TrendingUp} />
-        <Card label="Total Diskon" value={formatIDR(s.total_discount)} icon={DollarSign} accent="text-red-400" />
-        <Card label="Total Pajak" value={formatIDR(s.total_tax)} icon={DollarSign} accent="text-[#F5F5F5]" />
-        <Card label="Item Terjual" value={s.items_sold} icon={Package} accent="text-[#F5F5F5]" />
+        <Card label="Revenue" value={formatIDR(s.revenue)} icon={DollarSign} onClick={() => openDetail("revenue")} />
+        <Card label="Transaksi" value={s.transactions} icon={ShoppingCart} accent="text-[#F5F5F5]" onClick={() => openDetail("transactions")} />
+        <Card label="Avg Transaksi" value={formatIDR(s.avg_transaction)} icon={TrendingUp} onClick={() => openDetail("avg_transaction")} />
+        <Card label="Total Diskon" value={formatIDR(s.total_discount)} icon={DollarSign} accent="text-red-400" onClick={() => openDetail("discount")} />
+        <Card label="Total Pajak" value={formatIDR(s.total_tax)} icon={DollarSign} accent="text-[#F5F5F5]" onClick={() => openDetail("tax")} />
+        <Card label="Item Terjual" value={s.items_sold} icon={Package} accent="text-[#F5F5F5]" onClick={() => openDetail("items_sold")} />
       </div>
 
       {/* Chart */}
@@ -964,6 +1369,183 @@ function SalesTab({ globalOutletId }) {
           onClose={() => setSelectedSaleId(null)}
         />
       )}
+
+      {/* =========================================
+          DETAIL POPUP MODAL
+      ========================================== */}
+      <DetailModal
+        open={detailOpen}
+        onClose={closeDetail}
+        title={
+          detailMetric === "revenue" ? "Detail Pendapatan" :
+          detailMetric === "transactions" ? "Detail Transaksi" :
+          detailMetric === "avg_transaction" ? "Detail Rata-rata Transaksi" :
+          detailMetric === "discount" ? "Detail Diskon" :
+          detailMetric === "tax" ? "Detail Pajak" :
+          detailMetric === "items_sold" ? "Detail Item Terjual" : "Detail"
+        }
+        subtitle={period === "custom" ? `${dateFrom} s/d ${dateTo}` : (PERIODS.find((p) => p.value === period)?.label || "")}
+        loading={detailLoading}
+      >
+        {/* REVENUE / TRANSACTIONS / AVG / DISCOUNT / TAX — transaction list */}
+        {detailData && detailMetric !== "items_sold" && (
+          <div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-4">
+              {detailMetric === "revenue" && (
+                <>
+                  <div className="bg-[#331419] rounded-md p-3">
+                    <p className="text-xs text-[#C4A484]">Total Pendapatan</p>
+                    <p className="text-xl text-[#F4C842] font-serif-luxury">{formatIDR(detailData.total)}</p>
+                  </div>
+                  <div className="bg-[#331419] rounded-md p-3">
+                    <p className="text-xs text-[#C4A484]">Jumlah Transaksi</p>
+                    <p className="text-xl text-[#F5F5F5] font-serif-luxury">{detailData.count}</p>
+                  </div>
+                </>
+              )}
+              {detailMetric === "transactions" && (
+                <>
+                  <div className="bg-[#331419] rounded-md p-3">
+                    <p className="text-xs text-[#C4A484]">Total Transaksi</p>
+                    <p className="text-xl text-[#F5F5F5] font-serif-luxury">{detailData.count}</p>
+                  </div>
+                  {Object.entries(detailData.by_method || {}).map(([method, count]) => (
+                    <div key={method} className="bg-[#331419] rounded-md p-3">
+                      <p className="text-xs text-[#C4A484] capitalize">{method}</p>
+                      <p className="text-xl text-[#F4C842] font-serif-luxury">{count}</p>
+                    </div>
+                  ))}
+                </>
+              )}
+              {detailMetric === "avg_transaction" && (
+                <>
+                  <div className="bg-[#331419] rounded-md p-3">
+                    <p className="text-xs text-[#C4A484]">Rata-rata Transaksi</p>
+                    <p className="text-xl text-[#F4C842] font-serif-luxury">{formatIDR(detailData.avg_transaction)}</p>
+                  </div>
+                  <div className="bg-[#331419] rounded-md p-3">
+                    <p className="text-xs text-[#C4A484]">Total Pendapatan</p>
+                    <p className="text-xl text-[#F5F5F5] font-serif-luxury">{formatIDR(detailData.total)}</p>
+                  </div>
+                  <div className="bg-[#331419] rounded-md p-3">
+                    <p className="text-xs text-[#C4A484]">Jumlah Transaksi</p>
+                    <p className="text-xl text-[#F5F5F5] font-serif-luxury">{detailData.count}</p>
+                  </div>
+                </>
+              )}
+              {detailMetric === "discount" && (
+                <>
+                  <div className="bg-[#331419] rounded-md p-3">
+                    <p className="text-xs text-[#C4A484]">Total Diskon</p>
+                    <p className="text-xl text-red-400 font-serif-luxury">{formatIDR(detailData.total_discount)}</p>
+                  </div>
+                  <div className="bg-[#331419] rounded-md p-3">
+                    <p className="text-xs text-[#C4A484]">Jumlah Transaksi</p>
+                    <p className="text-xl text-[#F5F5F5] font-serif-luxury">{detailData.count}</p>
+                  </div>
+                </>
+              )}
+              {detailMetric === "tax" && (
+                <>
+                  <div className="bg-[#331419] rounded-md p-3">
+                    <p className="text-xs text-[#C4A484]">Total Pajak</p>
+                    <p className="text-xl text-[#F4C842] font-serif-luxury">{formatIDR(detailData.total_tax)}</p>
+                  </div>
+                  <div className="bg-[#331419] rounded-md p-3">
+                    <p className="text-xs text-[#C4A484]">Jumlah Transaksi</p>
+                    <p className="text-xl text-[#F5F5F5] font-serif-luxury">{detailData.count}</p>
+                  </div>
+                </>
+              )}
+            </div>
+            {detailData.displayed < detailData.count && (
+              <p className="text-xs text-[#C4A484] mb-3 italic">Menampilkan {detailData.displayed} dari {detailData.count} transaksi terbaru</p>
+            )}
+            {detailData.items.length === 0 ? (
+              <p className="text-sm text-[#C4A484] text-center py-8">Belum ada transaksi pada periode ini.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs uppercase tracking-wider text-[#C4A484] border-b border-[rgba(244,200,66,0.15)]">
+                      <th className="py-2">Invoice</th>
+                      <th className="py-2">Outlet</th>
+                      <th className="py-2">Kasir</th>
+                      <th className="py-2 text-right">Total</th>
+                      {detailMetric === "discount" && <th className="py-2 text-right">Diskon</th>}
+                      {detailMetric === "tax" && <th className="py-2 text-right">Pajak</th>}
+                      <th className="py-2">Bayar</th>
+                      <th className="py-2">Status</th>
+                      <th className="py-2">Waktu</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detailData.items.map((s, i) => (
+                      <tr key={i} className="border-b border-[rgba(244,200,66,0.08)]">
+                        <td className="py-2 text-[#F5F5F5]">{s.invoice_no}</td>
+                        <td className="py-2 text-[#C4A484]">{s.outlet_name || "-"}</td>
+                        <td className="py-2 text-[#C4A484]">{s.cashier_name || "-"}</td>
+                        <td className="py-2 text-right text-[#F4C842] font-semibold">{formatIDR(s.total)}</td>
+                        {detailMetric === "discount" && <td className="py-2 text-right text-red-400">{formatIDR(s.discount)}</td>}
+                        {detailMetric === "tax" && <td className="py-2 text-right text-[#F4C842]">{formatIDR(s.tax)}</td>}
+                        <td className="py-2 text-[#C4A484] capitalize">{s.payment_method}</td>
+                        <td className="py-2">
+                          <span className={`text-xs px-2 py-0.5 rounded ${s.status === "voided" ? "bg-[#8B0000] text-[#F5F5F5]" : "bg-[rgba(34,197,94,0.2)] text-green-400"}`}>
+                            {s.status || "completed"}
+                          </span>
+                        </td>
+                        <td className="py-2 text-xs text-[#C4A484]">{s.created_at ? new Date(s.created_at).toLocaleString("id-ID") : "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ITEMS SOLD — product breakdown */}
+        {detailData && detailMetric === "items_sold" && (
+          <div>
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div className="bg-[#331419] rounded-md p-3">
+                <p className="text-xs text-[#C4A484]">Total Item Terjual</p>
+                <p className="text-xl text-[#F4C842] font-serif-luxury">{detailData.total_quantity} pcs</p>
+              </div>
+              <div className="bg-[#331419] rounded-md p-3">
+                <p className="text-xs text-[#C4A484]">Jumlah Produk</p>
+                <p className="text-xl text-[#F5F5F5] font-serif-luxury">{detailData.count}</p>
+              </div>
+            </div>
+            {detailData.items.length === 0 ? (
+              <p className="text-sm text-[#C4A484] text-center py-8">Belum ada item terjual pada periode ini.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs uppercase tracking-wider text-[#C4A484] border-b border-[rgba(244,200,66,0.15)]">
+                      <th className="py-2">#</th>
+                      <th className="py-2">Produk</th>
+                      <th className="py-2 text-right">Qty</th>
+                      <th className="py-2 text-right">Pendapatan</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detailData.items.map((p, i) => (
+                      <tr key={i} className="border-b border-[rgba(244,200,66,0.08)]">
+                        <td className="py-2 text-[#F4C842]">{i + 1}</td>
+                        <td className="py-2 text-[#F5F5F5]">{p.name}</td>
+                        <td className="py-2 text-right text-[#C4A484]">{p.quantity}</td>
+                        <td className="py-2 text-right text-[#F4C842] font-semibold">{formatIDR(p.revenue)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </DetailModal>
     </div>
   );
 }
@@ -979,6 +1561,11 @@ function ProfitLossTab({ globalOutletId }) {
   const outletId = globalOutletId || "";
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // Popup detail state — uses already-loaded data, no extra API call
+  const [detailMetric, setDetailMetric] = useState(null);
+  const openDetail = (metric) => setDetailMetric(metric);
+  const closeDetail = () => setDetailMetric(null);
 
   const fetchData = useCallback(() => {
     setLoading(true);
@@ -1114,28 +1701,31 @@ function ProfitLossTab({ globalOutletId }) {
         <ExportButtons onExcel={exportExcel} onPDF={exportPDF} />
       </div>
 
-      {/* Summary cards */}
+      {/* Summary cards — clickable for detail popup */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-        <Card label="Revenue" value={formatIDR(data.revenue)} icon={DollarSign} />
-        <Card label="COGS" value={formatIDR(data.cogs)} icon={DollarSign} accent="text-red-400" />
+        <Card label="Revenue" value={formatIDR(data.revenue)} icon={DollarSign} onClick={() => openDetail("revenue")} />
+        <Card label="COGS" value={formatIDR(data.cogs)} icon={DollarSign} accent="text-red-400" onClick={() => openDetail("cogs")} />
         <Card
           label="Gross Profit"
           value={formatIDR(data.gross_profit)}
           icon={TrendingUp}
           accent={data.gross_profit >= 0 ? "text-[#2E8B57]" : "text-red-400"}
+          onClick={() => openDetail("gross_profit")}
         />
         <Card
           label="Gross Margin"
           value={`${data.gross_margin_pct}%`}
           icon={TrendingUp}
           accent="text-[#F5F5F5]"
+          onClick={() => openDetail("gross_margin")}
         />
-        <Card label="Total Diskon" value={formatIDR(data.total_discount)} icon={DollarSign} accent="text-red-400" />
+        <Card label="Total Diskon" value={formatIDR(data.total_discount)} icon={DollarSign} accent="text-red-400" onClick={() => openDetail("discount")} />
         <Card
           label="Net Profit"
           value={formatIDR(data.net_profit)}
           icon={DollarSign}
           accent={data.net_profit >= 0 ? "text-[#2E8B57]" : "text-red-400"}
+          onClick={() => openDetail("net_profit")}
         />
       </div>
 
@@ -1191,6 +1781,242 @@ function ProfitLossTab({ globalOutletId }) {
           empty="Tidak ada data kategori pada periode ini"
         />
       </SectionCard>
+
+      {/* =========================================
+          DETAIL POPUP MODAL — uses already-loaded data
+      ========================================== */}
+      <DetailModal
+        open={!!detailMetric}
+        onClose={closeDetail}
+        title={
+          detailMetric === "revenue" ? "Detail Revenue" :
+          detailMetric === "cogs" ? "Detail COGS" :
+          detailMetric === "gross_profit" ? "Detail Gross Profit" :
+          detailMetric === "gross_margin" ? "Detail Gross Margin" :
+          detailMetric === "discount" ? "Detail Total Diskon" :
+          detailMetric === "net_profit" ? "Detail Net Profit" : "Detail"
+        }
+        subtitle={period === "custom" ? `${dateFrom} s/d ${dateTo}` : (PERIODS.find((p) => p.value === period)?.label || "")}
+        loading={false}
+      >
+        {/* REVENUE — by product */}
+        {detailMetric === "revenue" && (
+          <div>
+            <div className="bg-[#331419] rounded-md p-3 mb-4">
+              <p className="text-xs text-[#C4A484]">Total Revenue</p>
+              <p className="text-xl text-[#F4C842] font-serif-luxury">{formatIDR(data.revenue)}</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs uppercase tracking-wider text-[#C4A484] border-b border-[rgba(244,200,66,0.15)]">
+                    <th className="py-2">#</th>
+                    <th className="py-2">Produk</th>
+                    <th className="py-2 text-right">Qty</th>
+                    <th className="py-2 text-right">Revenue</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.by_product.map((r, i) => (
+                    <tr key={i} className="border-b border-[rgba(244,200,66,0.08)]">
+                      <td className="py-2 text-[#F4C842]">{i + 1}</td>
+                      <td className="py-2 text-[#F5F5F5]">{r.name}</td>
+                      <td className="py-2 text-right text-[#C4A484]">{r.quantity}</td>
+                      <td className="py-2 text-right text-[#F4C842] font-semibold">{formatIDR(r.revenue)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* COGS — by product */}
+        {detailMetric === "cogs" && (
+          <div>
+            <div className="bg-[#331419] rounded-md p-3 mb-4">
+              <p className="text-xs text-[#C4A484]">Total COGS</p>
+              <p className="text-xl text-red-400 font-serif-luxury">{formatIDR(data.cogs)}</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs uppercase tracking-wider text-[#C4A484] border-b border-[rgba(244,200,66,0.15)]">
+                    <th className="py-2">#</th>
+                    <th className="py-2">Produk</th>
+                    <th className="py-2 text-right">Qty</th>
+                    <th className="py-2 text-right">Cost</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.by_product.map((r, i) => (
+                    <tr key={i} className="border-b border-[rgba(244,200,66,0.08)]">
+                      <td className="py-2 text-[#F4C842]">{i + 1}</td>
+                      <td className="py-2 text-[#F5F5F5]">{r.name}</td>
+                      <td className="py-2 text-right text-[#C4A484]">{r.quantity}</td>
+                      <td className="py-2 text-right text-red-400 font-semibold">{formatIDR(r.cost)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* GROSS PROFIT — by product */}
+        {detailMetric === "gross_profit" && (
+          <div>
+            <div className="grid grid-cols-3 gap-4 mb-4">
+              <div className="bg-[#331419] rounded-md p-3">
+                <p className="text-xs text-[#C4A484]">Revenue</p>
+                <p className="text-lg text-[#F4C842] font-serif-luxury">{formatIDR(data.revenue)}</p>
+              </div>
+              <div className="bg-[#331419] rounded-md p-3">
+                <p className="text-xs text-[#C4A484]">COGS</p>
+                <p className="text-lg text-red-400 font-serif-luxury">{formatIDR(data.cogs)}</p>
+              </div>
+              <div className="bg-[#331419] rounded-md p-3">
+                <p className="text-xs text-[#C4A484]">Gross Profit</p>
+                <p className={`text-lg font-serif-luxury ${data.gross_profit >= 0 ? "text-[#2E8B57]" : "text-red-400"}`}>{formatIDR(data.gross_profit)}</p>
+              </div>
+            </div>
+            <p className="text-xs text-[#C4A484] mb-3 italic">Formula: Revenue - COGS = Gross Profit</p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs uppercase tracking-wider text-[#C4A484] border-b border-[rgba(244,200,66,0.15)]">
+                    <th className="py-2">#</th>
+                    <th className="py-2">Produk</th>
+                    <th className="py-2 text-right">Revenue</th>
+                    <th className="py-2 text-right">Cost</th>
+                    <th className="py-2 text-right">Profit</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.by_product.map((r, i) => (
+                    <tr key={i} className="border-b border-[rgba(244,200,66,0.08)]">
+                      <td className="py-2 text-[#F4C842]">{i + 1}</td>
+                      <td className="py-2 text-[#F5F5F5]">{r.name}</td>
+                      <td className="py-2 text-right text-[#F4C842]">{formatIDR(r.revenue)}</td>
+                      <td className="py-2 text-right text-red-400">{formatIDR(r.cost)}</td>
+                      <td className={`py-2 text-right font-semibold ${r.profit >= 0 ? "text-[#2E8B57]" : "text-red-400"}`}>{formatIDR(r.profit)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* GROSS MARGIN — calculation detail */}
+        {detailMetric === "gross_margin" && (
+          <div>
+            <div className="bg-[#331419] rounded-md p-4 mb-4">
+              <p className="text-xs text-[#C4A484] mb-2">Perhitungan Gross Margin</p>
+              <div className="space-y-1 text-sm">
+                <p className="text-[#F5F5F5]">Revenue: <span className="text-[#F4C842] font-semibold">{formatIDR(data.revenue)}</span></p>
+                <p className="text-[#F5F5F5]">COGS: <span className="text-red-400 font-semibold">{formatIDR(data.cogs)}</span></p>
+                <p className="text-[#F5F5F5]">Gross Profit: <span className={`font-semibold ${data.gross_profit >= 0 ? "text-[#2E8B57]" : "text-red-400"}`}>{formatIDR(data.gross_profit)}</span></p>
+                <p className="text-[#C4A484] pt-2 border-t border-[rgba(244,200,66,0.1)]">Formula: (Gross Profit / Revenue) × 100%</p>
+                <p className="text-[#F5F5F5]">= ({formatIDR(data.gross_profit)} / {formatIDR(data.revenue)}) × 100%</p>
+                <p className="text-xl text-[#F4C842] font-serif-luxury pt-1">= {data.gross_margin_pct}%</p>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs uppercase tracking-wider text-[#C4A484] border-b border-[rgba(244,200,66,0.15)]">
+                    <th className="py-2">#</th>
+                    <th className="py-2">Produk</th>
+                    <th className="py-2 text-right">Margin %</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.by_product.map((r, i) => (
+                    <tr key={i} className="border-b border-[rgba(244,200,66,0.08)]">
+                      <td className="py-2 text-[#F4C842]">{i + 1}</td>
+                      <td className="py-2 text-[#F5F5F5]">{r.name}</td>
+                      <td className={`py-2 text-right font-semibold ${r.margin_pct >= 0 ? "text-[#2E8B57]" : "text-red-400"}`}>{r.margin_pct}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* DISCOUNT — by day */}
+        {detailMetric === "discount" && (
+          <div>
+            <div className="bg-[#331419] rounded-md p-3 mb-4">
+              <p className="text-xs text-[#C4A484]">Total Diskon</p>
+              <p className="text-xl text-red-400 font-serif-luxury">{formatIDR(data.total_discount)}</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs uppercase tracking-wider text-[#C4A484] border-b border-[rgba(244,200,66,0.15)]">
+                    <th className="py-2">Tanggal</th>
+                    <th className="py-2 text-right">Revenue</th>
+                    <th className="py-2 text-right">COGS</th>
+                    <th className="py-2 text-right">Profit</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.by_day.map((r, i) => (
+                    <tr key={i} className="border-b border-[rgba(244,200,66,0.08)]">
+                      <td className="py-2 text-[#F5F5F5]">{r.date}</td>
+                      <td className="py-2 text-right text-[#F4C842]">{formatIDR(r.revenue)}</td>
+                      <td className="py-2 text-right text-red-400">{formatIDR(r.cogs)}</td>
+                      <td className={`py-2 text-right font-semibold ${r.profit >= 0 ? "text-[#2E8B57]" : "text-red-400"}`}>{formatIDR(r.profit)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* NET PROFIT — calculation detail */}
+        {detailMetric === "net_profit" && (
+          <div>
+            <div className="bg-[#331419] rounded-md p-4 mb-4">
+              <p className="text-xs text-[#C4A484] mb-2">Perhitungan Net Profit</p>
+              <div className="space-y-1 text-sm">
+                <p className="text-[#F5F5F5]">Revenue: <span className="text-[#F4C842] font-semibold">{formatIDR(data.revenue)}</span></p>
+                <p className="text-[#F5F5F5]">COGS: <span className="text-red-400 font-semibold">- {formatIDR(data.cogs)}</span></p>
+                <p className="text-[#F5F5F5]">Gross Profit: <span className={`font-semibold ${data.gross_profit >= 0 ? "text-[#2E8B57]" : "text-red-400"}`}>{formatIDR(data.gross_profit)}</span></p>
+                <p className="text-[#F5F5F5]">Diskon: <span className="text-red-400 font-semibold">- {formatIDR(data.total_discount)}</span></p>
+                <p className="text-[#F5F5F5]">Pajak: <span className="text-[#F4C842] font-semibold">+ {formatIDR(data.total_tax)}</span></p>
+                <p className="text-[#C4A484] pt-2 border-t border-[rgba(244,200,66,0.1)]">Formula: Gross Profit - Diskon + Pajak</p>
+                <p className="text-xl text-[#F4C842] font-serif-luxury pt-1">= {formatIDR(data.net_profit)}</p>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs uppercase tracking-wider text-[#C4A484] border-b border-[rgba(244,200,66,0.15)]">
+                    <th className="py-2">Tanggal</th>
+                    <th className="py-2 text-right">Revenue</th>
+                    <th className="py-2 text-right">COGS</th>
+                    <th className="py-2 text-right">Profit</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.by_day.map((r, i) => (
+                    <tr key={i} className="border-b border-[rgba(244,200,66,0.08)]">
+                      <td className="py-2 text-[#F5F5F5]">{r.date}</td>
+                      <td className="py-2 text-right text-[#F4C842]">{formatIDR(r.revenue)}</td>
+                      <td className="py-2 text-right text-red-400">{formatIDR(r.cogs)}</td>
+                      <td className={`py-2 text-right font-semibold ${r.profit >= 0 ? "text-[#2E8B57]" : "text-red-400"}`}>{formatIDR(r.profit)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </DetailModal>
     </div>
   );
 }
@@ -1204,6 +2030,11 @@ function ShiftsTab({ globalOutletId }) {
   const [dateTo, setDateTo] = useState("");
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // Popup detail state — uses already-loaded data
+  const [detailMetric, setDetailMetric] = useState(null);
+  const openDetail = (metric) => setDetailMetric(metric);
+  const closeDetail = () => setDetailMetric(null);
 
   const fetchData = useCallback(() => {
     setLoading(true);
@@ -1316,19 +2147,20 @@ function ShiftsTab({ globalOutletId }) {
         <ExportButtons onExcel={exportExcel} onPDF={exportPDF} />
       </div>
 
-      {/* Summary cards */}
+      {/* Summary cards — clickable for detail popup */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-        <Card label="Total Cash Sales" value={formatIDR(s.total_cash_sales)} icon={Banknote} />
-        <Card label="Total Non-Cash" value={formatIDR(s.total_non_cash_sales)} icon={CreditCard} accent="text-[#F5F5F5]" />
-        <Card label="Total Expected" value={formatIDR(s.total_expected)} icon={Wallet} accent="text-[#F5F5F5]" />
-        <Card label="Total Actual" value={formatIDR(s.total_actual)} icon={Wallet} accent="text-[#F5F5F5]" />
+        <Card label="Total Cash Sales" value={formatIDR(s.total_cash_sales)} icon={Banknote} onClick={() => openDetail("cash_sales")} />
+        <Card label="Total Non-Cash" value={formatIDR(s.total_non_cash_sales)} icon={CreditCard} accent="text-[#F5F5F5]" onClick={() => openDetail("non_cash")} />
+        <Card label="Total Expected" value={formatIDR(s.total_expected)} icon={Wallet} accent="text-[#F5F5F5]" onClick={() => openDetail("expected")} />
+        <Card label="Total Actual" value={formatIDR(s.total_actual)} icon={Wallet} accent="text-[#F5F5F5]" onClick={() => openDetail("actual")} />
         <Card
           label="Total Difference"
           value={formatIDR(s.total_difference)}
           icon={AlertTriangle}
           accent={diffColor(s.total_difference)}
+          onClick={() => openDetail("difference")}
         />
-        <Card label="Total Transaksi" value={s.total_transactions} icon={ShoppingCart} accent="text-[#F5F5F5]" />
+        <Card label="Total Transaksi" value={s.total_transactions} icon={ShoppingCart} accent="text-[#F5F5F5]" onClick={() => openDetail("transactions")} />
       </div>
 
       {/* Shifts table */}
@@ -1382,6 +2214,213 @@ function ShiftsTab({ globalOutletId }) {
           empty="Tidak ada shift pada periode ini"
         />
       </SectionCard>
+
+      {/* =========================================
+          DETAIL POPUP MODAL — uses already-loaded data
+      ========================================== */}
+      <DetailModal
+        open={!!detailMetric}
+        onClose={closeDetail}
+        title={
+          detailMetric === "cash_sales" ? "Detail Cash Sales" :
+          detailMetric === "non_cash" ? "Detail Non-Cash Sales" :
+          detailMetric === "expected" ? "Detail Expected Cash" :
+          detailMetric === "actual" ? "Detail Actual Cash" :
+          detailMetric === "difference" ? "Detail Selisih (Difference)" :
+          detailMetric === "transactions" ? "Detail Total Transaksi" : "Detail"
+        }
+        subtitle={rangeStr}
+        loading={false}
+      >
+        {detailMetric === "cash_sales" && (
+          <div>
+            <div className="bg-[#331419] rounded-md p-3 mb-4">
+              <p className="text-xs text-[#C4A484]">Total Cash Sales</p>
+              <p className="text-xl text-[#F4C842] font-serif-luxury">{formatIDR(s.total_cash_sales)}</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs uppercase tracking-wider text-[#C4A484] border-b border-[rgba(244,200,66,0.15)]">
+                    <th className="py-2">Kasir</th>
+                    <th className="py-2">Status</th>
+                    <th className="py-2">Opened</th>
+                    <th className="py-2 text-right">Cash Sales</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.shifts.map((r, i) => (
+                    <tr key={i} className="border-b border-[rgba(244,200,66,0.08)]">
+                      <td className="py-2 text-[#F5F5F5]">{r.cashier_name}</td>
+                      <td className="py-2 text-[#C4A484] uppercase">{r.status}</td>
+                      <td className="py-2 text-xs text-[#C4A484]">{r.opened_at ? new Date(r.opened_at).toLocaleString("id-ID") : "-"}</td>
+                      <td className="py-2 text-right text-[#F4C842] font-semibold">{formatIDR(r.cash_sales)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {detailMetric === "non_cash" && (
+          <div>
+            <div className="bg-[#331419] rounded-md p-3 mb-4">
+              <p className="text-xs text-[#C4A484]">Total Non-Cash Sales</p>
+              <p className="text-xl text-[#F5F5F5] font-serif-luxury">{formatIDR(s.total_non_cash_sales)}</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs uppercase tracking-wider text-[#C4A484] border-b border-[rgba(244,200,66,0.15)]">
+                    <th className="py-2">Kasir</th>
+                    <th className="py-2">Status</th>
+                    <th className="py-2">Opened</th>
+                    <th className="py-2 text-right">Non-Cash</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.shifts.map((r, i) => (
+                    <tr key={i} className="border-b border-[rgba(244,200,66,0.08)]">
+                      <td className="py-2 text-[#F5F5F5]">{r.cashier_name}</td>
+                      <td className="py-2 text-[#C4A484] uppercase">{r.status}</td>
+                      <td className="py-2 text-xs text-[#C4A484]">{r.opened_at ? new Date(r.opened_at).toLocaleString("id-ID") : "-"}</td>
+                      <td className="py-2 text-right text-[#F4C842] font-semibold">{formatIDR(r.non_cash_sales)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {detailMetric === "expected" && (
+          <div>
+            <div className="bg-[#331419] rounded-md p-3 mb-4">
+              <p className="text-xs text-[#C4A484]">Total Expected Cash</p>
+              <p className="text-xl text-[#F5F5F5] font-serif-luxury">{formatIDR(s.total_expected)}</p>
+              <p className="text-xs text-[#C4A484] mt-2 italic">Expected = Opening Cash + Cash Sales</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs uppercase tracking-wider text-[#C4A484] border-b border-[rgba(244,200,66,0.15)]">
+                    <th className="py-2">Kasir</th>
+                    <th className="py-2 text-right">Opening</th>
+                    <th className="py-2 text-right">Cash Sales</th>
+                    <th className="py-2 text-right">Expected</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.shifts.map((r, i) => (
+                    <tr key={i} className="border-b border-[rgba(244,200,66,0.08)]">
+                      <td className="py-2 text-[#F5F5F5]">{r.cashier_name}</td>
+                      <td className="py-2 text-right text-[#C4A484]">{formatIDR(r.opening_cash)}</td>
+                      <td className="py-2 text-right text-[#F4C842]">{formatIDR(r.cash_sales)}</td>
+                      <td className="py-2 text-right text-[#F5F5F5] font-semibold">{formatIDR(r.expected_cash)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {detailMetric === "actual" && (
+          <div>
+            <div className="bg-[#331419] rounded-md p-3 mb-4">
+              <p className="text-xs text-[#C4A484]">Total Actual Cash</p>
+              <p className="text-xl text-[#F5F5F5] font-serif-luxury">{formatIDR(s.total_actual)}</p>
+              <p className="text-xs text-[#C4A484] mt-2 italic">Actual = kasir yang dihitung saat tutup shift</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs uppercase tracking-wider text-[#C4A484] border-b border-[rgba(244,200,66,0.15)]">
+                    <th className="py-2">Kasir</th>
+                    <th className="py-2">Status</th>
+                    <th className="py-2">Closed</th>
+                    <th className="py-2 text-right">Actual Cash</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.shifts.map((r, i) => (
+                    <tr key={i} className="border-b border-[rgba(244,200,66,0.08)]">
+                      <td className="py-2 text-[#F5F5F5]">{r.cashier_name}</td>
+                      <td className="py-2 text-[#C4A484] uppercase">{r.status}</td>
+                      <td className="py-2 text-xs text-[#C4A484]">{r.closed_at ? new Date(r.closed_at).toLocaleString("id-ID") : "Belum tutup"}</td>
+                      <td className="py-2 text-right text-[#F5F5F5] font-semibold">{formatIDR(r.actual_cash)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {detailMetric === "difference" && (
+          <div>
+            <div className="bg-[#331419] rounded-md p-3 mb-4">
+              <p className="text-xs text-[#C4A484]">Total Difference</p>
+              <p className={`text-xl font-serif-luxury ${diffColor(s.total_difference)}`}>{formatIDR(s.total_difference)}</p>
+              <p className="text-xs text-[#C4A484] mt-2 italic">Difference = Actual - Expected</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs uppercase tracking-wider text-[#C4A484] border-b border-[rgba(244,200,66,0.15)]">
+                    <th className="py-2">Kasir</th>
+                    <th className="py-2 text-right">Expected</th>
+                    <th className="py-2 text-right">Actual</th>
+                    <th className="py-2 text-right">Difference</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.shifts.map((r, i) => (
+                    <tr key={i} className="border-b border-[rgba(244,200,66,0.08)]">
+                      <td className="py-2 text-[#F5F5F5]">{r.cashier_name}</td>
+                      <td className="py-2 text-right text-[#C4A484]">{formatIDR(r.expected_cash)}</td>
+                      <td className="py-2 text-right text-[#F5F5F5]">{formatIDR(r.actual_cash)}</td>
+                      <td className={`py-2 text-right font-semibold ${diffColor(r.difference)}`}>{formatIDR(r.difference)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {detailMetric === "transactions" && (
+          <div>
+            <div className="bg-[#331419] rounded-md p-3 mb-4">
+              <p className="text-xs text-[#C4A484]">Total Transaksi</p>
+              <p className="text-xl text-[#F5F5F5] font-serif-luxury">{s.total_transactions}</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs uppercase tracking-wider text-[#C4A484] border-b border-[rgba(244,200,66,0.15)]">
+                    <th className="py-2">Kasir</th>
+                    <th className="py-2">Status</th>
+                    <th className="py-2">Opened</th>
+                    <th className="py-2 text-right">Tx Count</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.shifts.map((r, i) => (
+                    <tr key={i} className="border-b border-[rgba(244,200,66,0.08)]">
+                      <td className="py-2 text-[#F5F5F5]">{r.cashier_name}</td>
+                      <td className="py-2 text-[#C4A484] uppercase">{r.status}</td>
+                      <td className="py-2 text-xs text-[#C4A484]">{r.opened_at ? new Date(r.opened_at).toLocaleString("id-ID") : "-"}</td>
+                      <td className="py-2 text-right text-[#F4C842] font-semibold">{r.transaction_count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </DetailModal>
     </div>
   );
 }
@@ -1396,6 +2435,11 @@ function StockTab({ globalOutletId }) {
   const outletId = globalOutletId || "";
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // Popup detail state — uses already-loaded data
+  const [detailMetric, setDetailMetric] = useState(null);
+  const openDetail = (metric) => setDetailMetric(metric);
+  const closeDetail = () => setDetailMetric(null);
 
   const fetchData = useCallback(() => {
     setLoading(true);
@@ -1509,25 +2553,28 @@ function StockTab({ globalOutletId }) {
         <ExportButtons onExcel={exportExcel} onPDF={exportPDF} />
       </div>
 
-      {/* Summary cards */}
+      {/* Summary cards — clickable for detail popup */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card
           label="Total Masuk"
           value={data.summary.total_in}
           icon={Package}
           accent="text-[#2E8B57]"
+          onClick={() => openDetail("stock_in")}
         />
         <Card
           label="Total Keluar"
           value={data.summary.total_out}
           icon={Package}
           accent="text-red-400"
+          onClick={() => openDetail("stock_out")}
         />
         <Card
           label="Stok Menipis"
           value={data.low_stock.length}
           icon={AlertTriangle}
           accent={data.low_stock.length > 0 ? "text-yellow-400" : "text-[#F5F5F5]"}
+          onClick={() => openDetail("low_stock")}
         />
       </div>
 
@@ -1624,6 +2671,129 @@ function StockTab({ globalOutletId }) {
           empty="Tidak ada pergerakan stok pada periode ini"
         />
       </SectionCard>
+
+      {/* =========================================
+          DETAIL POPUP MODAL — uses already-loaded data
+      ========================================== */}
+      <DetailModal
+        open={!!detailMetric}
+        onClose={closeDetail}
+        title={
+          detailMetric === "stock_in" ? "Detail Stok Masuk" :
+          detailMetric === "stock_out" ? "Detail Stok Keluar" :
+          detailMetric === "low_stock" ? "Detail Stok Menipis" : "Detail"
+        }
+        subtitle={`${data.period_start?.slice(0, 10) || "Awal"} s/d ${data.period_end?.slice(0, 10) || "Sekarang"}`}
+        loading={false}
+      >
+        {/* STOCK IN — movements with delta > 0 */}
+        {detailMetric === "stock_in" && (
+          <div>
+            <div className="bg-[#331419] rounded-md p-3 mb-4">
+              <p className="text-xs text-[#C4A484]">Total Stok Masuk</p>
+              <p className="text-xl text-[#2E8B57] font-serif-luxury">{data.summary.total_in}</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs uppercase tracking-wider text-[#C4A484] border-b border-[rgba(244,200,66,0.15)]">
+                    <th className="py-2">#</th>
+                    <th className="py-2">Produk</th>
+                    <th className="py-2 text-right">Delta</th>
+                    <th className="py-2">Alasan</th>
+                    <th className="py-2">Waktu</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.movements.filter((r) => r.delta > 0).map((r, i) => (
+                    <tr key={i} className="border-b border-[rgba(244,200,66,0.08)]">
+                      <td className="py-2 text-[#F4C842]">{i + 1}</td>
+                      <td className="py-2 text-[#F5F5F5]">{r.product_name}</td>
+                      <td className="py-2 text-right text-[#2E8B57] font-semibold">+{r.delta}</td>
+                      <td className="py-2 text-[#C4A484] uppercase">{r.reason}</td>
+                      <td className="py-2 text-xs text-[#C4A484]">{new Date(r.created_at).toLocaleString("id-ID")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* STOCK OUT — movements with delta < 0 */}
+        {detailMetric === "stock_out" && (
+          <div>
+            <div className="bg-[#331419] rounded-md p-3 mb-4">
+              <p className="text-xs text-[#C4A484]">Total Stok Keluar</p>
+              <p className="text-xl text-red-400 font-serif-luxury">{data.summary.total_out}</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs uppercase tracking-wider text-[#C4A484] border-b border-[rgba(244,200,66,0.15)]">
+                    <th className="py-2">#</th>
+                    <th className="py-2">Produk</th>
+                    <th className="py-2 text-right">Delta</th>
+                    <th className="py-2">Alasan</th>
+                    <th className="py-2">Waktu</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.movements.filter((r) => r.delta < 0).map((r, i) => (
+                    <tr key={i} className="border-b border-[rgba(244,200,66,0.08)]">
+                      <td className="py-2 text-[#F4C842]">{i + 1}</td>
+                      <td className="py-2 text-[#F5F5F5]">{r.product_name}</td>
+                      <td className="py-2 text-right text-red-400 font-semibold">{r.delta}</td>
+                      <td className="py-2 text-[#C4A484] uppercase">{r.reason}</td>
+                      <td className="py-2 text-xs text-[#C4A484]">{new Date(r.created_at).toLocaleString("id-ID")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* LOW STOCK — products at or below threshold */}
+        {detailMetric === "low_stock" && (
+          <div>
+            <div className="bg-[#331419] rounded-md p-3 mb-4">
+              <p className="text-xs text-[#C4A484]">Total Produk Stok Menipis</p>
+              <p className="text-xl text-yellow-400 font-serif-luxury">{data.low_stock.length}</p>
+            </div>
+            {data.low_stock.length === 0 ? (
+              <p className="text-sm text-[#C4A484] text-center py-8">Semua stok aman.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs uppercase tracking-wider text-[#C4A484] border-b border-[rgba(244,200,66,0.15)]">
+                      <th className="py-2">#</th>
+                      <th className="py-2">Produk</th>
+                      <th className="py-2">SKU</th>
+                      <th className="py-2 text-right">Stok</th>
+                      <th className="py-2 text-right">Threshold</th>
+                      <th className="py-2">Unit</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.low_stock.map((r, i) => (
+                      <tr key={i} className="border-b border-[rgba(244,200,66,0.08)]">
+                        <td className="py-2 text-[#F4C842]">{i + 1}</td>
+                        <td className="py-2 text-[#F5F5F5]">{r.name}</td>
+                        <td className="py-2 text-[#C4A484]">{r.sku || "-"}</td>
+                        <td className="py-2 text-right text-red-400 font-semibold">{r.stock}</td>
+                        <td className="py-2 text-right text-[#C4A484]">{r.low_stock_threshold}</td>
+                        <td className="py-2 text-[#C4A484]">{r.unit || "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </DetailModal>
     </div>
   );
 }

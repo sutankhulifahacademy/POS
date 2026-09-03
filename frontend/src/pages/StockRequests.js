@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import api from "../lib/api";
+import api, { formatApiErrorDetail } from "../lib/api";
 import PageHeader from "../components/PageHeader";
 import { Plus, X, Trash2, Package, CheckCircle, XCircle, Clock, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
@@ -39,13 +39,17 @@ export default function StockRequests() {
   const canApprove = user && (user.role === "owner" || user.role === "manager");
 
   const load = async () => {
-    const oParam = outletIdForApi ? `?outlet_id=${outletIdForApi}` : "";
-    const [r, p] = await Promise.all([
-      api.get(`/stock-requests${oParam}`),
-      api.get(`/products`),
-    ]);
-    setRequests(r.data);
-    setProducts(p.data);
+    try {
+      const oParam = outletIdForApi ? `?outlet_id=${outletIdForApi}` : "";
+      const [r, p] = await Promise.all([
+        api.get(`/stock-requests${oParam}`),
+        api.get(`/products`),
+      ]);
+      setRequests(r.data);
+      setProducts(p.data);
+    } catch (e) {
+      toast.error(formatApiErrorDetail(e.response?.data?.detail) || "Gagal memuat data");
+    }
   };
   useEffect(() => { load(); }, [outletIdForApi]);
 

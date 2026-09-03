@@ -65,12 +65,19 @@ const FALLBACK_MENUS = [
 // Cache menus in memory to avoid refetch on every layout render
 let _cachedMenus = null;
 let _cachedRole = null;
+let _menusLoaded = false;
 
-export async function fetchMyMenus() {
+export async function fetchMyMenus(role) {
   try {
     const r = await api.get("/menus/my-menus");
+    _cachedMenus = r.data;
+    if (role) _cachedRole = role;
+    _menusLoaded = true;
     return r.data;
   } catch {
+    _cachedMenus = FALLBACK_MENUS;
+    if (role) _cachedRole = role;
+    _menusLoaded = true;
     return FALLBACK_MENUS;
   }
 }
@@ -84,10 +91,25 @@ export async function fetchAllMenus() {
   }
 }
 
+// Returns true if menus have been fetched at least once
+export function menusLoaded() {
+  return _menusLoaded;
+}
+
+// Clear menu cache — call on logout/login to prevent stale role state
+export function clearMenuCache() {
+  _cachedMenus = null;
+  _cachedRole = null;
+  _menusLoaded = false;
+}
+
 // Exported for App.js route protection — checks if a route exists in cached menus
 export function canAccess(role, path) {
   if (path === "/pos") return true; // POS always accessible
-  if (!_cachedMenus || _cachedRole !== role) return true; // Allow during initial load / role mismatch
+  if (path === "/kds") return true; // KDS always accessible
+  // Deny by default when menus aren't loaded yet — Protected component
+  // shows a loading screen until menusLoaded() returns true.
+  if (!_cachedMenus || _cachedRole !== role) return false;
   return _cachedMenus.some(m => m.route === path);
 }
 
@@ -196,7 +218,7 @@ export default function Layout() {
       setMenus(_cachedMenus);
       return;
     }
-    fetchMyMenus().then(data => {
+    fetchMyMenus(user?.role).then(data => {
       _cachedMenus = data;
       _cachedRole = user?.role;
       setMenus(data);

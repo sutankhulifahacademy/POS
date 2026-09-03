@@ -12,6 +12,20 @@ ROLES = ("admin", "manager")
 @router.get("/suppliers")
 async def list_items(user=Depends(get_current_user)):
     rows = await q_all(f"SELECT * FROM {TABLE} ORDER BY created_at DESC NULLS LAST")
+
+    # F6: Suppliers are global master data, but contact details are sensitive.
+    # Cashiers without suppliers.view permission may see supplier names (for
+    # operational awareness) but must not enumerate phone/email/address/contact.
+    can_view_sensitive = (
+        user["role"] in ("owner", "admin", "manager")
+        or await has_permission(user, "suppliers", "view")
+    )
+    if not can_view_sensitive:
+        sensitive_fields = ["contact_person", "phone", "email", "address"]
+        for row in rows:
+            for f in sensitive_fields:
+                row.pop(f, None)
+
     return clean_list(rows)
 
 

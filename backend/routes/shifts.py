@@ -1,6 +1,7 @@
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends
 from routes.deps import *
+from sqlalchemy import text
 
 router = APIRouter()
 
@@ -55,11 +56,28 @@ async def open_shift(body: ShiftOpenIn, user=Depends(get_current_user)):
         user_outlets = user.get("outlet_ids", [])
         if user_outlets:
             outlet_id = user_outlets[0]
+    # Validate outlet access
+    validate_outlet_access(user, outlet_id)
     sid = new_id()
-    await q_exec("""INSERT INTO shifts (id, cashier_id, cashier_name, outlet_id, opening_cash, status, opened_at, note)
-                    VALUES (:id, :ci, :cn, :oid, :cash, 'open', NOW(), :note)""",
-                 id=sid, ci=user["id"], cn=user.get("name", ""), oid=_u(outlet_id),
-                 cash=body.opening_cash, note=body.note or "")
+    # Use transaction with conditional INSERT to prevent duplicate open shifts
+    try:
+        async with transaction() as session:
+            # Lock the existing open shift check within the transaction
+            existing = await session_one(
+                session,
+                "SELECT id FROM shifts WHERE cashier_id=:c AND status='open' FOR UPDATE",
+                c=user["id"],
+            )
+            if existing:
+                raise HTTPException(400, "Shift already open")
+            await session.execute(
+                text("""INSERT INTO shifts (id, cashier_id, cashier_name, outlet_id, opening_cash, status, opened_at, note)
+                        VALUES (:id, :ci, :cn, :oid, :cash, 'open', NOW(), :note)"""),
+                {"id": sid, "ci": user["id"], "cn": user.get("name", ""), "oid": _u(outlet_id),
+                 "cash": body.opening_cash, "note": body.note or ""},
+            )
+    except HTTPException:
+        raise
     return clean(await q_one("SELECT * FROM shifts WHERE id=:id", id=sid))
 
 
@@ -74,10 +92,13 @@ async def close_shift(body: ShiftCloseIn, user=Depends(get_current_user)):
         COUNT(*) AS cnt FROM sales WHERE shift_id=:sid""", sid=shift["id"])
     expected = float(shift["opening_cash"]) + float(agg["cash_sales"])
     diff = body.actual_cash - expected
-    await q_exec("""UPDATE shifts SET status='closed', closed_at=NOW(), actual_cash=:ac, expected_cash=:ec,
+    # Conditional UPDATE prevents double-close under concurrency
+    r = await q_exec("""UPDATE shifts SET status='closed', closed_at=NOW(), actual_cash=:ac, expected_cash=:ec,
                     difference=:d, cash_sales=:cs, non_cash_sales=:ncs, transaction_count=:tc, close_note=:cn
-                    WHERE id=:id""",
+                    WHERE id=:id AND status='open'""",
                  id=shift["id"], ac=body.actual_cash, ec=expected, d=diff,
                  cs=float(agg["cash_sales"]), ncs=float(agg["non_cash_sales"]),
                  tc=agg["cnt"], cn=body.note or "")
+    if r == 0:
+        raise HTTPException(409, "Shift sudah ditutup oleh request lain")
     return clean(await q_one("SELECT * FROM shifts WHERE id=:id", id=shift["id"]))

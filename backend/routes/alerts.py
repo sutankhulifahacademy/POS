@@ -83,6 +83,7 @@ async def mark_all_alerts_read(
     where_clause = ""
     params = {}
     if outlet_id:
+        validate_outlet_access(user, outlet_id)
         where_clause = "AND outlet_id = :outlet_id"
         params["outlet_id"] = outlet_id
     elif user["role"] != "owner":

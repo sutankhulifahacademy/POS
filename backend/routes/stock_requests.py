@@ -3,8 +3,10 @@ import json
 from typing import Optional
 from routes.deps import *
 from routes.inventory import _adjust_outlet_stock
+from services.inventory_service import _adjust_outlet_stock_tx
 from routes.audit_logs import log_action
 from routes.alerts import create_alert
+from sqlalchemy import text
 
 router = APIRouter()
 
@@ -312,41 +314,72 @@ async def convert_request_to_transfer(request_id: str, user=Depends(require_perm
     tno = f"TRF-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{str(new_id())[:8]}"
     tid = new_id()
     total_qty = sum(i["quantity"] for i in transfer_items)
-
-    await q_exec("""INSERT INTO stock_transfers (id, transfer_no, from_outlet_id, to_outlet_id, from_outlet_name,
-                    to_outlet_name, items, total_quantity, note, status, created_by, created_by_name, created_at, request_id)
-                    VALUES (:id, :tno, :fo, :to, :fn, :tn, CAST(:it AS jsonb), :tq, :note, 'pending', :cb, :cbn, NOW(), :rid)""",
-                 id=tid, tno=tno, fo=_u(from_outlet_id), to=_u(to_outlet_id),
-                 fn=from_outlet_name, tn=to_outlet_name, it=json.dumps(transfer_items),
-                 tq=total_qty, note=f"From request {req['request_no']}", cb=user["id"], cbn=user.get("name", ""),
-                 rid=_u(request_id))
-
-    # Create transfer_items + deduct source stock
-    for it in transfer_items:
-        await q_exec("""INSERT INTO transfer_items (id, transfer_id, product_id, product_name, qty_sent, status, created_at)
-                        VALUES (:id, :tid, :pid, :pn, :qs, 'pending', NOW())""",
-                     id=new_id(), tid=tid, pid=_u(it["product_id"]), pn=it["name"], qs=it["quantity"])
-
-        await q_exec("""INSERT INTO stock_movements (id, product_id, product_name, delta, reason, note, outlet_id, user_id, created_at)
-                        VALUES (:id, :pid, :pn, :d, :r, :note, :oid, :u, NOW())""",
-                     id=new_id(), pid=_u(it["product_id"]), pn=it["name"], d=-it["quantity"],
-                     r="transfer_out", note=f"{tno} → {to_outlet_name}", oid=_u(from_outlet_id), u=user["id"])
-        await _adjust_outlet_stock(it["product_id"], from_outlet_id, -it["quantity"])
-
-    # Create delivery note (surat jalan)
     dno = f"SJ-{datetime.now(timezone.utc).strftime('%Y%m%d')}-{str(new_id())[:4].upper()}"
     dnid = new_id()
-    await q_exec("""INSERT INTO delivery_notes (id, delivery_no, transfer_id, request_id, status, generated_by, generated_by_name, generated_at, created_at)
-                    VALUES (:id, :dno, :tid, :rid, 'generated', :gb, :gbn, NOW(), NOW())""",
-                 id=dnid, dno=dno, tid=tid, rid=_u(request_id), gb=user["id"], gbn=user.get("name", ""))
 
-    # Link transfer to delivery note
-    await q_exec("UPDATE stock_transfers SET delivery_note_id = :dnid WHERE id = :tid", dnid=dnid, tid=tid)
+    # Atomic transaction: transfer, items, stock deduction, delivery note,
+    # and conditional request conversion (prevents double-conversion)
+    async with transaction() as session:
+        # Conditional UPDATE to prevent double-conversion under concurrency
+        result = await session.execute(
+            text("""UPDATE stock_requests SET status = 'converting', updated_at = NOW()
+                    WHERE id = :rid AND status IN ('approved', 'partially_approved')
+                      AND converted_transfer_id IS NULL"""),
+            {"rid": request_id},
+        )
+        if result.rowcount == 0:
+            raise HTTPException(409, "Request sudah dikonversi atau status tidak valid")
 
-    # Mark request as converted
-    await q_exec("""UPDATE stock_requests SET status = 'converted', converted_transfer_id = :tid,
-                    converted_at = NOW(), updated_at = NOW() WHERE id = :rid""",
-                 tid=tid, rid=request_id)
+        # Create transfer record
+        await session.execute(
+            text("""INSERT INTO stock_transfers (id, transfer_no, from_outlet_id, to_outlet_id, from_outlet_name,
+                    to_outlet_name, items, total_quantity, note, status, created_by, created_by_name, created_at, request_id)
+                    VALUES (:id, :tno, :fo, :to, :fn, :tn, CAST(:it AS jsonb), :tq, :note, 'pending', :cb, :cbn, NOW(), :rid)"""),
+            {"id": tid, "tno": tno, "fo": _u(from_outlet_id), "to": _u(to_outlet_id),
+             "fn": from_outlet_name, "tn": to_outlet_name, "it": json.dumps(transfer_items),
+             "tq": total_qty, "note": f"From request {req['request_no']}", "cb": user["id"], "cbn": user.get("name", ""),
+             "rid": _u(request_id)},
+        )
+
+        # Create transfer_items + deduct source stock
+        for it in transfer_items:
+            await session.execute(
+                text("""INSERT INTO transfer_items (id, transfer_id, product_id, product_name, qty_sent, status, created_at)
+                        VALUES (:id, :tid, :pid, :pn, :qs, 'pending', NOW())"""),
+                {"id": new_id(), "tid": tid, "pid": _u(it["product_id"]), "pn": it["name"], "qs": it["quantity"]},
+            )
+
+            # Deduct source stock (transaction-aware)
+            affected = await _adjust_outlet_stock_tx(session, it["product_id"], from_outlet_id, -it["quantity"])
+            if affected == 0:
+                raise HTTPException(400, f"Stok {it['name']} tidak cukup di outlet pusat untuk konversi")
+
+            await session.execute(
+                text("""INSERT INTO stock_movements (id, product_id, product_name, delta, reason, note, outlet_id, user_id, created_at)
+                        VALUES (:id, :pid, :pn, :d, :r, :note, :oid, :u, NOW())"""),
+                {"id": new_id(), "pid": _u(it["product_id"]), "pn": it["name"], "d": -it["quantity"],
+                 "r": "transfer_out", "note": f"{tno} → {to_outlet_name}", "oid": _u(from_outlet_id), "u": user["id"]},
+            )
+
+        # Create delivery note
+        await session.execute(
+            text("""INSERT INTO delivery_notes (id, delivery_no, transfer_id, request_id, status, generated_by, generated_by_name, generated_at, created_at)
+                    VALUES (:id, :dno, :tid, :rid, 'generated', :gb, :gbn, NOW(), NOW())"""),
+            {"id": dnid, "dno": dno, "tid": tid, "rid": _u(request_id), "gb": user["id"], "gbn": user.get("name", "")},
+        )
+
+        # Link transfer to delivery note
+        await session.execute(
+            text("UPDATE stock_transfers SET delivery_note_id = :dnid WHERE id = :tid"),
+            {"dnid": dnid, "tid": tid},
+        )
+
+        # Mark request as converted (final status)
+        await session.execute(
+            text("""UPDATE stock_requests SET status = 'converted', converted_transfer_id = :tid,
+                    converted_at = NOW(), updated_at = NOW() WHERE id = :rid"""),
+            {"tid": tid, "rid": request_id},
+        )
 
     # Audit logs
     await log_action(user, "STOCK_REQUEST_CONVERTED_TO_TRANSFER", "stock_request", entity_id=request_id,

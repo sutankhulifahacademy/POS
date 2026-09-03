@@ -1,10 +1,22 @@
-﻿from pydantic import BaseModel
-from typing import Optional
+﻿from pydantic import BaseModel, Field
+from typing import Optional, Any
+
+
+class QRISItem(BaseModel):
+    product_id: str
+    quantity: int = Field(ge=1)
+    variant_name: Optional[str] = ""
+    note: Optional[str] = ""
 
 
 class QRISCreate(BaseModel):
-    amount: int
+    amount: Optional[int] = None  # Deprecated: backend calculates from items
     description: Optional[str] = "POS checkout"
+    outlet_id: Optional[str] = None
+    price_type: Optional[str] = "ecceran"
+    discount: Optional[float] = Field(default=0, ge=0)
+    tax: Optional[float] = Field(default=0, ge=0)
+    items: Optional[list[QRISItem]] = None
 
 
 class PaymentAccountCreate(BaseModel):

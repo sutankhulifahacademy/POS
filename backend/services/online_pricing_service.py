@@ -9,6 +9,7 @@ This engine does NOT hardcode any commission rates.
 from datetime import date
 from typing import Optional
 from database import q_one, q_all
+from services.money import money, ZERO
 
 
 async def get_fee_config(platform_id: str, outlet_id: str = None, order_date: date = None) -> Optional[dict]:
@@ -57,16 +58,16 @@ async def get_fee_config(platform_id: str, outlet_id: str = None, order_date: da
 
 
 def calculate_settlement(
-    gross_sales: float,
+    gross_sales,
     config: dict,
-    merchant_promo_override: float = None,
-    advertising_override: float = None,
+    merchant_promo_override=None,
+    advertising_override=None,
 ) -> dict:
     """
     Calculate full settlement breakdown from gross sales + fee config.
 
     Returns dict with all fee components, total deduction, expected settlement,
-    effective fee %, etc.
+    effective fee %, etc. Monetary values are rounded with Decimal/ROUND_HALF_UP.
 
     config must contain:
         commission_pct, fixed_fee, tax_on_fee_pct,
@@ -74,20 +75,23 @@ def calculate_settlement(
         advertising_fee, other_fee_pct, other_fixed_fee,
         fee_calc_base
     """
-    gross = float(gross_sales or 0)
+    gross = money(gross_sales)
     commission_pct = float(config.get("commission_pct") or 0)
-    fixed_fee = float(config.get("fixed_fee") or 0)
+    fixed_fee = money(config.get("fixed_fee") or 0)
     tax_on_fee_pct = float(config.get("tax_on_fee_pct") or 0)
     promo_merchant_pct = float(config.get("promo_merchant_pct") or 0)
     promo_platform_pct = float(config.get("promo_platform_pct") or 0)
-    advertising_fee = float(config.get("advertising_fee") or 0)
+    advertising_fee = money(config.get("advertising_fee") or 0)
     other_fee_pct = float(config.get("other_fee_pct") or 0)
-    other_fixed_fee = float(config.get("other_fixed_fee") or 0)
+    other_fixed_fee = money(config.get("other_fixed_fee") or 0)
     fee_calc_base = config.get("fee_calc_base") or "gross"
 
     # Merchant promo
-    merchant_promo = merchant_promo_override if merchant_promo_override is not None else gross * promo_merchant_pct / 100
-    platform_promo = gross * promo_platform_pct / 100
+    if merchant_promo_override is not None:
+        merchant_promo = money(merchant_promo_override)
+    else:
+        merchant_promo = money(gross * promo_merchant_pct / 100)
+    platform_promo = money(gross * promo_platform_pct / 100)
 
     # Fee calculation base
     if fee_calc_base == "after_merchant_discount":
@@ -98,16 +102,19 @@ def calculate_settlement(
         fee_base = gross
 
     # Commission
-    commission_amount = fee_base * commission_pct / 100
+    commission_amount = money(fee_base * commission_pct / 100)
 
     # Other percentage fee
-    other_fee = fee_base * other_fee_pct / 100 + other_fixed_fee
+    other_fee = money(fee_base * other_fee_pct / 100) + other_fixed_fee
 
     # Advertising
-    adv = advertising_override if advertising_override is not None else advertising_fee
+    if advertising_override is not None:
+        adv = money(advertising_override)
+    else:
+        adv = advertising_fee
 
     # Tax on fee (commission only — per spec examples)
-    tax_on_fee = commission_amount * tax_on_fee_pct / 100
+    tax_on_fee = money(commission_amount * tax_on_fee_pct / 100)
 
     # Total deduction
     total_deduction = (
@@ -123,38 +130,38 @@ def calculate_settlement(
     expected_settlement = gross - total_deduction
 
     # Effective fee %
-    effective_fee_pct = (total_deduction / gross * 100) if gross > 0 else 0
+    effective_fee_pct = (total_deduction / gross * 100) if gross > ZERO else 0
 
     return {
-        "gross_sales": round(gross, 2),
-        "commission_amount": round(commission_amount, 2),
-        "fixed_fee": round(fixed_fee, 2),
-        "tax_on_fee": round(tax_on_fee, 2),
-        "merchant_promo": round(merchant_promo, 2),
-        "platform_promo": round(platform_promo, 2),
-        "advertising_fee": round(adv, 2),
-        "other_fee": round(other_fee, 2),
-        "total_deduction": round(total_deduction, 2),
-        "expected_settlement": round(expected_settlement, 2),
-        "effective_fee_pct": round(effective_fee_pct, 2),
+        "gross_sales": float(money(gross)),
+        "commission_amount": float(money(commission_amount)),
+        "fixed_fee": float(money(fixed_fee)),
+        "tax_on_fee": float(money(tax_on_fee)),
+        "merchant_promo": float(money(merchant_promo)),
+        "platform_promo": float(money(platform_promo)),
+        "advertising_fee": float(money(adv)),
+        "other_fee": float(money(other_fee)),
+        "total_deduction": float(money(total_deduction)),
+        "expected_settlement": float(money(expected_settlement)),
+        "effective_fee_pct": round(float(effective_fee_pct), 2),
     }
 
 
-def calculate_profit(settlement: dict, total_cogs: float) -> dict:
+def calculate_profit(settlement: dict, total_cogs) -> dict:
     """Calculate profit + margins from settlement + COGS."""
-    expected = float(settlement.get("expected_settlement") or 0)
-    gross = float(settlement.get("gross_sales") or 0)
-    cogs = float(total_cogs or 0)
+    expected = money(settlement.get("expected_settlement") or 0)
+    gross = money(settlement.get("gross_sales") or 0)
+    cogs = money(total_cogs or 0)
 
     profit = expected - cogs
-    profit_margin = (profit / gross * 100) if gross > 0 else 0
-    margin_on_settlement = (profit / expected * 100) if expected > 0 else 0
+    profit_margin = (profit / gross * 100) if gross > ZERO else 0
+    margin_on_settlement = (profit / expected * 100) if expected > ZERO else 0
 
     return {
-        "total_cogs": round(cogs, 2),
-        "gross_profit": round(profit, 2),
-        "profit_margin": round(profit_margin, 2),
-        "margin_on_settlement": round(margin_on_settlement, 2),
+        "total_cogs": float(money(cogs)),
+        "gross_profit": float(money(profit)),
+        "profit_margin": round(float(profit_margin), 2),
+        "margin_on_settlement": round(float(margin_on_settlement), 2),
     }
 
 

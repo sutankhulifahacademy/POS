@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import api, { formatIDR } from "../lib/api";
+import api, { formatIDR, formatApiErrorDetail } from "../lib/api";
 import PageHeader from "../components/PageHeader";
 import { Plus, Edit3, Trash2, X, Search, Package, Upload } from "lucide-react";
 import { toast } from "sonner";
@@ -35,9 +35,13 @@ export default function Products() {
   };
 
   const load = async () => {
-    const oParam = outletIdForApi ? `?outlet_id=${outletIdForApi}` : "";
-    const [p, c] = await Promise.all([api.get(`/products${oParam}`), api.get("/categories")]);
-    setItems(p.data); setCategories(c.data);
+    try {
+      const oParam = outletIdForApi ? `?outlet_id=${outletIdForApi}` : "";
+      const [p, c] = await Promise.all([api.get(`/products${oParam}`), api.get("/categories")]);
+      setItems(p.data); setCategories(c.data);
+    } catch (e) {
+      toast.error(formatApiErrorDetail(e.response?.data?.detail) || "Gagal memuat data");
+    }
   };
   useEffect(() => { load(); }, [outletIdForApi]);
 
