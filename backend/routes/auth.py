@@ -353,7 +353,7 @@ def assert_price_type_authorized(user: dict, price_type: str, sales_channel: str
     if price_type == "online" and sales_channel == "online":
         return
 
-    if user["role"] in ("owner", "admin", "manager"):
+    if user["role"] in ("owner", "admin", "manager", "supervisor"):
         return
 
     raise HTTPException(
@@ -375,7 +375,7 @@ def assert_discount_authorized(user: dict, subtotal, discount, tax: Any = 0) -> 
     # We intentionally do not factor in tax here: a discount that covers the
     # merchandise value means the goods themselves are free, regardless of tax.
     if discount >= subtotal:
-        if user["role"] not in ("owner", "admin", "manager"):
+        if user["role"] not in ("owner", "admin", "manager", "supervisor"):
             raise HTTPException(
                 status_code=403,
                 detail="Diskon penuh memerlukan otorisasi manager/owner",

@@ -122,8 +122,10 @@ export default function POS() {
 
   const getStock = (p) => selectedOutlet && outletStocks[p.id] !== undefined ? outletStocks[p.id] : p.stock;
 
-  // Frontend price resolution for DISPLAY only — backend does final resolution
-  const resolveDisplayPrice = (product, variant = null) => {
+  // Frontend price resolution for CART only — backend does final resolution.
+  // For non-retail price types, do NOT fall back to products.price if the
+  // requested price is not configured. The backend will reject such items.
+  const resolveCartPrice = (product, variant = null) => {
     const obj = variant || product;
     const existingPrice = parseFloat(obj.price) || 0;
     if (salesChannel === "online") {
@@ -133,18 +135,38 @@ export default function POS() {
     }
     if (priceType === "reseller") {
       const rp = obj.reseller_price;
-      if (rp != null && parseFloat(rp) >= 0) return parseFloat(rp);
-      return existingPrice;
+      if (rp != null) return parseFloat(rp);
+      return null;
     }
     if (priceType === "partai") {
       const wp = obj.wholesale_price;
-      if (wp != null && parseFloat(wp) >= 0) return parseFloat(wp);
-      return existingPrice;
+      if (wp != null) return parseFloat(wp);
+      return null;
     }
-    // eceran (standard POS) — use products.price directly
-    // retail_price is a separate pricing tier, NOT the default for standard POS
+    // eceran (standard POS) — canonical retail price is products.price.
+    // products.retail_price is an additional, separate tier and must NOT
+    // replace products.price for standard POS transactions.
     return existingPrice;
   };
+
+  // Returns the list of available prices for a product/variant, in the
+  // canonical side-by-side display format: Retail, Reseller (if configured),
+  // Wholesale (if configured). NULL prices are not rendered.
+  const availablePrices = (product, variant = null) => {
+    const obj = variant || product;
+    const list = [];
+    list.push({ type: "Retail", value: parseFloat(obj.price) || 0 });
+    if (obj.reseller_price != null) list.push({ type: "Reseller", value: parseFloat(obj.reseller_price) });
+    if (obj.wholesale_price != null) list.push({ type: "Wholesale", value: parseFloat(obj.wholesale_price) });
+    return list;
+  };
+
+  const formatPriceType = (pt) => ({
+    eceran: "Retail",
+    reseller: "Reseller",
+    partai: "Wholesale",
+    online: "Online",
+  }[pt] || pt);
 
   const filtered = useMemo(() => products.filter((p) => {
     if (!p.is_active) return false;
@@ -155,10 +177,14 @@ export default function POS() {
 
   const addToCart = (product, variant = null, paketItems = null) => {
     const stock = variant ? variant.stock : getStock(product);
-    const price = resolveDisplayPrice(product, variant);
+    const price = resolveCartPrice(product, variant);
     const displayName = variant ? `${product.name} - ${variant.name}` : product.name;
     const key = variant ? `${product.id}::${variant.name}` : product.id;
     if (stock <= 0) { toast.error(`${displayName}: stok habis`); return; }
+    if (price === null) {
+      toast.error(`${displayName}: harga ${formatPriceType(priceType)} belum diatur`);
+      return;
+    }
     // Don't auto-open cart on mobile — sticky bottom bar shows cart status
     setCart((prev) => {
       const existing = prev.find((i) => i.key === key);
@@ -294,14 +320,16 @@ export default function POS() {
 
   const removeItem = (key) => setCart((prev) => prev.filter((i) => i.key !== key));
 
-  // Re-resolve cart prices when channel/price_type changes
+  // Re-resolve cart prices when channel/price_type changes.
+  // Items whose requested price type is not configured are kept but marked
+  // with a null price; checkout will be blocked by backend validation.
   useEffect(() => {
     if (cart.length === 0) return;
     setCart((prev) => prev.map((item) => {
       const product = products.find((p) => p.id === item.product_id);
       if (!product) return item;
       const variant = item.variant_name ? (product.variants || []).find((v) => v.name === item.variant_name) : null;
-      const newPrice = resolveDisplayPrice(product, variant);
+      const newPrice = resolveCartPrice(product, variant);
       return { ...item, price: newPrice };
     }));
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -566,7 +594,14 @@ export default function POS() {
                   )}
                   <p className="text-xs sm:text-sm text-[#F5F5F5] truncate leading-tight">{p.name}</p>
                   <p className="text-[10px] text-[#C4A484]">Stok: {s}</p>
-                  <p className="text-[#F4C842] font-semibold text-xs sm:text-sm mt-1 truncate">{formatIDR(resolveDisplayPrice(p))}</p>
+                  <div className="mt-1 space-y-0.5">
+                    {availablePrices(p).map((pr) => (
+                      <div key={pr.type} className="flex justify-between items-baseline text-[10px] sm:text-xs">
+                        <span className="text-[#C4A484]">{pr.type}</span>
+                        <span className="text-[#F4C842] font-semibold">{formatIDR(pr.value)}</span>
+                      </div>
+                    ))}
+                  </div>
                 </button>
               );
             })}
@@ -678,7 +713,16 @@ export default function POS() {
                   <span className="text-sm text-[#F5F5F5] min-w-[20px] text-center">{i.quantity}</span>
                   <button onClick={() => changeQty(i.key, 1)} className="w-8 h-8 sm:w-10 sm:h-10 rounded-md bg-[#2A1015] border border-[rgba(244,200,66,0.2)] text-[#F4C842] flex items-center justify-center shrink-0"><Plus size={14} /></button>
                 </div>
-                <p className="text-xs sm:text-sm text-[#F4C842] font-semibold">{formatIDR(i.price * i.quantity)}</p>
+                <div className="text-right">
+                  {i.price === null ? (
+                    <p className="text-[10px] sm:text-xs text-[#8B0000]">Harga {formatPriceType(priceType)} tidak tersedia</p>
+                  ) : (
+                    <>
+                      <p className="text-[9px] sm:text-[10px] text-[#C4A484]">{formatPriceType(priceType)} × {formatIDR(i.price)}</p>
+                      <p className="text-xs sm:text-sm text-[#F4C842] font-semibold">{formatIDR(i.price * i.quantity)}</p>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           ))}
@@ -694,6 +738,32 @@ export default function POS() {
               </select>
             </div>
           </div>
+          {/* Price Type — only enabled for authorized roles */}
+          {salesChannel === "offline" && (
+            <div className="grid grid-cols-1 gap-2">
+              <div>
+                <label className="text-[9px] sm:text-[10px] uppercase tracking-widest text-[#C4A484]">Tipe Harga</label>
+                <select
+                  value={priceType}
+                  onChange={(e) => setPriceType(e.target.value)}
+                  disabled={!(user?.role === "owner" || user?.role === "admin" || user?.role === "manager" || user?.role === "supervisor")}
+                  className="mt-1 w-full bg-[#2A1015] border border-[rgba(244,200,66,0.2)] rounded-md px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm text-[#F5F5F5] min-h-[36px] sm:min-h-[40px] disabled:opacity-60 disabled:cursor-not-allowed"
+                  data-testid="pos-price-type"
+                >
+                  <option value="ecceran">Retail</option>
+                  {(products.some((p) => p.reseller_price != null) || products.length === 0) && (
+                    <option value="reseller">Reseller</option>
+                  )}
+                  {(products.some((p) => p.wholesale_price != null) || products.length === 0) && (
+                    <option value="partai">Wholesale</option>
+                  )}
+                </select>
+                {!(user?.role === "owner" || user?.role === "admin" || user?.role === "manager" || user?.role === "supervisor") && (
+                  <p className="text-[9px] text-[#C4A484] mt-1">Hanya retail tersedia untuk kasir</p>
+                )}
+              </div>
+            </div>
+          )}
           {salesChannel === "online" && (
             <div className="bg-[rgba(244,200,66,0.1)] border border-[rgba(244,200,66,0.3)] rounded-md px-2 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs text-[#F4C842]">
               Mode Online: semua produk menggunakan Harga Online
@@ -990,7 +1060,14 @@ export default function POS() {
               {variantPick.variants.map((v, i) => (
                 <button key={i} onClick={() => { addToCart(variantPick, v); setVariantPick(null); }} disabled={v.stock <= 0} data-testid={`variant-${i}`} className="w-full bg-[#331419] gold-border rounded-md p-3 text-left card-hover hover:border-[#F4C842] disabled:opacity-40">
                   <p className="text-sm text-[#F5F5F5]">{v.name}</p>
-                  <p className="text-[#F4C842] font-semibold text-sm mt-1">{formatIDR(resolveDisplayPrice(variantPick, v))}</p>
+                  <div className="mt-1 space-y-0.5">
+                    {availablePrices(variantPick, v).map((pr) => (
+                      <div key={pr.type} className="flex justify-between items-baseline text-[10px] sm:text-xs">
+                        <span className="text-[#C4A484]">{pr.type}</span>
+                        <span className="text-[#F4C842] font-semibold">{formatIDR(pr.value)}</span>
+                      </div>
+                    ))}
+                  </div>
                 </button>
               ))}
             </div>

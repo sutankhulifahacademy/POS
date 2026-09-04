@@ -1,22 +1,20 @@
 """Price resolver service — determines the correct price for a product/variant
 based on sales channel and price type.
 
-Rules:
-    channel == ONLINE  → online_price (fallback to product.price)
+Canonical mapping:
+    channel == ONLINE  → online_price (fallback to product.price, existing flow)
     channel == OFFLINE:
-        price_type == RESELLER → reseller_price (fallback to price)
-        price_type == PARTAI   → wholesale_price (fallback to price)
+        price_type == RESELLER → reseller_price; REJECT if not configured
+        price_type == PARTAI   → wholesale_price; REJECT if not configured
         price_type == ECERAN   → product.price (standard selling price)
-        default                → price (existing behavior)
 
-Existing product.price is NEVER modified. Additional pricing fields are
-nullable — when NULL, the system falls back to product.price so old products
-remain valid.
-
-IMPORTANT: For standard POS/Dine-In (price_type == "ecceran"), the source
-of truth is products.price — NOT retail_price. The retail_price field is
-a separate pricing tier and must not automatically replace products.price.
+Products.price is the canonical RETAIL price. products.retail_price is an
+additional, separate pricing field and is NOT used for standard POS/Dine-In.
+Additional pricing fields are nullable — when a non-retail price type is
+explicitly requested but the matching field is NULL, the resolver raises an
+HTTP 422 error (PRICE_NOT_CONFIGURED) instead of silently falling back.
 """
+from fastapi import HTTPException
 from typing import Optional, Any
 from services.money import money
 
@@ -29,7 +27,7 @@ def _resolve_price_from_obj(
     """
     Resolve price from a product or variant dict.
 
-    obj must contain 'price' (the existing price field).
+    obj must contain 'price' (the canonical retail price).
     Optional: retail_price, reseller_price, wholesale_price, online_price.
     Returns a Decimal money value.
     """
@@ -39,7 +37,10 @@ def _resolve_price_from_obj(
     price_type = (price_type or "ecceran").lower()
 
     # =====================================================
-    # ONLINE CHANNEL — always use online_price
+    # ONLINE CHANNEL — always use online_price, fallback to price
+    # =====================================================
+    # Existing online order flow: products without an online_price remain
+    # sellable online by falling back to the standard price.
     # =====================================================
     if sales_channel == "online":
         online_price = obj.get("online_price")
@@ -52,22 +53,37 @@ def _resolve_price_from_obj(
     # =====================================================
     if price_type == "reseller":
         rp = obj.get("reseller_price")
-        if rp is not None and money(rp) >= 0:
-            return money(rp)
-        return existing_price
+        if rp is None:
+            raise HTTPException(
+                status_code=422,
+                detail="PRICE_NOT_CONFIGURED: harga reseller belum diatur untuk produk ini",
+            )
+        if money(rp) < 0:
+            raise HTTPException(
+                status_code=422,
+                detail="PRICE_NOT_CONFIGURED: harga reseller tidak valid",
+            )
+        return money(rp)
 
     if price_type == "partai":
         wp = obj.get("wholesale_price")
-        if wp is not None and money(wp) >= 0:
-            return money(wp)
-        return existing_price
+        if wp is None:
+            raise HTTPException(
+                status_code=422,
+                detail="PRICE_NOT_CONFIGURED: harga partai belum diatur untuk produk ini",
+            )
+        if money(wp) < 0:
+            raise HTTPException(
+                status_code=422,
+                detail="PRICE_NOT_CONFIGURED: harga partai tidak valid",
+            )
+        return money(wp)
 
     # =====================================================
-    # ECERAN (standard POS/Dine-In) — use products.price
+    # ECERAN (standard POS/Dine-In) — canonical retail price
     # =====================================================
-    # products.price is the standard selling price for POS/Dine-In.
-    # retail_price is a separate pricing tier and must NOT automatically
-    # replace products.price for standard transactions.
+    # products.price is the canonical retail price. products.retail_price is
+    # an additional, separate tier and must NOT replace products.price.
     # =====================================================
     return existing_price
 
